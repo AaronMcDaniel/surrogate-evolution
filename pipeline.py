@@ -1,10 +1,15 @@
 import toml
 import sys, os
+import itertools
 
 import pandas as pd
 
+from deap import gp
+import primitives
+
 class Pipeline:
     def __init__(self) -> None:
+        # Begin by loading config attributes
         try:
             pipeline_config = toml.load(os.path.join(os.path.dirname(os.path.realpath(__file__)), "conf.toml"))["pipeline"]
         except Exception:
@@ -32,6 +37,12 @@ class Pipeline:
         self.train_pool_source = pipeline_config['train_pool_source']
         self.trust_pool_source = pipeline_config['trust_pool_source']
         self.gen_count = 0
+
+        # Add primitives to primitive set
+        pset = gp.PrimitiveSetTyped("MAIN", itertools.repeat(primitives.Tensor3D, 1), primitives.FinalTensor)
+        
+        self.pset = pset
+
     
     def init_pop(self, seed_file = None):
         pass
