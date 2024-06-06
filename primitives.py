@@ -1,5 +1,7 @@
 from enum import Enum
 
+from deap import gp
+
 
 # placeholder classes to act as types for DEAP's strongly typed primitive set
 class Tensor3D:
@@ -11,11 +13,11 @@ class Tensor2D:
 class Tensor1D:
     pass
 
-class FinalTensor: # tensor going into the final output layer
+class FinalTensor: # acts as an end type
     pass
 
 
-# separate wrapper classes for different hyperparameters so bounds can be placed and crossovers are valid
+# separate wrapper classes for different hyperparameters so bounds can be placed on individual ephemeral constants and crossovers are valid
 class ChannelSize(int):
     def __init__(self, num) -> None:
         super().__init__()
@@ -64,6 +66,10 @@ class UpsampleMode(Enum):
     bicubic = 3,
     trilinear = 4
 
+class SkipMergeType(Enum):
+    concat = 0,
+    add = 1,
+
 # Conv layers
 def LazyConv2d(tensor: Tensor3D, out_channels: ChannelSize, kernel_size0: KernelSize, kernel_size1: KernelSize, stride0: StrideSize, stride1: StrideSize, padding0: PaddingSize, padding1: PaddingSize, padding_mode: PaddingMode, 
                dilation0: DilationSize, dilation1:  DilationSize, groups: GroupSize): # assume bias is always true
@@ -98,33 +104,50 @@ def AdaptiveAvgPool2d(tensor: Tensor3D, output_size0: OuputSize, output_size1: O
 
 
 # Activation layers
-def ReLU(tensor: Tensor3D | Tensor2D | Tensor1D):
-    return (type(tensor))()
+def ReLU_2D(tensor: Tensor3D):
+    return Tensor3D()
 
-def ReLU6(tensor: Tensor3D | Tensor2D | Tensor1D):
-    return (type(tensor))()
+def ReLU_1D(tensor: Tensor1D):
+    return Tensor1D()
 
-def LeakyReLU(tensor: Tensor3D | Tensor2D | Tensor1D, negative_slope: float):
-    return (type(tensor))()
+def LeakyReLU_2D(tensor: Tensor3D, negative_slope: float):
+    return Tensor3D()
 
-def RReLU(tensor: Tensor3D | Tensor2D | Tensor1D, lower: float, upper: float):
-    return (type(tensor))()
+def LeakyReLU_1D(tensor: Tensor1D, negative_slope: float):
+    return Tensor1D()
 
-def LogSigmoid(tensor: Tensor3D | Tensor2D | Tensor1D):
-    return (type(tensor))()
+def RReLU_2D(tensor: Tensor3D, lower: float, upper: float):
+    return Tensor3D()
 
-def Sigmoid(tensor: Tensor3D | Tensor2D | Tensor1D):
-    return (type(tensor))()
+def RReLU_1D(tensor: Tensor1D, lower: float, upper: float):
+    return Tensor1D()
 
-def Tanh(tensor: Tensor3D | Tensor2D | Tensor1D):
-    return (type(tensor))()
+def LogSigmoid_2D(tensor: Tensor3D):
+    return Tensor3D()
 
-def Threshold(tensor: Tensor3D | Tensor2D | Tensor1D, threshold: float, value: float):
-    return (type(tensor))()
+def LogSigmoid_1D(tensor: Tensor1D):
+    return Tensor1D()
 
-# can only be used as the final classification layer
+def Sigmoid_2D(tensor: Tensor3D):
+    return Tensor3D()
+
+def Sigmoid_1D(tensor: Tensor1D):
+    return Tensor1D()
+
+def Tanh_2D(tensor: Tensor3D):
+    return Tensor3D()
+
+def Tanh_1D(tensor: Tensor1D):
+    return Tensor1D()
+
+def Threshold_2D(tensor: Tensor3D, threshold: float, value: float):
+    return Tensor3D()
+
+def Threshold_1D(tensor: Tensor1D, threshold: float, value: float):
+    return Tensor1D()
+
 def Softmax(tensor: Tensor1D, dim: OuputSize):
-    return FinalTensor()
+    return Tensor1D()
 
 
 # TODO: MultiHeadAttention
@@ -134,8 +157,11 @@ def Softmax(tensor: Tensor1D, dim: OuputSize):
 def LazyBatchNorm2d(tensor: Tensor3D, eps: float, momentum: float):
     return Tensor3D()
 
-def Sigmoid(tensor: Tensor3D | Tensor2D | Tensor1D, p: float):
-    return (type(tensor))()
+def Dropout_2D(tensor: Tensor3D, p: float):
+    return Tensor3D()
+
+def Dropout_1D(tensor: Tensor1D, p: float):
+    return Tensor1D()
 
 
 # Flatten layers
@@ -147,25 +173,166 @@ def Flatten(tensor: Tensor3D | Tensor2D | Tensor1D):
 def LazyLinear(tensor: Tensor1D, out_features: OuputSize):
     return Tensor1D()
 
-def LazyLinear_Final(tensor: Tensor1D, out_features: OuputSize): # final linear layer
-    return FinalTensor()
-
 
 # TODO: transformer layers
 
 
 # Vision layers
-def Upsample_1D(tensor: Tensor1D, size: OuputSize, scaling_factor: float, mode: UpsampleMode):
-    return Tensor1D
+def Upsample_1D(tensor: Tensor1D, scaling_factor: float, mode: UpsampleMode):
+    return Tensor1D()
     
-def Upsample_2D(tensor: Tensor2D, size: OuputSize, scaling_factor: float, mode: UpsampleMode):
-    return Tensor2D
-
-def Upsample_3D(tensor: Tensor3D, size: OuputSize, scaling_factor: float, mode: UpsampleMode):
-    return Tensor3D
+def Upsample_2D(tensor: Tensor3D, scaling_factor: float, mode: UpsampleMode):
+    return Tensor3D()
 
 
-# Skip Connection Support
-# def Split(tensor: Tensor3D | Tensor2D | Tensor1D, )
+# Skip Connection Support: The way this is supposed to work is that a Skip layer can be added anywhere and the skip_by parameter tells us how many layers to skip
+# by which allows us to then use the chosen merge_type to merge after skipping. It is likely that the merging will not be straighforward since dimensions may vary
+# and the merge location may not even exist if a bad skip_by value is chosen, but we can either heal when decoding or hope the GA will figure out how to use padding 
+# layers or similar to make it work.  
+def Skip_2D(tensor: Tensor3D, skip_by: int, merge_type: SkipMergeType):
+    return Tensor3D()
+
+def Skip_1D(tensor: Tensor1D, skip_by: int, merge_type: SkipMergeType):
+    return Tensor1D()
 
 # TODO: cells
+def Detection_Head(tensor: Tensor1D):
+    return FinalTensor()
+
+# creating primitive set
+pset = gp.PrimitiveSetTyped("MAIN", [Tensor3D], FinalTensor)
+pset.addPrimitive(LazyConv2d, 
+                  [Tensor3D, ChannelSize, KernelSize, KernelSize, StrideSize, StrideSize, PaddingSize, PaddingSize, PaddingMode, DilationSize, DilationSize, GroupSize], 
+                  Tensor3D)
+
+pset.addPrimitive(LazyConvTransposed2d,
+                  [Tensor3D, ChannelSize, KernelSize, KernelSize, StrideSize, StrideSize, PaddingSize, PaddingSize, PaddingMode, DilationSize, DilationSize, GroupSize],
+                  Tensor3D)
+
+pset.addPrimitive(MaxPool2d,
+                  [Tensor3D, KernelSize, KernelSize, StrideSize, StrideSize, PaddingSize, PaddingSize, DilationSize, DilationSize],
+                  Tensor3D)
+
+pset.addPrimitive(AvgPool2d,
+                  [Tensor3D, KernelSize, KernelSize, StrideSize, StrideSize, PaddingSize, PaddingSize],
+                  Tensor3D)
+
+pset.addPrimitive(FractionalMaxPool2d,
+                  [Tensor3D, KernelSize, KernelSize, OuputSize, OuputSize],
+                  Tensor3D)
+
+pset.addPrimitive(LPPool2d,
+                  [Tensor3D, KernelSize, KernelSize, StrideSize, StrideSize],
+                  Tensor3D)
+
+pset.addPrimitive(AdaptiveMaxPool2d,
+                  [Tensor3D, OuputSize, OuputSize],
+                  Tensor3D)
+
+pset.addPrimitive(AdaptiveAvgPool2d,
+                  [Tensor3D, OuputSize, OuputSize],
+                  Tensor3D)
+
+pset.addPrimitive(ReLU_2D,
+                  [Tensor3D],
+                  Tensor3D)
+
+pset.addPrimitive(ReLU_1D,
+                  [Tensor1D],
+                  Tensor1D)
+
+pset.addPrimitive(LeakyReLU_2D,
+                  [Tensor3D, float],
+                  Tensor3D)
+
+pset.addPrimitive(LeakyReLU_1D,
+                  [Tensor1D, float],
+                  Tensor1D)
+
+pset.addPrimitive(RReLU_2D,
+                  [Tensor3D, float, float],
+                  Tensor3D)
+
+pset.addPrimitive(RReLU_1D,
+                  [Tensor1D, float, float],
+                  Tensor1D)
+
+pset.addPrimitive(LogSigmoid_2D,
+                  [Tensor3D],
+                  Tensor3D)
+
+pset.addPrimitive(LogSigmoid_1D,
+                  [Tensor1D],
+                  Tensor1D)
+
+pset.addPrimitive(Sigmoid_2D,
+                  [Tensor3D],
+                  Tensor3D)
+
+pset.addPrimitive(Sigmoid_1D,
+                  [Tensor1D],
+                  Tensor1D)
+
+pset.addPrimitive(Tanh_2D,
+                  [Tensor3D],
+                  Tensor3D)
+
+pset.addPrimitive(Tanh_1D,
+                  [Tensor1D],
+                  Tensor1D)
+
+pset.addPrimitive(Threshold_2D,
+                  [Tensor3D, float, float],
+                  Tensor3D)
+
+pset.addPrimitive(Threshold_1D,
+                  [Tensor1D, float, float],
+                  Tensor1D)
+
+pset.addPrimitive(Softmax,
+                  [Tensor1D, OuputSize],
+                  Tensor1D)
+
+pset.addPrimitive(LazyBatchNorm2d,
+                  [Tensor3D, float, float],
+                  Tensor3D)
+
+pset.addPrimitive(Dropout_2D,
+                  [Tensor3D, float],
+                  Tensor3D)
+
+pset.addPrimitive(Dropout_1D,
+                  [Tensor1D, float],
+                  Tensor1D)
+
+# breakpoint() investigate ordering issue
+
+pset.addPrimitive(Upsample_1D,
+                  [Tensor1D, float, UpsampleMode],
+                  Tensor1D)
+
+pset.addPrimitive(Skip_2D,
+                  [Tensor3D, int, SkipMergeType],
+                  Tensor3D)
+
+pset.addPrimitive(Detection_Head,
+                  [Tensor1D],
+                  FinalTensor)
+
+pset.addPrimitive(Flatten,
+                  [Tensor3D | Tensor2D | Tensor1D],
+                  Tensor1D)
+
+pset.addPrimitive(LazyLinear,
+                  [Tensor1D, OuputSize],
+                  Tensor1D)
+
+pset.addPrimitive(Upsample_2D,
+                  [Tensor3D, float, UpsampleMode],
+                  Tensor3D)
+
+pset.addPrimitive(Skip_1D,
+                  [Tensor1D, int, SkipMergeType],
+                  Tensor1D)
+
+# TODO: need to add more math operator primitives and ephemeral constants 
