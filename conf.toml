@@ -17,8 +17,8 @@ mutations = {mutation_type_a = 0.2, mutation_type_b = 0.1}
 percent_elite = 0.05
 # whether to use surrogate
 surrogate_enabled = false
-# GA objectives to optimize for
-objectives = {MSE = "min", GIoU = "max", MAP = "max"}
+# GA objectives to optimize for and their weights (matter only relative to each other)
+objectives = {MSE = -1, GIoU = 1, MAP = 1}
 # number of epochs to train individuals for
 train_epochs = 40
 # strategy for down selecting individuals trusted by the surrogate
