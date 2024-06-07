@@ -1,6 +1,20 @@
 from enum import Enum
+from functools import partial
+import operator
+import random
 
 from deap import gp
+
+
+MAX_CHANNEL_SIZE = 64
+MAX_KERNEL_SIZE = 9
+MAX_STRIDE_SIZE = 9
+MAX_PADDING_SIZE = 9
+MAX_OUTPUT_SIZE = 3000
+MAX_DILATION_SIZE = 10
+MAX_GROUP_SIZE = 64
+MAX_SKIP_SIZE = 5
+# THESE MAY NEED TO BE USED TO HEAL HYPERPARAMETERS WITH MODULO
 
 
 # placeholder classes to act as types for DEAP's strongly typed primitive set
@@ -49,6 +63,11 @@ class DilationSize(int):
     pass
 
 class GroupSize(int):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class SkipSize(int):
     def __init__(self, num) -> None:
         super().__init__()
     pass
@@ -189,10 +208,10 @@ def Upsample_2D(tensor: Tensor3D, scaling_factor: float, mode: UpsampleMode):
 # by which allows us to then use the chosen merge_type to merge after skipping. It is likely that the merging will not be straighforward since dimensions may vary
 # and the merge location may not even exist if a bad skip_by value is chosen, but we can either heal when decoding or hope the GA will figure out how to use padding 
 # layers or similar to make it work.  
-def Skip_2D(tensor: Tensor3D, skip_by: int, merge_type: SkipMergeType):
+def Skip_2D(tensor: Tensor3D, skip_by: SkipSize, merge_type: SkipMergeType):
     return Tensor3D()
 
-def Skip_1D(tensor: Tensor1D, skip_by: int, merge_type: SkipMergeType):
+def Skip_1D(tensor: Tensor1D, skip_by: SkipSize, merge_type: SkipMergeType):
     return Tensor1D()
 
 # TODO: cells
@@ -200,7 +219,7 @@ def Detection_Head(tensor: Tensor1D):
     return FinalTensor()
 
 # creating primitive set
-pset = gp.PrimitiveSetTyped("MAIN", [Tensor3D], FinalTensor)
+pset = gp.PrimitiveSetTyped("MAIN", [Tensor3D], FinalTensor, "IN")
 pset.addPrimitive(LazyConv2d, 
                   [Tensor3D, ChannelSize, KernelSize, KernelSize, StrideSize, StrideSize, PaddingSize, PaddingSize, PaddingMode, DilationSize, DilationSize, GroupSize], 
                   Tensor3D)
@@ -305,14 +324,12 @@ pset.addPrimitive(Dropout_1D,
                   [Tensor1D, float],
                   Tensor1D)
 
-# breakpoint() investigate ordering issue
-
 pset.addPrimitive(Upsample_1D,
                   [Tensor1D, float, UpsampleMode],
                   Tensor1D)
 
 pset.addPrimitive(Skip_2D,
-                  [Tensor3D, int, SkipMergeType],
+                  [Tensor3D, SkipSize, SkipMergeType],
                   Tensor3D)
 
 pset.addPrimitive(Detection_Head,
@@ -320,7 +337,7 @@ pset.addPrimitive(Detection_Head,
                   FinalTensor)
 
 pset.addPrimitive(Flatten,
-                  [Tensor3D | Tensor2D | Tensor1D],
+                  [Tensor3D],
                   Tensor1D)
 
 pset.addPrimitive(LazyLinear,
@@ -332,7 +349,74 @@ pset.addPrimitive(Upsample_2D,
                   Tensor3D)
 
 pset.addPrimitive(Skip_1D,
-                  [Tensor1D, int, SkipMergeType],
+                  [Tensor1D, SkipSize, SkipMergeType],
                   Tensor1D)
 
-# TODO: need to add more math operator primitives and ephemeral constants 
+pset.addPrimitive(operator.add, [ChannelSize, ChannelSize], ChannelSize)
+pset.addPrimitive(operator.add, [KernelSize, KernelSize], KernelSize)
+pset.addPrimitive(operator.add, [StrideSize, StrideSize], StrideSize)
+pset.addPrimitive(operator.add, [PaddingSize, PaddingSize], PaddingSize)
+pset.addPrimitive(operator.add, [OuputSize, OuputSize], OuputSize)
+pset.addPrimitive(operator.add, [DilationSize, DilationSize], DilationSize)
+pset.addPrimitive(operator.add, [GroupSize, GroupSize], GroupSize)
+pset.addPrimitive(operator.add, [SkipSize, SkipSize], SkipSize)
+pset.addPrimitive(operator.add, [float, float], float)
+
+def protectedSub(a, b):
+    return abs(a-b)
+
+pset.addPrimitive(protectedSub, [ChannelSize, ChannelSize], ChannelSize)
+pset.addPrimitive(protectedSub, [KernelSize, KernelSize], KernelSize)
+pset.addPrimitive(protectedSub, [StrideSize, StrideSize], StrideSize)
+pset.addPrimitive(protectedSub, [PaddingSize, PaddingSize], PaddingSize)
+pset.addPrimitive(protectedSub, [OuputSize, OuputSize], OuputSize)
+pset.addPrimitive(protectedSub, [DilationSize, DilationSize], DilationSize)
+pset.addPrimitive(protectedSub, [GroupSize, GroupSize], GroupSize)
+pset.addPrimitive(protectedSub, [SkipSize, SkipSize], SkipSize)
+pset.addPrimitive(protectedSub, [float, float], float)
+
+pset.addPrimitive(operator.mul, [ChannelSize, ChannelSize], ChannelSize)
+pset.addPrimitive(operator.mul, [KernelSize, KernelSize], KernelSize)
+pset.addPrimitive(operator.mul, [StrideSize, StrideSize], StrideSize)
+pset.addPrimitive(operator.mul, [PaddingSize, PaddingSize], PaddingSize)
+pset.addPrimitive(operator.mul, [OuputSize, OuputSize], OuputSize)
+pset.addPrimitive(operator.mul, [DilationSize, DilationSize], DilationSize)
+pset.addPrimitive(operator.mul, [GroupSize, GroupSize], GroupSize)
+pset.addPrimitive(operator.mul, [SkipSize, SkipSize], SkipSize)
+pset.addPrimitive(operator.mul, [float, float], float)
+
+def protectedDiv(left, right):
+    try: return left / right
+    except ZeroDivisionError: return 1
+
+pset.addPrimitive(protectedDiv, [ChannelSize, ChannelSize], ChannelSize)
+pset.addPrimitive(protectedDiv, [KernelSize, KernelSize], KernelSize)
+pset.addPrimitive(protectedDiv, [StrideSize, StrideSize], StrideSize)
+pset.addPrimitive(protectedDiv, [PaddingSize, PaddingSize], PaddingSize)
+pset.addPrimitive(protectedDiv, [OuputSize, OuputSize], OuputSize)
+pset.addPrimitive(protectedDiv, [DilationSize, DilationSize], DilationSize)
+pset.addPrimitive(protectedDiv, [GroupSize, GroupSize], GroupSize)
+pset.addPrimitive(protectedDiv, [SkipSize, SkipSize], SkipSize)
+pset.addPrimitive(protectedDiv, [float, float], float)
+
+def dummyOp(input):
+    return input
+
+pset.addPrimitive(dummyOp, [PaddingMode], PaddingMode)
+pset.addPrimitive(dummyOp, [UpsampleMode], UpsampleMode)
+pset.addPrimitive(dummyOp, [SkipMergeType], SkipMergeType)
+
+pset.addEphemeralConstant("randChannel", partial(random.randint, 1, MAX_CHANNEL_SIZE), ChannelSize)
+pset.addEphemeralConstant("randKernel", partial(random.randint, 1, MAX_KERNEL_SIZE), KernelSize)
+pset.addEphemeralConstant("randStride", partial(random.randint, 1, MAX_STRIDE_SIZE), StrideSize)
+pset.addEphemeralConstant("randPadding", partial(random.randint, 1, MAX_PADDING_SIZE), PaddingSize)
+pset.addEphemeralConstant("randOutput", partial(random.randint, 1, MAX_OUTPUT_SIZE), OuputSize)
+pset.addEphemeralConstant("randDilation", partial(random.randint, 1, MAX_DILATION_SIZE), DilationSize)
+pset.addEphemeralConstant("randGroup", partial(random.randint, 1, MAX_GROUP_SIZE), GroupSize)
+pset.addEphemeralConstant("randSkipSize", partial(random.randint, 1, MAX_SKIP_SIZE), SkipSize)
+pset.addEphemeralConstant("randFloat", partial(random.uniform, 0, 1), float) # note that there might be some places where floats outside this range are valid.
+pset.addEphemeralConstant("randPaddingMode", partial(random.randint, 0, len(PaddingMode)-1), PaddingMode)
+pset.addEphemeralConstant("randUpsampleMode", partial(random.randint, 0, len(UpsampleMode)-1), UpsampleMode)
+pset.addEphemeralConstant("randSkipMergeType", partial(random.randint, 0, len(SkipMergeType)-1), SkipMergeType)
+
+pset.addTerminal(Tensor1D(), Tensor1D) # seeing a terminal requires us to add a special cell (replace Tensor1D() with custom cell definition later)
