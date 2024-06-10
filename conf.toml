@@ -10,9 +10,9 @@ unsustainable_population_size = 500
 # number of parents to be selected to mate
 num_parents = 20
 # types of crossovers and their probabilities
-crossovers = {one_point = 0.5, two_point = 0.3}
+crossovers = {one_point = 0.5, one_point_leaf_biased = 0.3}
 # types of mutations and their probabilities
-mutations = {mutation_type_a = 0.2, mutation_type_b = 0.1}
+mutations = {node_replacement = 0.1}
 # ratio of population added to the elite pool each generation
 percent_elite = 0.05
 # whether to use surrogate
@@ -47,6 +47,6 @@ surrogate_encoding_strat = "Graph2Vec"
 models = ["MLP", "GRBT", "XGB", "Transformer"]
 # method of calculating the trust of a surrogate
 trust_calc_strategy = "SPEA2"
-# ratio of population to check interesction on
+# ratio of population to check intersection on
 trust_calc_ratio = 0.3
 
