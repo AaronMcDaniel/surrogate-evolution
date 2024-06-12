@@ -285,7 +285,7 @@ def create_job_file(num_jobs):
 #SBATCH --array=0-{num_jobs-1}
 
 module load anaconda3/2023.07
-module load cuda/12.2.2
+module load cuda/12.1.1
 
 # Activate conda environment
 conda activate myenv
