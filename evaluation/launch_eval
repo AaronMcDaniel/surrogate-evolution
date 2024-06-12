@@ -13,5 +13,5 @@ module load cuda/12.2.2
 conda activate tv1
 cd evaluation
 # Need encoded genome, current gen, current individual number, number of epochs, output directory
-python eval.py --genome $1 --gen $2 --ind_num $3 num_epochs $4 --data_dir /path/to/aot --out_dir /path/to/results
+python eval.py --genome $1 --config $2
 conda deactivate
