@@ -12,8 +12,6 @@ from deap import creator, gp, base, tools
 
 import primitives
 
-OUTPUTS_FOLDER = "/gv1/projects/GRIP_Precog_Opt/outputs"
-
 class Pipeline:
     def __init__(self) -> None:
         # Begin by loading config attributes
@@ -259,8 +257,9 @@ class Pipeline:
         return hashlib.shake_256(s.encode()).hexdigest(5)
     
     def clear_outputs(self):
-        print('Clearing outputs...')
+        print('Clearing outputs and logs...')
         os.system(f'rm -rf {OUTPUTS_FOLDER}/*')
+        os.system(f'rm -rf {LOGS_FOLDER}/*')
         print('Done!')
 
 # job file params
@@ -270,6 +269,8 @@ CORES = 8
 MEM = '16GB'
 JOB_TIME = '1-00:00'
 SCRIPT = 'test/dummy_eval.py'
+OUTPUTS_FOLDER = "/gv1/projects/GRIP_Precog_Opt/outputs"
+LOGS_FOLDER = "/gv1/projects/GRIP_Precog_Opt/logs"
 
 # TODO: Fix this function
 def create_job_file(num_jobs):
@@ -280,8 +281,8 @@ def create_job_file(num_jobs):
 #SBATCH --cpus-per-task={CORES}
 #SBATCH --mem={MEM}
 #SBATCH --time={JOB_TIME}
-#SBATCH --output=/gv1/projects/GRIP_Precog_Opt/logs/evaluation.%A.%a.log
-#SBATCH --error=/gv1/projects/GRIP_Precog_Opt/logs/evaluation_error.%A.%a.log
+#SBATCH --output={LOGS_FOLDER}/evaluation.%A.%a.log
+#SBATCH --error={LOGS_FOLDER}/evaluation_error.%A.%a.log
 #SBATCH --array=0-{num_jobs-1}
 
 module load anaconda3/2023.07
