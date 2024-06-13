@@ -29,8 +29,6 @@ from criterion import ComboLoss
     # Manage placement of results in output directories
     # Save predictions with labels to the output director
 
-OUTPUTS_FOLDER = "/gv1/projects/GRIP_Precog_Opt/outputs"
-
 def evaluation_engine(cfg, genome):
 
     # provides iterable batches of data
@@ -139,21 +137,25 @@ def compute_metrics():
 def prepare_data():
     pass
 
-def store_metrics(metrics_df: pd.DataFrame, best_epoch: dict): # stores all metrics for an individual. Expects a dataframe and a dict for the best epoch metrics
-    all_metrics_out = f'{OUTPUTS_FOLDER}/generation_{gen_num}/{hash}/metrics.csv'
-    best_epoch_out = f'{OUTPUTS_FOLDER}/generation_{gen_num}/{hash}/best_epoch.csv'
+def store_metrics(metrics_df: pd.DataFrame, best_epoch: dict, outdir: str): # stores all metrics for an individual. Expects a dataframe and a dict for the best epoch metrics
+    all_metrics_out = f'{outdir}/generation_{gen_num}/{hash}/metrics.csv'
+    best_epoch_out = f'{outdir}/generation_{gen_num}/{hash}/best_epoch.csv'
     os.makedirs(os.path.dirname(all_metrics_out), exist_ok=True)
     metrics_df.to_csv(all)
     with open(best_epoch_out, 'w') as fh:
         fh.write(json.dumps(best_epoch))
 
 
-# parses arguments from sbatch job
 if __name__ == "__main__": # makes sure this happens if the script is being run directly
+    # parses arguments from sbatch job
     parser = argparse.ArgumentParser()
     parser.add_argument("index", type=int)
+    parser.add_argument('-i', '--infile', required=False, default='/gv1/projects/GRIP_Precog_Opt/precog-opt-grip/eval_input.csv')
+    parser.add_argument('-o', '--outdir', required=False, default='/gv1/projects/GRIP_Precog_Opt/outputs')
     args = parser.parse_args()
     index = args.index
+    infile = args.infile
+    outdir = args.outdir
 
     # load config attributes
     configs = toml.load("conf.toml")
@@ -162,7 +164,7 @@ if __name__ == "__main__": # makes sure this happens if the script is being run 
     all_config = pipeline_config | codec_config
 
     # load generated input for current generation
-    with open(f'eval_input.csv', 'r') as input_file:
+    with open(f'{infile}', 'r') as input_file:
         file = list(csv.reader(input_file))
         line = file[int(index)+1]
         gen_num = line[0]
