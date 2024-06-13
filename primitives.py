@@ -12,9 +12,9 @@ MAX_STRIDE_SIZE = 9
 MAX_PADDING_SIZE = 9
 MAX_OUTPUT_SIZE = 3000
 MAX_DILATION_SIZE = 10
-MAX_GROUP_SIZE = 64
+MAX_GROUP_SIZE = 1
 MAX_SKIP_SIZE = 5
-# THESE MAY NEED TO BE USED TO HEAL HYPERPARAMETERS WITH MODULO
+MAX_FLOAT_SIZE = 50
 
 
 # placeholder classes to act as types for DEAP's strongly typed primitive set
@@ -94,7 +94,7 @@ def LazyConv2d(tensor: Tensor3D, out_channels: ChannelSize, kernel_size0: Kernel
                dilation0: DilationSize, dilation1:  DilationSize, groups: GroupSize): # assume bias is always true
     return Tensor3D()
 
-def LazyConvTransposed2d(tensor: Tensor3D, out_channels: ChannelSize, kernel_size0: KernelSize, kernel_size1: KernelSize, stride0: StrideSize, stride1: StrideSize, padding0: PaddingSize, padding1: PaddingSize, padding_mode: PaddingMode, 
+def LazyConvTranspose2d(tensor: Tensor3D, out_channels: ChannelSize, kernel_size0: KernelSize, kernel_size1: KernelSize, stride0: StrideSize, stride1: StrideSize, padding0: PaddingSize, padding1: PaddingSize, padding_mode: PaddingMode, 
                dilation0: DilationSize, dilation1:  DilationSize, groups: GroupSize):
     return Tensor3D()
 
@@ -165,7 +165,7 @@ def Threshold_2D(tensor: Tensor3D, threshold: float, value: float):
 def Threshold_1D(tensor: Tensor1D, threshold: float, value: float):
     return Tensor1D()
 
-def Softmax(tensor: Tensor1D, dim: OuputSize):
+def Softmax(tensor: Tensor1D):
     return Tensor1D()
 
 
@@ -224,7 +224,7 @@ pset.addPrimitive(LazyConv2d,
                   [Tensor3D, ChannelSize, KernelSize, KernelSize, StrideSize, StrideSize, PaddingSize, PaddingSize, PaddingMode, DilationSize, DilationSize, GroupSize], 
                   Tensor3D)
 
-pset.addPrimitive(LazyConvTransposed2d,
+pset.addPrimitive(LazyConvTranspose2d,
                   [Tensor3D, ChannelSize, KernelSize, KernelSize, StrideSize, StrideSize, PaddingSize, PaddingSize, PaddingMode, DilationSize, DilationSize, GroupSize],
                   Tensor3D)
 
@@ -309,7 +309,7 @@ pset.addPrimitive(Threshold_1D,
                   Tensor1D)
 
 pset.addPrimitive(Softmax,
-                  [Tensor1D, OuputSize],
+                  [Tensor1D],
                   Tensor1D)
 
 pset.addPrimitive(LazyBatchNorm2d,
@@ -352,15 +352,42 @@ pset.addPrimitive(Skip_1D,
                   [Tensor1D, SkipSize, SkipMergeType],
                   Tensor1D)
 
-pset.addPrimitive(operator.add, [ChannelSize, ChannelSize], ChannelSize)
-pset.addPrimitive(operator.add, [KernelSize, KernelSize], KernelSize)
-pset.addPrimitive(operator.add, [StrideSize, StrideSize], StrideSize)
-pset.addPrimitive(operator.add, [PaddingSize, PaddingSize], PaddingSize)
-pset.addPrimitive(operator.add, [OuputSize, OuputSize], OuputSize)
-pset.addPrimitive(operator.add, [DilationSize, DilationSize], DilationSize)
-pset.addPrimitive(operator.add, [GroupSize, GroupSize], GroupSize)
-pset.addPrimitive(operator.add, [SkipSize, SkipSize], SkipSize)
-pset.addPrimitive(operator.add, [float, float], float)
+def channelAdd(a, b):
+    return ChannelSize((a+b)%MAX_CHANNEL_SIZE)
+
+def kernelAdd(a, b):
+    return KernelSize((a+b)%MAX_KERNEL_SIZE)
+
+def strideAdd(a, b):
+    return StrideSize((a+b)%MAX_STRIDE_SIZE)
+
+def paddingAdd(a, b):
+    return PaddingSize((a+b)%MAX_PADDING_SIZE)
+
+def outputAdd(a, b):
+    return OuputSize((a+b)%MAX_OUTPUT_SIZE)
+
+def dilationAdd(a, b):
+    return DilationSize((a+b)%MAX_DILATION_SIZE)
+
+def groupAdd(a, b):
+    return GroupSize((a+b)%MAX_GROUP_SIZE)
+
+def skipAdd(a, b):
+    return SkipSize((a+b)%MAX_SKIP_SIZE)
+
+def floatAdd(a, b):
+    return (a+b)%MAX_FLOAT_SIZE
+
+pset.addPrimitive(channelAdd, [ChannelSize, ChannelSize], ChannelSize)
+pset.addPrimitive(kernelAdd, [KernelSize, KernelSize], KernelSize)
+pset.addPrimitive(strideAdd, [StrideSize, StrideSize], StrideSize)
+pset.addPrimitive(paddingAdd, [PaddingSize, PaddingSize], PaddingSize)
+pset.addPrimitive(outputAdd, [OuputSize, OuputSize], OuputSize)
+pset.addPrimitive(dilationAdd, [DilationSize, DilationSize], DilationSize)
+pset.addPrimitive(groupAdd, [GroupSize, GroupSize], GroupSize)
+pset.addPrimitive(skipAdd, [SkipSize, SkipSize], SkipSize)
+pset.addPrimitive(floatAdd, [float, float], float)
 
 def protectedSub(a, b):
     return abs(a-b)
@@ -375,19 +402,50 @@ pset.addPrimitive(protectedSub, [GroupSize, GroupSize], GroupSize)
 pset.addPrimitive(protectedSub, [SkipSize, SkipSize], SkipSize)
 pset.addPrimitive(protectedSub, [float, float], float)
 
-pset.addPrimitive(operator.mul, [ChannelSize, ChannelSize], ChannelSize)
-pset.addPrimitive(operator.mul, [KernelSize, KernelSize], KernelSize)
-pset.addPrimitive(operator.mul, [StrideSize, StrideSize], StrideSize)
-pset.addPrimitive(operator.mul, [PaddingSize, PaddingSize], PaddingSize)
-pset.addPrimitive(operator.mul, [OuputSize, OuputSize], OuputSize)
-pset.addPrimitive(operator.mul, [DilationSize, DilationSize], DilationSize)
-pset.addPrimitive(operator.mul, [GroupSize, GroupSize], GroupSize)
-pset.addPrimitive(operator.mul, [SkipSize, SkipSize], SkipSize)
-pset.addPrimitive(operator.mul, [float, float], float)
+def channelMul(a, b):
+    return ChannelSize((a*b)%MAX_CHANNEL_SIZE)
+
+def kernelMul(a, b):
+    return KernelSize((a*b)%MAX_KERNEL_SIZE)
+
+def strideMul(a, b):
+    return StrideSize((a*b)%MAX_STRIDE_SIZE)
+
+def paddingMul(a, b):
+    return PaddingSize((a*b)%MAX_PADDING_SIZE)
+
+def outputMul(a, b):
+    return OuputSize((a*b)%MAX_OUTPUT_SIZE)
+
+def dilationMul(a, b):
+    return DilationSize((a*b)%MAX_DILATION_SIZE)
+
+def groupMul(a, b):
+    return GroupSize((a*b)%MAX_GROUP_SIZE)
+
+def skipMul(a, b):
+    return SkipSize((a*b)%MAX_SKIP_SIZE)
+
+def floatMul(a, b):
+    return (a*b)%MAX_FLOAT_SIZE
+
+pset.addPrimitive(channelMul, [ChannelSize, ChannelSize], ChannelSize)
+pset.addPrimitive(kernelMul, [KernelSize, KernelSize], KernelSize)
+pset.addPrimitive(strideMul, [StrideSize, StrideSize], StrideSize)
+pset.addPrimitive(paddingMul, [PaddingSize, PaddingSize], PaddingSize)
+pset.addPrimitive(outputMul, [OuputSize, OuputSize], OuputSize)
+pset.addPrimitive(dilationMul, [DilationSize, DilationSize], DilationSize)
+pset.addPrimitive(groupMul, [GroupSize, GroupSize], GroupSize)
+pset.addPrimitive(skipMul, [SkipSize, SkipSize], SkipSize)
+pset.addPrimitive(floatMul, [float, float], float)
 
 def protectedDiv(left, right):
-    try: return left / right
-    except ZeroDivisionError: return 1
+    if (isinstance(left, int) and isinstance(right, int)):
+        try: return left // right
+        except ZeroDivisionError: return 1
+    else:
+        try: return left / right
+        except ZeroDivisionError: return 1
 
 pset.addPrimitive(protectedDiv, [ChannelSize, ChannelSize], ChannelSize)
 pset.addPrimitive(protectedDiv, [KernelSize, KernelSize], KernelSize)
