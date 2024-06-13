@@ -53,7 +53,7 @@ def evaluation_engine(cfg, genome):
     img_size = cfg['image_size']
     batch_size = cfg['batch_size']
     num_epochs = cfg['num_epochs']
-    det_thresh = cfg['det_thresh']
+    iou_thresh = cfg['iou_thresh']
     conf_thresh = cfg['conf_thresh']
     output_path = cfg['output_path']
     bbox_weight = cfg['bbox_weight']
@@ -63,7 +63,7 @@ def evaluation_engine(cfg, genome):
 
     # get optimizer, loss function, and scheduler according to config
     optimizer = get_optimizer(cfg, params)
-    # do we need get_criterion()
+    # do we need get_criterion() ?
     criterion = ComboLoss(bbox_loss, cls_loss, bbox_weight, cls_weight)
     scheduler = get_scheduler()
 
@@ -90,6 +90,8 @@ def evaluation_engine(cfg, genome):
             outputs = model(images)
 
             true_boxes = torch.cat([target['boxes'] for target in targets], dim=0)
+
+            # [left, top, width, height, confidence]
             pred_boxes = torch.cat([output['boxes'] for output in outputs], dim=0)
             train_preds.extend(pred_boxes)
             all_truths.extend(true_boxes)
@@ -103,26 +105,63 @@ def evaluation_engine(cfg, genome):
 
         scheduler.step()
 
+        # save model checkpoint
+        torch.save({
+            'epoch': epoch + 1,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'loss': loss.item()
+        }, RESULTS_PATH)
+
         # validation for one epoch
         model.eval()
         val_loss = 0.0
+
+        # Should these be dictionaries mapping the image to the predictions?
         val_preds = []
+        # total_tp stores tuple of matched predictions and ground-truths
+        total_tp = []
+        total_fp = []
+        total_fn = []
 
         # disables gradient calculations
         with torch.no_grad():
+
+            # iterates by batch
             for images, targets in tqdm(val_loader):
                 images = [img.cuda() for img in images]
                 targets = [{k: v.cuda() for k, v in t.items()} for t in targets]
 
-                # forward
+                # list of output dictionaries, where each corresponds to the predictions for an img in the batch
                 outputs = model(images)
 
-                true_boxes = torch.cat([target['boxes'] for target in targets], dim=0)
-                pred_boxes = torch.cat([output['boxes'] for output in outputs], dim=0)
-                val_preds.extend(pred_boxes)
+                # iterate through each image's output dictionary
+                for i, output in enumerate(outputs):
 
-                # gets the bboxes that actually match from the predictions and truths, as well as false positive and false negative predictions
-                matched_preds, matched_truths, fp, fn = u.match_boxes(pred_boxes, true_boxes, det_thresh)
+                    # gets the true bboxes for the same image
+                    # no confidence 
+                    true_boxes = targets[i]['boxes']
+
+                    # [left, top, width, height, confidence]
+                    pred_boxes = output['boxes']
+                    val_preds.extend(pred_boxes)
+
+                    # gets the bboxes that actually match from the predictions and truths, as well as false positive and false negative predictions
+                    matched_preds, matched_truths, fp, fn = u.match_boxes(pred_boxes, true_boxes, iou_thresh, conf_thresh)
+                    total_tp.extend((mp, mt) for mp, mt in zip(matched_preds, matched_truths))
+                    total_fp.extend(fp)
+                    total_fn.extend(fn)
+
+                    loss = criterion(pred_boxes, true_boxes)
+                    val_loss += loss
+
+        precision = u.precision(total_tp.length(), total_fp.length())
+        recall = u.recall(total_tp.length(), total_fn.length())
+        f1_score = u.f1_score(total_tp.length(), total_fn.length(), total_fp.length())
+        mAP = u.AP()
+
+        # Store metrics, loss, and results in a dataframe for the epoch
+
 
 
             
