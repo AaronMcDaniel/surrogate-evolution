@@ -35,6 +35,8 @@ max_elite_pool = 100
 train_pool_source = "All" 
 # source of genomes used to calculate the trust value of the surrogate(s)
 trust_pool_source = "ElitePopMix"
+# number of target classes in AOT
+num_classes = 5
 
 [codec]
 # method of encoding NN as a genome

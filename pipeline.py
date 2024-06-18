@@ -61,6 +61,7 @@ class Pipeline:
         self.max_elite_pool = pipeline_config['max_elite_pool']
         self.train_pool_source = pipeline_config['train_pool_source']
         self.trust_pool_source = pipeline_config['trust_pool_source']
+        self.num_classes = pipeline_config['num_classes']
 
         # Other useful attributes
         self.holy_grail = pd.DataFrame(columns=['gen', 'hash', 'genome', 'metrics']) # data regarding every evaluated individual; metrics are from best epoch since all other metric data is already stored by eval_script

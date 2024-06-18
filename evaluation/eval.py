@@ -24,34 +24,49 @@ import heapq
 import pandas as pd
 from core.dataset import NewDataset
 from torch.utils.data import DataLoader
+from codec import Codec
+from torch.optim import lr_scheduler
 
 def engine(cfg, genome):
 
-    model = Codec.decode_genome(cfg, genome)
+    # retrieves relevant codec attributes from the config and instantiates model
+    genome_encoding_strat = cfg['genome_encoding_strat']
+    surrogate_encoding_strat = cfg['surrogate_encoding_strat']
+    num_classes = cfg['num_classes']
+    codec = Codec(genome_encoding_strat, surrogate_encoding_strat, num_classes)
+    model_dict = codec.decode_genome(genome)
+    # pytorch model: input = 4D tensor -> [batch_size, num_channels, width, height], output = 2D tensor -> []
+    model = model_dict['model']
+
     device = torch.device('cuda') if torch.cuda.is_avauilable() else torch.device('cpu')
     model.to(device)
     params = [p for p in model.parameters() if p.requires_grad]
-    batch_size = dynamic_batch_size()
 
-    # provides iterable batches of data
+    # TO DO: implement later
+    batch_size = dynamic_batch_size(model)
+
+    # TO DO: implement later
     train_loader, val_loader = prepare_data(cfg)
 
-    # get relevant parameters from config
+    # get relevant parameters from config/model_dict
     num_epochs = cfg['num_epochs']
-    iou_thresh = cfg['iou_thresh']
-    conf_thresh = cfg['conf_thresh']
+    iou_thresh = model_dict['iou_thresh']
+    conf_thresh = model_dict['conf_thresh']
 
     # tensor of dim [4]
-    loss_weights = cfg['loss_weights']
-    iou_type = cfg['iou_type']
-    scheduler = cfg['scheduler']
-    optimizer = cfg['optimizer']
-    iou_type = cfg['iou_type']
+    # note: may have to re-normalize
+    loss_weights = model_dict['loss_weights']
+    # pull priortized iou function from highest weight in vector
+    iou_type = pass
+
+    optimizer = get_optimizer(model_dict)
+    # TO Do: adjust lr scheduler parameters
+    scheduler = model_dict['scheduler'] if 'scheduler' in model_dict else lr_scheduler.CosineAnnealingWarmRestarts(optimizer, )
     
     # initialize loss function
-    criterion = c.ComboLoss(bbox_loss, cls_loss, bbox_weight, cls_weight)
+    # criterion = c.ComboLoss(bbox_loss, cls_loss, bbox_weight, cls_weight)
 
-    # dictionary used to map (flight_id, frame_id) -> [[bbox1], [bbox2], ...]
+    # dictionary used to map (flight_id, frame_id) -> output dictionary { 'boxes': [box1, box2, ...], 'scores': }
     all_preds = {}
 
     # create pandas dataframe where each row is different epoch of metrics
@@ -60,7 +75,7 @@ def engine(cfg, genome):
     # training loop
     for epoch in range(1, num_epochs + 1):
 
-       train_one_epoch(model, train_loader, loss_weights, criterion, optimizer, scheduler)
+       train_epoch_loss = train_one_epoch(model, train_loader, loss_weights, criterion, optimizer, scheduler)
 
         # save model checkpoint with weights
         torch.save({
@@ -68,7 +83,7 @@ def engine(cfg, genome):
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': train_epoch_loss.item()
-        }, output_dir)
+        }, outdir)
 
         # retrieve metrics for one epoch of validation
         epoch_metrics = val_one_epoch(model, val_loader, iou_thresh, conf_thresh, loss_weights, criterion, all_preds)
@@ -127,6 +142,9 @@ def train_one_epoch(model, train_loader, loss_weights, criterion, optimizer, sch
     train_epoch_loss /= num_images
     scheduler.step()
 
+    # To DO: also return train time with logger
+    return train_epoch_loss
+
 
 # function to validate model for one epoch
 def val_one_epoch(model, val_loader, iou_thresh, conf_thresh, loss_weights, criterion, iou_type, all_preds):
@@ -169,8 +187,8 @@ def val_one_epoch(model, val_loader, iou_thresh, conf_thresh, loss_weights, crit
                 flight_id = targets[i]['flight_id']
                 frame_id = targets[i]['id']
 
-                # save predictions in all_preds dictionary
-                all_preds[(flight_id, frame_id)] = pred_boxes
+                # save predictied model outputs in all_preds dictionary
+                all_preds[(flight_id, frame_id)] = output
 
                 # gets the bboxes that actually match from the predictions and truths, as well as false positive and false negative predictions
                 matches, fp, fn = u.match_boxes(pred_boxes, true_boxes, iou_thresh, conf_thresh, "val", iou_type)
@@ -231,7 +249,7 @@ def prepare_data(batch_size=64):
     val_loader = DataLoader(dataset, batch_size, shuffle=True)
     return train_loader, val_loader
 
-def dynamic_batch_size():
+def dynamic_batch_size(model):
     return
 
 def store_metrics(metrics_df: pd.DataFrame, best_epoch: dict, outdir: str): # stores all metrics for an individual. Expects a dataframe and a dict for the best epoch metrics
