@@ -1,5 +1,5 @@
+# OLD IMPLEMENTATION OF EVALUATE:
 # def evaluate(genome, gen, ind_num, num_epochs, data_dir, out_dir):
-
 #     # ethan handles data
 #     train = AOTDetection(root='REPLACE', annFile='REPLACE', transform=ToTensor())
 #     test = AOTDetection(root='REPLACE', annFile='REPLACE', transform=ToTensor())
@@ -74,3 +74,88 @@
 #             y_true.extend([t['labels'].item() for t in targets])
 #             y_pred.extend(predicted.cpu().numpy())
 #     print(classification_report(y_true, y_pred))
+
+
+# OLD IMPLEMENTATION OF MATCH_BOXES: Greedy algorithm, matches pairs based on current best IoU, without regard to solution that could come later
+# ensures that truth-prediction matches are 1-to-1
+
+    # # iterate through predicted boxes
+    # for pi in range(pred_boxes.shape[0]):
+
+    #     # don't consider predictions that don't meet the confidence threshold
+    #     if (pred_boxes[pi][4] < conf_thresh):
+    #         continue
+
+    #     # keep track of the best matching true bbox and iou
+    #     best_iou = 0
+    #     best_ti = -1
+        
+    #     # iterate through true boxes
+    #     for ti in range(true_boxes.shape[0]):
+
+    #         # do not consider true boxes that have already been matched
+    #         if ti not in matched_truths_indices:
+
+    #             # retrieve iou from matrix
+    #             iou = iou_matrix[pi, ti].item()
+
+    #             # check that the iou meets the threshold and is better than the best_iou
+    #             if iou >= iou_thresh and iou > best_iou:
+    #                 best_ti = ti
+    #                 best_iou = iou
+        
+    #     # if a true bbox match was found, add the matches, and record the indices
+    #     if best_ti != -1:
+    #         matched_preds.append(pred_boxes[pi])
+    #         matched_truths.append(true_boxes[best_ti])
+    #         matched_preds_indices.add(pi)
+    #         matched_truths_indices.add(best_ti)
+
+    # for pi in range(pred_boxes.shape[0]):
+    #     if pi not in matched_preds_indices:
+    #         fp.append(pred_boxes[pi])
+    
+    # for ti in range(true_boxes.shape[0]):
+    #     if ti not in matched_truths_indices:
+    #         fn.append(true_boxes[ti])
+
+    # return matched_preds, matched_truths, fp, fn
+
+    # # # matches is a tensor containing pairs of indices where the IoU between predicted and true boxes exceeds the threshold
+    # # matches = (iou_matrix >= iou_thresh).nonzero(as_tuple=False)
+
+    # # # nume1() returns the number of elements in the tensor to check if there are any matches
+    # # if matches.nume1() > 0:
+
+# OLD IMPLEMENTATION OF MATCH_BOXES: does not filter duplicates properly
+
+    #     # extracts the unique indices of matched predicted boxes and makes a list
+    #     pred_matched = matches[:, 0].unique().tolist()
+    #     # extracts the unique indices of matched true boxes and makes a list
+    #     true_matched = matches[:, 1].unique().tolist()
+
+    #     for match in matches:
+    #         # unpacks indices of predicted and true match
+    #         pred_i, true_i = match
+
+    #         # gets associated bboxes
+    #         matched_preds.append(pred_boxes[pred_i])
+    #         matched_truths.append(true_boxes[true_i])
+        
+    #     # iterates through the predicted boxes
+    #     for i in range(pred_boxes.shape[0]):
+    #         # if the predicted box does not have corresponding true match above the threshold, it is a false positive
+    #         if i not in pred_matched:
+    #             fp.append(pred_boxes[i])
+        
+    #     # iterates through the true boxes
+    #     for i in range(true_boxes.shape[0]):
+    #         # if the true box does not have corresponding predicted match above the threshold, it is a false negative
+    #         if i not in true_matched:
+    #             fn.append(true_boxes[i])
+    # else:
+    #     # in the case no matches are found, all predictions are false positives, and all truths are false negatives
+    #     fp = pred_boxes
+    #     fn = true_boxes
+    
+    # return matched_preds, matched_truths, fp, fn

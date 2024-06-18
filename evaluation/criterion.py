@@ -2,6 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import os
+import sys
+import torchvision.ops as ops
+project_dir = os.path.abspath(os.path.dirname(__file__))
+sys.path.append(project_dir)
 import utils as u
 
 class ComboLoss(nn.Module):
@@ -18,36 +23,53 @@ class ComboLoss(nn.Module):
        combo_loss = self.cls_loss * self.cls_loss(pred_labels, true_labels) + self.bbox_weight * self.bbox_loss(pred_boxes, true_boxes)
        return combo_loss
     
-    # do I need to define a backward?
-    
-# generalized intersection-over-union loss function based on predicted bbox and true bbox tensors
-def giou_loss(pred_boxes, true_boxes):
 
-    giou = u.giou(pred_boxes, true_boxes)
-    
-    # calculate GIoU loss
-    giou_loss = 1 - giou
-    
-    # should I be returning the mean here?
-    return giou_loss.mean()
+# takes in predicted and true bboxes for a single image along with tensor of dim [4] representing the weights for each iou function
+# returns tensor of dim [5], which is [iou_mean_loss, giou_mean_loss, diou_mean_loss, ciou_mean_loss, weighted_sum_losses]
+def compute_iou_loss(pred_boxes, true_boxes, loss_weights):
+    # list of iou functions
+    iou_types = ["iou", "giou", "diou", "ciou"]
 
-# distance intersection-over-union loss function based on predicted bbox and true bbox tensors
-def diou_loss(pred_boxes, true_boxes):
+    # ensure weights tensor is compatible for dotting
+    loss_weights = loss_weights.to(torch.float32)
 
-    diou = u.diou(pred_boxes, true_boxes)
+    # initialize tensor for result losses
+    result_losses = tensor_zeros = torch.zeros(5, dtype=torch.float32)
 
-    # calculate DIoU loss
-    diou_loss = 1 - diou
+    # calculate the mean bbox loss using each of the defined iou functions
+    for i, iou_type in enumerate(iou_types):
 
-    return diou_loss.mean()
+        # calculate matches with current iou_type 
+        # every single prediction made will be matched to a true bbox with no threshold filtering
+        matches = u.match_boxes(pred_boxes, true_boxes, 0.0, 0.0, "train", iou_type)
 
-# normal intersection-over-union loss based on predicted bbox and true bbox tensors
-def iou_loss(pred_boxes, true_boxes):
+        # sum loss for all bbox predictions made on the image
+        summed_loss = 0.0
+        for ti, (pi, iou_score) in matches.items():
+            summed_loss += (1 - iou_score)
 
-    iou = u.iou(pred_boxes, true_boxes)
-    
-    # calculate IoU loss
-    iou_loss = 1 - iou
+        # calculate the average loss per prediction made on the image
+        mean_loss = summed_loss / len(matches)
 
-    return iou_loss.mean()
+        # place loss averaged across predictions in the result losses tensor
+        result_losses[i] = mean_loss
 
+    # place weigthed-sum of iou loss functions in the last index of the result tensor
+    result_losses[4] = torch.dot(loss_weights, result_losses[:4])
+    return result_losses
+
+
+pred_boxes = torch.tensor([
+        [0, 0, 10, 10, 0.9],
+        [1, 1, 9, 9, 0.85],
+        [2, 2, 8, 8, 0.95]
+    ], dtype=torch.float32)
+
+true_boxes = torch.tensor([
+    [0, 0, 10, 10],
+    [1, 1, 9, 9]
+], dtype=torch.float32)
+
+loss_weights = torch.tensor([.25, .25, .25, .25])
+
+print(compute_iou_loss(pred_boxes, true_boxes, loss_weights))

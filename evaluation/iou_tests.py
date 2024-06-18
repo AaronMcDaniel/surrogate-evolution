@@ -1,16 +1,70 @@
 
+import os
+import sys
+project_dir = os.path.abspath(os.path.dirname(__file__))
+sys.path.append(project_dir)
+import utils as u
 import torch
 import numpy as np
 import criterion as c
 import pytest
+import torchvision.ops as ops
+
 
 if __name__ == "__main__":
     pytest.main()
 
-pred_boxes = torch.tensor([[5, 5, 4, 4]], dtype=torch.float32)
-true_boxes = torch.tensor([[6, 6, 2, 2]], dtype=torch.float32)
-print(c.diou_loss(pred_boxes, true_boxes))
-print(c.iou_loss(pred_boxes, true_boxes)) # iou = .25
+# print debugging
+
+# pred_boxes = torch.tensor([[5, 5, 4, 4]], dtype=torch.float32)
+# true_boxes = torch.tensor([[6, 6, 2, 2]], dtype=torch.float32)
+# # correct iou = 0.25, correct diou = 0.25
+
+# # returns 0-D tensor scalar value
+# print(c.diou_loss(pred_boxes, true_boxes))
+# print(c.iou_loss(pred_boxes, true_boxes))
+
+# # returns 2-D tensor 
+# print(u.iou(pred_boxes, true_boxes))
+# print(u.diou(pred_boxes, true_boxes))
+
+# ops.box_iou takes in [x1, y1, x2, y2], so need to convert before testing
+# test_p = u.convert_boxes_to_x1y1x2y2(pred_boxes)
+# test_t = u.convert_boxes_to_x1y1x2y2(true_boxes)
+# returns 2-D tensor
+# print(1 - ops.box_iou(test_p, test_t))
+
+pred_boxes = torch.tensor([
+    [0, 0, 10, 10, 0.9],
+    [1, 1, 9, 9, 0.85],
+    [15, 15, 25, 25, 0.95],
+    [30, 30, 40, 40, 0.8],
+    [35, 35, 45, 45, 0.75],
+    [30, 30, 40, 40, 0.7],
+    [50, 50, 60, 60, 0.6],
+    [0, 0, 5, 5, 0.95],
+    [1, 1, 5, 5, 0.6]
+])
+true_boxes = torch.tensor([
+    [0, 0, 10, 10],
+    [30, 30, 40, 40],
+    [50, 50, 60, 60],
+    [0, 0, 5, 5]
+])
+test_p = u.convert_boxes_to_x1y1x2y2(pred_boxes)
+test_t = u.convert_boxes_to_x1y1x2y2(true_boxes)
+iou_torchvision = ops.box_iou(test_p, test_t)
+iou_custom = u.iou_matrix(pred_boxes, true_boxes)
+diou_custom = u.iou_matrix(pred_boxes, true_boxes, "diou")
+print("iou with torchvision:")
+print(iou_torchvision)
+print("iou with custom function:")
+print(iou_custom)
+assert torch.allclose(iou_torchvision, iou_custom, atol=1e-6), "custom function is wrong"
+print("diou with custom func")
+print(diou_custom)
+
+# tests
 
 def test_iou_identical_boxes():
     pred_boxes = torch.tensor([[1, 2, 3, 4], [2, 3, 4, 5]], dtype=torch.float32)

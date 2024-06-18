@@ -15,7 +15,11 @@ import utils as u
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score, confusion_matrix
 from torchvision.ops import box_iou
 import json
-from criterion import ComboLoss
+import criterion as c
+import heapq
+import pandas as pd
+from core.dataset import NewDataset
+from torch.utils.data import DataLoader
 
 # TO-DO:
     # Build loss function
@@ -32,147 +36,214 @@ if __name__ == "__main__": # makes sure this happens if the script is being run 
     args = parser.parse_args()
 
     # passes in the command-line args to begin the evaluation
-    evaluation_engine(args.config, args.genome)
+    engine(args.config, args.genome)
 
 
-def evaluation_engine(cfg, genome):
+def engine(cfg, genome):
+
+    model = Codec.decode_genome(cfg, genome)
+    device = torch.device('cuda') if torch.cuda.is_avauilable() else torch.device('cpu')
+    model.to(device)
+    params = [p for p in model.parameters() if p.requires_grad]
+    batch_size = dynamic_batch_size()
 
     # provides iterable batches of data
     train_loader, val_loader = prepare_data(cfg)
 
-    # builds PyTorch model using genome string
-    model = build_model(cfg, genome)
-
-    device = torch.device('cuda') if torch.cuda.is_avauilable() else torch.device('cpu')
-    model.to(device)
-    params = [p for p in model.parameters() if p.requires_grad]
-
     # get relevant parameters from config
-    classes = cfg['classes']
-    num_classes = cfg['classes'].length()
-    img_size = cfg['image_size']
-    batch_size = cfg['batch_size']
     num_epochs = cfg['num_epochs']
     iou_thresh = cfg['iou_thresh']
     conf_thresh = cfg['conf_thresh']
-    output_path = cfg['output_path']
-    bbox_weight = cfg['bbox_weight']
-    cls_weight = cfg['cls_weight']
-    bbox_loss = cfg['bbox_loss']
-    cls_loss = cfg['cls_loss']
 
-    # get optimizer, loss function, and scheduler according to config
-    optimizer = get_optimizer(cfg, params)
-    # do we need get_criterion() ?
-    criterion = ComboLoss(bbox_loss, cls_loss, bbox_weight, cls_weight)
-    scheduler = get_scheduler()
+    # tensor of dim [4]
+    loss_weights = cfg['loss_weights']
+    iou_type = cfg['iou_type']
+    scheduler = cfg['scheduler']
+    optimizer = cfg['optimizer']
+    iou_type = cfg['iou_type']
+    
+    # initialize loss function
+    criterion = c.ComboLoss(bbox_loss, cls_loss, bbox_weight, cls_weight)
+
+    # dictionary used to map (flight_id, frame_id) -> [[bbox1], [bbox2], ...]
+    all_preds = {}
+
+    # create pandas dataframe where each row is different epoch of metrics
+    metrics_df = u.create_metrics_df(num_epochs)
 
     # training loop
-    for epoch in range(num_epochs):
+    for epoch in range(1, num_epochs + 1):
 
-        all_truths = []
+       train_one_epoch(model, train_loader, loss_weights, criterion, optimizer, scheduler)
 
-        # training for one epoch
-        model.train()
-        train_loss = 0.0
-        train_preds = []
-
-        # loader yields each batch as a tuple (images, targets)
-        for images, targets in tqdm(train_loader):
-
-            # list of image tensors in the batch of shape [channels, height, width]
-            images = [img.cuda() for img in images]
-            # list of dictionaries where each represents the ground-truth data of one image in the batch
-            # each dictionary contains tensor 'boxes' of shape [num_bboxes, 4]
-            # each box is represented as [left, top, width, height]
-            targets = [{k: v.cuda() for k, v in t.items()} for t in targets]
-
-            outputs = model(images)
-
-            true_boxes = torch.cat([target['boxes'] for target in targets], dim=0)
-
-            # [left, top, width, height, confidence]
-            pred_boxes = torch.cat([output['boxes'] for output in outputs], dim=0)
-            train_preds.extend(pred_boxes)
-            all_truths.extend(true_boxes)
-
-            # calculate loss, perform backwards step
-            loss = criterion(pred_boxes, true_boxes)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            train_loss += loss
-
-        scheduler.step()
-
-        # save model checkpoint
+        # save model checkpoint with weights
         torch.save({
-            'epoch': epoch + 1,
+            'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'loss': loss.item()
-        }, RESULTS_PATH)
+            'loss': train_epoch_loss.item()
+        }, output_dir)
 
-        # validation for one epoch
-        model.eval()
-        val_loss = 0.0
+        # retrieve metrics for one epoch of validation
+        epoch_metrics = val_one_epoch(model, val_loader, iou_thresh, conf_thresh, loss_weights, criterion, all_preds)
+        epoch_metrics['epoch'] = epoch
 
-        # Should these be dictionaries mapping the image to the predictions?
-        val_preds = []
-        # total_tp stores tuple of matched predictions and ground-truths
-        total_tp = []
-        total_fp = []
-        total_fn = []
+        # log metrics in dataframe
+        u.log_epoch_metrics(metrics_df, epoch, epoch_metrics)
 
-        # disables gradient calculations
-        with torch.no_grad():
+# function to train the model for one epoch
+def train_one_epoch(model, train_loader, loss_weights, criterion, optimizer, scheduler):
+    # set model to training mode
+    model.train()
 
-            # iterates by batch
-            for images, targets in tqdm(val_loader):
-                images = [img.cuda() for img in images]
-                targets = [{k: v.cuda() for k, v in t.items()} for t in targets]
+    # initialize accumulators
+    train_epoch_loss = 0.0
+    num_images = 0
 
-                # list of output dictionaries, where each corresponds to the predictions for an img in the batch
-                outputs = model(images)
+    # loader yields each batch as a tuple (images, targets)
+    # iterates through each batch
+    for images, targets in tqdm(train_loader):
 
-                # iterate through each image's output dictionary
-                for i, output in enumerate(outputs):
+        # list of image tensors in the batch of shape [channels, height, width]
+        images = [img.cuda() for img in images]
 
-                    # gets the true bboxes for the same image
-                    # no confidence 
-                    true_boxes = targets[i]['boxes']
+        # list of dictionaries where each represents the ground-truth data of one image in the batch
+        # each dictionary contains tensor 'boxes' of shape [num_bboxes, 4]
+        # each box is represented as [left, top, width, height]
+        targets = [{k: v.cuda() for k, v in t.items()} for t in targets]
 
-                    # [left, top, width, height, confidence]
-                    pred_boxes = output['boxes']
-                    val_preds.extend(pred_boxes)
+        # list of dictionaries where each represents the predicted data for one image in the batch
+        # each dictionary also contains boxes 2D tensor and scores 1D tensor
+        outputs = model(images)
 
-                    # gets the bboxes that actually match from the predictions and truths, as well as false positive and false negative predictions
-                    matched_preds, matched_truths, fp, fn = u.match_boxes(pred_boxes, true_boxes, iou_thresh, conf_thresh)
-                    total_tp.extend((mp, mt) for mp, mt in zip(matched_preds, matched_truths))
-                    total_fp.extend(fp)
-                    total_fn.extend(fn)
+        # iterate through the list of outputs to access results on a per-image basis
+        for i, output in enumerate(outputs):
+            num_images += 1
 
-                    loss = criterion(pred_boxes, true_boxes)
-                    val_loss += loss
+            # retrive true boxes and predicted boxes + confidence scoress
+            true_boxes = targets[i]['bboxes']
+            pred_boxes = output['boxes']
+            scores = output['scores']
 
-        precision = u.precision(total_tp.length(), total_fp.length())
-        recall = u.recall(total_tp.length(), total_fn.length())
-        f1_score = u.f1_score(total_tp.length(), total_fn.length(), total_fp.length())
-        mAP = u.AP()
+            # concatenate scores on the end of the predicted bounding boxes
+            pred_boxes = u.cat_scores(pred_boxes, scores)
 
-        # Store metrics, loss, and results in a dataframe for the epoch
+            # calculate loss per image and add to batch loss
+            train_image_loss = c.compute_iou_loss(pred_boxes, true_boxes, loss_weights)
+            train_epoch_loss += train_image_loss
+
+        # backpropagation
+        train_epoch_loss.backward()
+        optimizer.zero_grad()
+        optimizer.step()
+    
+    # mean epoch loss for number of batches
+    train_epoch_loss /= num_images
+    scheduler.step()
 
 
+# function to validate model for one epoch
+def val_one_epoch(model, val_loader, iou_thresh, conf_thresh, loss_weights, criterion, iou_type, all_preds):
+    # set model to evaluation mode
+    model.eval()
 
-            
-# Some functions that may need to be implemented
+    # initialize accumulators
+    val_epoch_loss = 0.0
+    num_images = 0
+    total_tp = 0
+    total_fp = 0
+    total_fn = 0
+    total_f1_scores = []
+    total_precisions = []
+    total_recalls = []
+    total_avg_pre = []
 
-# def build_model(cfg, genome):
+    # disables gradient calculations
+    with torch.no_grad():
+        data_iter = tqdm(val_loader)
+        # iterates by batch
+        for images, targets in data_iter:
+            images = [img.cuda() for img in images]
+            targets = [{k: v.cuda() for k, v in t.items()} for t in targets]
 
-# def get_optimizer(cfg, params):
+            # list of output dictionaries, where each corresponds to the predictions for an img in the batch
+            outputs = model(images)
 
-# def get_scheduler(cfg):
+            # iterate through each image's output dictionary
+            for i, output in enumerate(outputs):
+                num_images += 1
 
-# def compute_metrics():
+                # gets the true boxes and predicted boxes + scores for the same image
+                true_boxes = targets[i]['bboxes']
+                pred_boxes = output['boxes']
+                scores = output['scores']
+                pred_boxes = u.cat_scores(pred_boxes, scores)
 
-# def prepare_data():
+                # save mapping of (flight, frame) -> (predictions)
+                flight_id = targets[i]['flight_id']
+                frame_id = targets[i]['id']
+
+                # save predictions in all_preds dictionary
+                all_preds[(flight_id, frame_id)] = pred_boxes
+
+                # gets the bboxes that actually match from the predictions and truths, as well as false positive and false negative predictions
+                matches, fp, fn = u.match_boxes(pred_boxes, true_boxes, iou_thresh, conf_thresh, "val", iou_type)
+
+                # calculate confusion matrix for a single image and add them to accumulators
+                tp = len(matches)
+                fp = len(fp)
+                fn = len(fn)
+                total_tp += tp
+                total_fp += fp
+                total_fn += fn
+
+                # calculate f1, precision, and recall for a single image
+                pre = u.precision(tp, fp)
+                rec = u.recall(tp, fn)
+                total_precisions.append(pre)
+                total_recalls.append(rec)
+
+                # calculate precision-recall curve and average precision for a single image
+                pre_curve, rec_curve = u.precision_recall_curve(pred_boxes, true_boxes, conf_thresh)
+                avg_pre = u.AP(pre_curve, rec_curve)
+                total_avg_pre.append(avg_pre)
+
+                # default loss calculation is iou but can be configured to another calculation
+                val_image_loss = c.compute_iou_loss(pred_boxes, true_boxes, loss_weights)
+                # add image loss to the accumulated epoch loss
+                val_epoch_loss += val_image_loss
+
+    # mean epoch loss by the number of images seen in the epoch
+    val_epoch_loss /= num_images
+
+    # calculate per-epoch metrics
+    epoch_pre = sum(total_precisions) / len(total_precisions)
+    epoch_rec = sum (total_recalls) / len(total_recalls)
+    epoch_f1 = 2 * (epoch_pre * epoch_rec) / (epoch_pre + epoch_rec)
+    epoch_avg_pre = sum(total_avg_pre) / len(total_avg_pre)
+
+    # returns dict of metrics from one epoch
+    return {
+        'epoch_loss': val_epoch_loss,
+        'precision': epoch_pre,
+        'recall': epoch_rec,
+        'f1_score': epoch_f1,
+        'average_precision': epoch_avg_pre,
+        'true_positives': total_tp,
+        'false_positives': total_fp,
+        'false_negatives': total_fn,
+    }
+
+# returns iterable train and validation dataloaders using custom dataloader defined
+# TO DO: implement provided data loader class
+def prepare_data(batch_size=64):
+    notebook_path = os.path.dirname(os.path.realpath("__file__"))
+    local_path = notebook_path + '/data/part1' #this might need to be changed
+    s3_path = 's3://airborne-obj-detection-challenge-training/part1/'
+    dataset = NewDataset(local_path, s3_path, partial=True, prefix="part1")
+    train_loader = DataLoader(dataset, batch_size, shuffle=True)
+    val_loader = DataLoader(dataset, batch_size, shuffle=True)
+    return train_loader, val_loader
+
+def dynamic_batch_size():
+    return
