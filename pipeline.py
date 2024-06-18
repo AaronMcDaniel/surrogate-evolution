@@ -12,16 +12,38 @@ from deap import creator, gp, base, tools
 
 import primitives
 
-OUTPUTS_FOLDER = "/gv1/projects/GRIP_Precog_Opt/outputs"
+# job file params
+JOB_NAME = 'eval'
+NODES = 1
+CORES = 8
+MEM = '32GB'
+JOB_TIME = '1-00:00'
+SCRIPT = 'test/dummy_eval.py'
+EXCEPTED_NODES = ['ice109', 'ice111', 'ice161', 'ice113', 'ice116', 'ice114', 'ice170', 'ice149', 'ice158', 'ice177', 'ice178']
 
 class Pipeline:
-    def __init__(self) -> None:
+    def __init__(self, output_dir, force_wipe = False, clean = False) -> None:
+        self.output_dir = output_dir
+        self.force_wipe = force_wipe
+        self.clean = clean
+        self.logs_dir = os.path.join(self.output_dir, 'logs')
+        # Check if output location already exists
+        if os.path.exists(self.output_dir):
+            if not self.force_wipe:
+                raise Exception('Ouput directory already exists. If you want to overwrite, use -f')
+            else:
+                self.clear_outputs()
+                os.makedirs(self.logs_dir)
+        else:
+            os.makedirs(self.output_dir)
+            os.makedirs(self.logs_dir)
+
         # Begin by loading config attributes
         try:
             configs = toml.load(os.path.join(os.path.dirname(os.path.realpath(__file__)), "conf.toml"))
             pipeline_config = configs["pipeline"]
             codec_config = configs["codec"]
-        except Exception:
+        except:
             raise Exception('Could not find configuration toml file with "pipeline" and "codec" table')
         self.population_size = pipeline_config['population_size']
         self.unsustainable_population_size = pipeline_config['unsustainable_population_size']
@@ -50,6 +72,7 @@ class Pipeline:
         self.surrogate = None # Surrogate class to be defined
         self.pset = primitives.pset # primitive set
         self.gen_count = 1
+        self.num_genome_fails = 0
 
         # Setting up pipeline
         creator.create("FitnessMulti", base.Fitness, weights=tuple(self.objectives.values()))
@@ -62,7 +85,7 @@ class Pipeline:
                 
         creator.create("Individual", genome_type, fitness=creator.FitnessMulti)
         self.toolbox = base.Toolbox()
-        self.toolbox.register("expr", gp.genHalfAndHalf, pset=self.pset, min_=3, max_=10)
+        self.toolbox.register("expr", gp.genHalfAndHalf, pset=self.pset, min_=3, max_=8)
         self.toolbox.register("individual", tools.initIterate, creator.Individual, self.toolbox.expr)
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
 
@@ -110,7 +133,7 @@ class Pipeline:
         input_data.to_csv('eval_input.csv', index=False)
 
         # create bash script for job file
-        create_job_file(self.population_size)
+        self.create_job_file(self.population_size)
 
         # dispatch job
         print('    Dispatching jobs...')
@@ -128,16 +151,40 @@ class Pipeline:
 
         # read eval_gen output file
         for hash, genome in self.current_population.items():
-            with open(f'{OUTPUTS_FOLDER}/generation_{self.gen_count}/{hash}/best_epoch.json', 'r') as metrics_f:
-                data = json.load(metrics_f)
-                # update current population metrics
-                self.current_population[hash]['metrics'] = data
-                # update holy grail dataframe
-                self.holy_grail.loc[len(self.holy_grail.index)] = [self.gen_count, hash, genome['genome'], data]
-                # set fitness of current population
-                for g in self.current_deap_pop:
-                    if str(g) == genome['genome']:
-                        g.fitness.values = tuple([data[key] for key in self.objectives.keys()])
+            try:
+                with open(f'{self.output_dir}/generation_{self.gen_count}/{hash}/best_epoch.json', 'r') as metrics_f:
+                    data = json.load(metrics_f)
+                    # update current population metrics
+                    self.current_population[hash]['metrics'] = data
+                    # update holy grail dataframe
+                    self.holy_grail.loc[len(self.holy_grail.index)] = [self.gen_count, hash, genome['genome'], data]
+                    # set fitness of current population
+                    for g in self.current_deap_pop:
+                        if str(g) == genome['genome']:
+                            g.fitness.values = tuple([data[key] for key in self.objectives.keys()])
+            except FileNotFoundError:
+                # in the case the file isn't found we generate a file with bad metrics and then use that
+                print(f'    Couldn\'t find individual {hash} evaluation... Assuming genome failure and assigning bad metrics')
+                self.num_genome_fails += 1
+                test_metrics = {}
+                for objective, weight in self.objectives.items():
+                    test_metrics[objective] = 1000000 if weight < 0 else -1000000
+                output_filename = f'{self.output_dir}/generation_{self.gen_count}/{hash}/best_epoch.json'
+                os.makedirs(os.path.dirname(output_filename), exist_ok=True)
+                with open(output_filename, 'w') as fh:
+                    fh.write(json.dumps(test_metrics))
+
+                with open(f'{self.output_dir}/generation_{self.gen_count}/{hash}/best_epoch.json', 'r') as metrics_f:
+                    data = json.load(metrics_f)
+                    # update current population metrics
+                    self.current_population[hash]['metrics'] = data
+                    # update holy grail dataframe
+                    self.holy_grail.loc[len(self.holy_grail.index)] = [self.gen_count, hash, genome['genome'], data]
+                    # set fitness of current population
+                    for g in self.current_deap_pop:
+                        if str(g) == genome['genome']:
+                            g.fitness.values = tuple([data[key] for key in self.objectives.keys()])
+                
         print(f'Generation {self.gen_count} evaluation done!')
 
 
@@ -155,9 +202,17 @@ class Pipeline:
         return self.elite_pool
     
 
-    def update_hof(self): # updates ParetaFront object
+    def update_hof(self): # updates ParetoFront object
         print('Updating Hall of Fame...')
         self.hall_of_fame.update(self.current_deap_pop)
+        print('Done!')
+        if self.clean:
+            print('Cleaning up non-pareto-optimal indivuduals...')
+            hof_hashes = [self.__get_hash(str(x)) for x in self.hall_of_fame]
+            to_remove = self.holy_grail[~self.holy_grail['hash'].isin(hof_hashes)]
+            to_remove = to_remove[['gen', 'hash']].values.tolist()
+            for gen, hash in to_remove:
+                os.popen(f'rm -rf {self.output_dir}/generation_{gen}/{hash}/')
         print('Done!')
 
 
@@ -241,13 +296,13 @@ class Pipeline:
         print('Logging data...')
         # store holy grail
         holy_grail_expanded = self.holy_grail.join(pd.json_normalize(self.holy_grail['metrics'])).drop('metrics', axis='columns')
-        holy_grail_expanded.to_csv(f'{OUTPUTS_FOLDER}/out.csv', index=False)
+        holy_grail_expanded.to_csv(f'{self.output_dir}/out.csv', index=False)
         # get all entries from holy grail that share the same hashes as the elite pool members
         elites_df = holy_grail_expanded[holy_grail_expanded['hash'].isin([self.__get_hash(str(genome)) for genome in self.elite_pool])]
-        elites_df.to_csv(f'{OUTPUTS_FOLDER}/elites.csv', index=False)
+        elites_df.to_csv(f'{self.output_dir}/elites.csv', index=False)
         # get all entries from holy grail that share the same hashes as the hall of fame members
         hof_df = holy_grail_expanded[holy_grail_expanded['hash'].isin([self.__get_hash(str(genome)) for genome in self.hall_of_fame.items])]
-        hof_df.to_csv(f'{OUTPUTS_FOLDER}/hall_of_fame.csv', index=False)
+        hof_df.to_csv(f'{self.output_dir}/hall_of_fame.csv', index=False)
         print('Done!')
 
 
@@ -258,42 +313,31 @@ class Pipeline:
     def __get_hash(self, s):
         return hashlib.shake_256(s.encode()).hexdigest(5)
     
+
     def clear_outputs(self):
-        print('Clearing outputs...')
-        os.system(f'rm -rf {OUTPUTS_FOLDER}/*')
+        print('Clearing old outputs and logs...')
+        os.system(f'rm -rf {self.output_dir}/*')
         print('Done!')
 
-# job file params
-JOB_NAME = 'eval'
-NODES = 1
-CORES = 8
-MEM = '16GB'
-JOB_TIME = '1-00:00'
-SCRIPT = 'test/dummy_eval.py'
 
-# TODO: Fix this function
-def create_job_file(num_jobs):
-    batch_script = f"""#!/bin/bash
+    def create_job_file(self, num_jobs):
+        batch_script = f"""#!/bin/bash
 #SBATCH --job-name={JOB_NAME}
 #SBATCH --nodes={NODES}
 #SBATCH -G 1
+#SBATCH -x {','.join(EXCEPTED_NODES)}
 #SBATCH --cpus-per-task={CORES}
 #SBATCH --mem={MEM}
 #SBATCH --time={JOB_TIME}
-#SBATCH --output=/gv1/projects/GRIP_Precog_Opt/logs/evaluation.%A.%a.log
-#SBATCH --error=/gv1/projects/GRIP_Precog_Opt/logs/evaluation_error.%A.%a.log
+#SBATCH --output={self.logs_dir}/evaluation.%A.%a.log
+#SBATCH --error={self.logs_dir}/evaluation_error.%A.%a.log
 #SBATCH --array=0-{num_jobs-1}
 
 module load anaconda3/2023.07
 module load cuda/12.1.1
 
-# Activate conda environment
-conda activate myenv
-
 # Execute the Python script with SLURM_ARRAY_TASK_ID as argument. Script also has optional args -i and -o to specify input file and output directory respectively
-python {SCRIPT} $((SLURM_ARRAY_TASK_ID))
-
-conda deactivate
+conda run -n myenv --no-capture-output python -u {SCRIPT} $((SLURM_ARRAY_TASK_ID)) -o {self.output_dir}
 """
-    with open(f'{JOB_NAME}.job', 'w') as fh:
-        fh.write(batch_script)
+        with open(f'{JOB_NAME}.job', 'w') as fh:
+            fh.write(batch_script)
