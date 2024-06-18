@@ -276,7 +276,7 @@ def create_job_file(num_jobs):
     batch_script = f"""#!/bin/bash
 #SBATCH --job-name={JOB_NAME}
 #SBATCH --nodes={NODES}
-#SBATCH --gres=gpu:1
+#SBATCH -G 1
 #SBATCH --cpus-per-task={CORES}
 #SBATCH --mem={MEM}
 #SBATCH --time={JOB_TIME}
@@ -285,16 +285,15 @@ def create_job_file(num_jobs):
 #SBATCH --array=0-{num_jobs-1}
 
 module load anaconda3/2023.07
-module load cuda/12.2.2
+module load cuda/12.1.1
 
 # Activate conda environment
 conda activate myenv
 
-# Execute the Python script with SLURM_ARRAY_TASK_ID as argument
+# Execute the Python script with SLURM_ARRAY_TASK_ID as argument. Script also has optional args -i and -o to specify input file and output directory respectively
 python {SCRIPT} $((SLURM_ARRAY_TASK_ID))
 
 conda deactivate
 """
     with open(f'{JOB_NAME}.job', 'w') as fh:
         fh.write(batch_script)
-

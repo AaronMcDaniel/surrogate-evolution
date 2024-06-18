@@ -1,3 +1,7 @@
+import csv
+import toml
+import sys
+sys.path.insert(0, '/gv1/projects/GRIP_Precog_Opt/precog-opt-grip')
 import torch
 import torchvision
 import torch.nn as nn
@@ -20,24 +24,6 @@ import heapq
 import pandas as pd
 from core.dataset import NewDataset
 from torch.utils.data import DataLoader
-
-# TO-DO:
-    # Build loss function
-    # Store each epoch's predictions along with ground-truth
-    # Compute mAP, FPs, FNs, and IoU on a per-epoch basis
-    # Save model weight on a per-epoch basis
-    # Manage placement of results in output directories
-    # Save predictions with labels to the output director
-
-# parses arguments from sbatch job
-if __name__ == "__main__": # makes sure this happens if the script is being run directly
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--genome", type=str), parser.add_argument("config", type=str)
-    args = parser.parse_args()
-
-    # passes in the command-line args to begin the evaluation
-    engine(args.config, args.genome)
-
 
 def engine(cfg, genome):
 
@@ -247,3 +233,40 @@ def prepare_data(batch_size=64):
 
 def dynamic_batch_size():
     return
+
+def store_metrics(metrics_df: pd.DataFrame, best_epoch: dict, outdir: str): # stores all metrics for an individual. Expects a dataframe and a dict for the best epoch metrics
+    all_metrics_out = f'{outdir}/generation_{gen_num}/{hash}/metrics.csv'
+    best_epoch_out = f'{outdir}/generation_{gen_num}/{hash}/best_epoch.csv'
+    os.makedirs(os.path.dirname(all_metrics_out), exist_ok=True)
+    metrics_df.to_csv(all)
+    with open(best_epoch_out, 'w') as fh:
+        fh.write(json.dumps(best_epoch))
+
+
+if __name__ == "__main__": # makes sure this happens if the script is being run directly
+    # parses arguments from sbatch job
+    parser = argparse.ArgumentParser()
+    parser.add_argument("index", type=int)
+    parser.add_argument('-i', '--infile', required=False, default='/gv1/projects/GRIP_Precog_Opt/precog-opt-grip/eval_input.csv')
+    parser.add_argument('-o', '--outdir', required=False, default='/gv1/projects/GRIP_Precog_Opt/outputs')
+    args = parser.parse_args()
+    index = args.index
+    infile = args.infile
+    outdir = args.outdir
+
+    # load config attributes
+    configs = toml.load("conf.toml")
+    pipeline_config = configs["pipeline"]
+    codec_config = configs["codec"]
+    all_config = pipeline_config | codec_config
+
+    # load generated input for current generation
+    with open(f'{infile}', 'r') as input_file:
+        file = list(csv.reader(input_file))
+        line = file[int(index)+1]
+        gen_num = line[0]
+        hash = line[1]
+        genome = line[2]
+
+    # passes in the command-line args to begin the evaluation
+    engine(all_config, genome) # note genome is still in string form
