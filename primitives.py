@@ -1,6 +1,5 @@
 from enum import Enum
 from functools import partial
-import operator
 import random
 
 from deap import gp
@@ -14,8 +13,11 @@ MAX_OUTPUT_SIZE = 3000
 MAX_DILATION_SIZE = 10
 MAX_GROUP_SIZE = 1
 MAX_SKIP_SIZE = 5
-MAX_FLOAT_SIZE = 50
+MAX_PNORM_SIZE = 3
 
+'''
+NOTE: 1D and 2D TENSOR LAYERS ARE NOW OBSOLETE AND SHOULD BE REMOVED AT SOME POINT
+'''
 
 # placeholder classes to act as types for DEAP's strongly typed primitive set
 class Tensor3D:
@@ -52,7 +54,7 @@ class PaddingSize(int):
         super().__init__()
     pass
 
-class OuputSize(int):
+class OutputSize(int):
     def __init__(self, num) -> None:
         super().__init__()
     pass
@@ -68,6 +70,21 @@ class GroupSize(int):
     pass
 
 class SkipSize(int):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class PNorm(float):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class ProbFloat(float):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class GenericInt(int):
     def __init__(self, num) -> None:
         super().__init__()
     pass
@@ -89,6 +106,52 @@ class SkipMergeType(Enum):
     concat = 0,
     add = 1,
 
+class ConvNextSize(Enum):
+    Base = 0,
+    Large = 1,
+    Small = 2,
+    Tiny = 3
+
+class DenseNetSize(Enum):
+    _121 = 0,
+    _161 = 1,
+    _169 = 2,
+    _201 = 3
+
+class EfficientNetSize(Enum):
+    B0 = 0,
+    B1 = 1,
+    B2 = 2,
+    B3 = 3,
+    B4 = 4,
+    B5 = 5,
+    B6 = 6,
+    B7 = 7
+
+class MobileNetSize(Enum):
+    Large = 0,
+    Small = 1
+
+class RegNetSize(Enum):
+    pass
+
+
+class Optimizer(Enum):
+    Adelta = 0,
+    Adagrad = 1,
+    Adam = 2,
+    AdamW = 3,
+    SparseAdam = 4,
+    Adamax = 5,
+    ASGD = 6,
+    LBFGS = 7,
+    NAdam = 8,
+    RAdam = 9,
+    RMSprop = 10,
+    Rprop = 11,
+    SGD = 12
+
+
 # Conv layers
 def LazyConv2d(tensor: Tensor3D, out_channels: ChannelSize, kernel_size0: KernelSize, kernel_size1: KernelSize, stride0: StrideSize, stride1: StrideSize, padding0: PaddingSize, padding1: PaddingSize, padding_mode: PaddingMode, 
                dilation0: DilationSize, dilation1:  DilationSize, groups: GroupSize): # assume bias is always true
@@ -106,16 +169,16 @@ def MaxPool2d(tensor: Tensor3D, kernel_size0: KernelSize, kernel_size1: KernelSi
 def AvgPool2d(tensor: Tensor3D, kernel_size0: KernelSize, kernel_size1: KernelSize, stride0: StrideSize, stride1: StrideSize, padding0: PaddingSize, padding1: PaddingSize):
     return Tensor3D()
 
-def FractionalMaxPool2d(tensor: Tensor3D, kernel_size0: KernelSize, kernel_size1: KernelSize, output_size0: OuputSize, output_size1: OuputSize):
+def FractionalMaxPool2d(tensor: Tensor3D, kernel_size0: KernelSize, kernel_size1: KernelSize, output_ratio0: ProbFloat, output_ratio1: ProbFloat):
     return Tensor3D()
 
-def LPPool2d(tensor: Tensor3D, kernel_size0 : KernelSize, kernel_size1: KernelSize, stride0: StrideSize, stride1: StrideSize):
+def LPPool2d(tensor: Tensor3D, norm_type: PNorm, kernel_size0 : KernelSize, kernel_size1: KernelSize, stride0: StrideSize, stride1: StrideSize):
     return Tensor3D()
 
-def AdaptiveMaxPool2d(tensor: Tensor3D, output_size0: OuputSize, output_size1: OuputSize):
+def AdaptiveMaxPool2d(tensor: Tensor3D, output_size0: OutputSize, output_size1: OutputSize):
     return Tensor3D()
 
-def AdaptiveAvgPool2d(tensor: Tensor3D, output_size0: OuputSize, output_size1: OuputSize):
+def AdaptiveAvgPool2d(tensor: Tensor3D, output_size0: OutputSize, output_size1: OutputSize):
     return Tensor3D()
 
 
@@ -176,10 +239,10 @@ def Softmax(tensor: Tensor1D):
 def LazyBatchNorm2d(tensor: Tensor3D, eps: float, momentum: float):
     return Tensor3D()
 
-def Dropout_2D(tensor: Tensor3D, p: float):
+def Dropout_2D(tensor: Tensor3D, p: ProbFloat):
     return Tensor3D()
 
-def Dropout_1D(tensor: Tensor1D, p: float):
+def Dropout_1D(tensor: Tensor1D, p: ProbFloat):
     return Tensor1D()
 
 
@@ -189,7 +252,7 @@ def Flatten(tensor: Tensor3D | Tensor2D | Tensor1D):
 
 
 # Linear layers
-def LazyLinear(tensor: Tensor1D, out_features: OuputSize):
+def LazyLinear(tensor: Tensor1D, out_features: OutputSize):
     return Tensor1D()
 
 
@@ -215,8 +278,52 @@ def Skip_1D(tensor: Tensor1D, skip_by: SkipSize, merge_type: SkipMergeType):
     return Tensor1D()
 
 # TODO: cells
-def Detection_Head(tensor: Tensor1D):
+def Detection_Head(tensor: Tensor3D, optimizer: Optimizer, lr: float, iou_thresh: ProbFloat, conf_thresh: ProbFloat, iou_weight: float, diou_weight: float,
+                   giou_weight: float, ciou_weight: float, precision_weight: float, recall_weight: float, ap_weight: float, center_l2_weight: float, 
+                   area_l2_weight: float):
     return FinalTensor()
+
+def ConvNext(tensor: Tensor3D, convnextsize: ConvNextSize):
+    return Tensor3D()
+
+def DenseNet(tensor: Tensor3D, densenetsize: DenseNetSize):
+    return Tensor3D()
+
+def EfficientNet(tensor: Tensor3D):
+    return Tensor3D()
+
+def Inception_V3(tensor: Tensor3D):
+    return Tensor3D()
+
+def MaxViT_T(tensor: Tensor3D):
+    return Tensor3D()
+    
+def MobileNet_V3(tensor: Tensor3D):
+    return Tensor3D()
+
+def RegNet_X(tensor: Tensor3D):
+    return Tensor3D()
+
+def RegNet_Y(tensor: Tensor3D):
+    return Tensor3D()
+
+def ResNeXt(tensor: Tensor3D):
+    return Tensor3D()
+
+def ResNet(tensor: Tensor3D):
+    return Tensor3D()
+
+def ShuffleNet(tensor: Tensor3D):
+    return Tensor3D()
+
+def Swin_V2(tensor: Tensor3D):
+    return Tensor3D()
+
+def ViT(tensor: Tensor3D):
+    return Tensor3D()
+
+def Wide_ResNet(tensor: Tensor3D):
+    return Tensor3D()
 
 # creating primitive set
 pset = gp.PrimitiveSetTyped("MAIN", [Tensor3D], FinalTensor, "IN")
@@ -237,19 +344,19 @@ pset.addPrimitive(AvgPool2d,
                   Tensor3D)
 
 pset.addPrimitive(FractionalMaxPool2d,
-                  [Tensor3D, KernelSize, KernelSize, OuputSize, OuputSize],
+                  [Tensor3D, KernelSize, KernelSize, ProbFloat, ProbFloat],
                   Tensor3D)
 
 pset.addPrimitive(LPPool2d,
-                  [Tensor3D, KernelSize, KernelSize, StrideSize, StrideSize],
+                  [Tensor3D, PNorm, KernelSize, KernelSize, StrideSize, StrideSize],
                   Tensor3D)
 
 pset.addPrimitive(AdaptiveMaxPool2d,
-                  [Tensor3D, OuputSize, OuputSize],
+                  [Tensor3D, OutputSize, OutputSize],
                   Tensor3D)
 
 pset.addPrimitive(AdaptiveAvgPool2d,
-                  [Tensor3D, OuputSize, OuputSize],
+                  [Tensor3D, OutputSize, OutputSize],
                   Tensor3D)
 
 pset.addPrimitive(ReLU_2D,
@@ -266,14 +373,6 @@ pset.addPrimitive(LeakyReLU_2D,
 
 pset.addPrimitive(LeakyReLU_1D,
                   [Tensor1D, float],
-                  Tensor1D)
-
-pset.addPrimitive(RReLU_2D,
-                  [Tensor3D, float, float],
-                  Tensor3D)
-
-pset.addPrimitive(RReLU_1D,
-                  [Tensor1D, float, float],
                   Tensor1D)
 
 pset.addPrimitive(LogSigmoid_2D,
@@ -317,11 +416,11 @@ pset.addPrimitive(LazyBatchNorm2d,
                   Tensor3D)
 
 pset.addPrimitive(Dropout_2D,
-                  [Tensor3D, float],
+                  [Tensor3D, ProbFloat],
                   Tensor3D)
 
 pset.addPrimitive(Dropout_1D,
-                  [Tensor1D, float],
+                  [Tensor1D, ProbFloat],
                   Tensor1D)
 
 pset.addPrimitive(Upsample_1D,
@@ -333,7 +432,7 @@ pset.addPrimitive(Skip_2D,
                   Tensor3D)
 
 pset.addPrimitive(Detection_Head,
-                  [Tensor1D],
+                  [Tensor3D, Optimizer, float, ProbFloat, ProbFloat, float, float, float, float, float, float, float, float, float],
                   FinalTensor)
 
 pset.addPrimitive(Flatten,
@@ -341,7 +440,7 @@ pset.addPrimitive(Flatten,
                   Tensor1D)
 
 pset.addPrimitive(LazyLinear,
-                  [Tensor1D, OuputSize],
+                  [Tensor1D, OutputSize],
                   Tensor1D)
 
 pset.addPrimitive(Upsample_2D,
@@ -352,92 +451,14 @@ pset.addPrimitive(Skip_1D,
                   [Tensor1D, SkipSize, SkipMergeType],
                   Tensor1D)
 
-def channelAdd(a, b):
-    return ChannelSize((a+b)%MAX_CHANNEL_SIZE)
-
-def kernelAdd(a, b):
-    return KernelSize((a+b)%MAX_KERNEL_SIZE)
-
-def strideAdd(a, b):
-    return StrideSize((a+b)%MAX_STRIDE_SIZE)
-
-def paddingAdd(a, b):
-    return PaddingSize((a+b)%MAX_PADDING_SIZE)
-
-def outputAdd(a, b):
-    return OuputSize((a+b)%MAX_OUTPUT_SIZE)
-
-def dilationAdd(a, b):
-    return DilationSize((a+b)%MAX_DILATION_SIZE)
-
-def groupAdd(a, b):
-    return GroupSize((a+b)%MAX_GROUP_SIZE)
-
-def skipAdd(a, b):
-    return SkipSize((a+b)%MAX_SKIP_SIZE)
-
-def floatAdd(a, b):
-    return (a+b)%MAX_FLOAT_SIZE
-
-pset.addPrimitive(channelAdd, [ChannelSize, ChannelSize], ChannelSize)
-pset.addPrimitive(kernelAdd, [KernelSize, KernelSize], KernelSize)
-pset.addPrimitive(strideAdd, [StrideSize, StrideSize], StrideSize)
-pset.addPrimitive(paddingAdd, [PaddingSize, PaddingSize], PaddingSize)
-pset.addPrimitive(outputAdd, [OuputSize, OuputSize], OuputSize)
-pset.addPrimitive(dilationAdd, [DilationSize, DilationSize], DilationSize)
-pset.addPrimitive(groupAdd, [GroupSize, GroupSize], GroupSize)
-pset.addPrimitive(skipAdd, [SkipSize, SkipSize], SkipSize)
-pset.addPrimitive(floatAdd, [float, float], float)
+def add(a, b):
+    return a+b
 
 def protectedSub(a, b):
     return abs(a-b)
 
-pset.addPrimitive(protectedSub, [ChannelSize, ChannelSize], ChannelSize)
-pset.addPrimitive(protectedSub, [KernelSize, KernelSize], KernelSize)
-pset.addPrimitive(protectedSub, [StrideSize, StrideSize], StrideSize)
-pset.addPrimitive(protectedSub, [PaddingSize, PaddingSize], PaddingSize)
-pset.addPrimitive(protectedSub, [OuputSize, OuputSize], OuputSize)
-pset.addPrimitive(protectedSub, [DilationSize, DilationSize], DilationSize)
-pset.addPrimitive(protectedSub, [GroupSize, GroupSize], GroupSize)
-pset.addPrimitive(protectedSub, [SkipSize, SkipSize], SkipSize)
-pset.addPrimitive(protectedSub, [float, float], float)
-
-def channelMul(a, b):
-    return ChannelSize((a*b)%MAX_CHANNEL_SIZE)
-
-def kernelMul(a, b):
-    return KernelSize((a*b)%MAX_KERNEL_SIZE)
-
-def strideMul(a, b):
-    return StrideSize((a*b)%MAX_STRIDE_SIZE)
-
-def paddingMul(a, b):
-    return PaddingSize((a*b)%MAX_PADDING_SIZE)
-
-def outputMul(a, b):
-    return OuputSize((a*b)%MAX_OUTPUT_SIZE)
-
-def dilationMul(a, b):
-    return DilationSize((a*b)%MAX_DILATION_SIZE)
-
-def groupMul(a, b):
-    return GroupSize((a*b)%MAX_GROUP_SIZE)
-
-def skipMul(a, b):
-    return SkipSize((a*b)%MAX_SKIP_SIZE)
-
-def floatMul(a, b):
-    return (a*b)%MAX_FLOAT_SIZE
-
-pset.addPrimitive(channelMul, [ChannelSize, ChannelSize], ChannelSize)
-pset.addPrimitive(kernelMul, [KernelSize, KernelSize], KernelSize)
-pset.addPrimitive(strideMul, [StrideSize, StrideSize], StrideSize)
-pset.addPrimitive(paddingMul, [PaddingSize, PaddingSize], PaddingSize)
-pset.addPrimitive(outputMul, [OuputSize, OuputSize], OuputSize)
-pset.addPrimitive(dilationMul, [DilationSize, DilationSize], DilationSize)
-pset.addPrimitive(groupMul, [GroupSize, GroupSize], GroupSize)
-pset.addPrimitive(skipMul, [SkipSize, SkipSize], SkipSize)
-pset.addPrimitive(floatMul, [float, float], float)
+def mul(a, b):
+    return a*b
 
 def protectedDiv(left, right):
     if (isinstance(left, int) and isinstance(right, int)):
@@ -447,34 +468,91 @@ def protectedDiv(left, right):
         try: return left / right
         except ZeroDivisionError: return 1
 
-pset.addPrimitive(protectedDiv, [ChannelSize, ChannelSize], ChannelSize)
-pset.addPrimitive(protectedDiv, [KernelSize, KernelSize], KernelSize)
-pset.addPrimitive(protectedDiv, [StrideSize, StrideSize], StrideSize)
-pset.addPrimitive(protectedDiv, [PaddingSize, PaddingSize], PaddingSize)
-pset.addPrimitive(protectedDiv, [OuputSize, OuputSize], OuputSize)
-pset.addPrimitive(protectedDiv, [DilationSize, DilationSize], DilationSize)
-pset.addPrimitive(protectedDiv, [GroupSize, GroupSize], GroupSize)
-pset.addPrimitive(protectedDiv, [SkipSize, SkipSize], SkipSize)
-pset.addPrimitive(protectedDiv, [float, float], float)
+def toChannel(a):
+    if a == 0:
+        return 1
+    return ChannelSize(a%MAX_CHANNEL_SIZE)+1 if a > MAX_CHANNEL_SIZE else ChannelSize(a)
+
+def toKernel(a):
+    if a == 0: return 3
+    if a < 3: return 3
+    return KernelSize(a%MAX_KERNEL_SIZE)+3 if a > MAX_KERNEL_SIZE else KernelSize(a)
+
+def toStride(a):
+    if a == 0:
+        return 1
+    return StrideSize(a%MAX_STRIDE_SIZE)+1 if a > MAX_STRIDE_SIZE else StrideSize(a)
+
+def toPadding(a):
+    return PaddingSize(a%MAX_PADDING_SIZE) if a > MAX_PADDING_SIZE else PaddingSize(a)
+
+def toOutput(a):
+    if a == 0:
+        return 1
+    return OutputSize(a%MAX_OUTPUT_SIZE)+1 if a > MAX_OUTPUT_SIZE else OutputSize(a)
+
+def toDilation(a):
+    if a == 0:
+        return 1
+    return DilationSize(a%MAX_DILATION_SIZE)+1 if a > MAX_DILATION_SIZE else DilationSize(a)
+
+def toGroup(a):
+    if a == 0:
+        return 1
+    return GroupSize(a%MAX_GROUP_SIZE)+1 if a > MAX_GROUP_SIZE else GroupSize(a)
+
+def toSkip(a):
+    if a == 0:
+        return 1
+    return SkipSize(a%MAX_SKIP_SIZE)+1 if a > MAX_SKIP_SIZE else SkipSize(a)
+
+def toPNorm(a):
+    if a == 0:
+        return 2
+    return PNorm(a%MAX_PNORM_SIZE)+2 if a > MAX_PNORM_SIZE else PNorm(a)
+
+def toProbFloat(a):
+    return a%1
 
 def dummyOp(input):
     return input
 
+pset.addPrimitive(add, [GenericInt, GenericInt], GenericInt)
+pset.addPrimitive(add, [float, float], float)
+pset.addPrimitive(protectedSub, [GenericInt, GenericInt], GenericInt)
+pset.addPrimitive(protectedSub, [float, float], float)
+pset.addPrimitive(mul, [GenericInt, GenericInt], GenericInt)
+pset.addPrimitive(mul, [float, float], float)
+pset.addPrimitive(protectedDiv, [GenericInt, GenericInt], GenericInt)
+pset.addPrimitive(protectedDiv, [float, float], float)
+pset.addPrimitive(toChannel, [GenericInt], ChannelSize)
+pset.addPrimitive(toKernel, [GenericInt], KernelSize)
+pset.addPrimitive(toStride, [GenericInt], StrideSize)
+pset.addPrimitive(toPadding, [GenericInt], PaddingSize)
+pset.addPrimitive(toOutput, [GenericInt], OutputSize)
+pset.addPrimitive(toDilation, [GenericInt], DilationSize)
+pset.addPrimitive(toGroup, [GenericInt], GroupSize)
+pset.addPrimitive(toSkip, [GenericInt], SkipSize)
+pset.addPrimitive(toPNorm, [float], PNorm)
+pset.addPrimitive(toProbFloat, [float], ProbFloat)
 pset.addPrimitive(dummyOp, [PaddingMode], PaddingMode)
 pset.addPrimitive(dummyOp, [UpsampleMode], UpsampleMode)
 pset.addPrimitive(dummyOp, [SkipMergeType], SkipMergeType)
+pset.addPrimitive(dummyOp, [Optimizer], Optimizer)
 
 pset.addEphemeralConstant("randChannel", partial(random.randint, 1, MAX_CHANNEL_SIZE), ChannelSize)
 pset.addEphemeralConstant("randKernel", partial(random.randint, 1, MAX_KERNEL_SIZE), KernelSize)
 pset.addEphemeralConstant("randStride", partial(random.randint, 1, MAX_STRIDE_SIZE), StrideSize)
-pset.addEphemeralConstant("randPadding", partial(random.randint, 1, MAX_PADDING_SIZE), PaddingSize)
-pset.addEphemeralConstant("randOutput", partial(random.randint, 1, MAX_OUTPUT_SIZE), OuputSize)
+pset.addEphemeralConstant("randPadding", partial(random.randint, 0, MAX_PADDING_SIZE), PaddingSize)
+pset.addEphemeralConstant("randOutput", partial(random.randint, 1, MAX_OUTPUT_SIZE), OutputSize)
 pset.addEphemeralConstant("randDilation", partial(random.randint, 1, MAX_DILATION_SIZE), DilationSize)
 pset.addEphemeralConstant("randGroup", partial(random.randint, 1, MAX_GROUP_SIZE), GroupSize)
 pset.addEphemeralConstant("randSkipSize", partial(random.randint, 1, MAX_SKIP_SIZE), SkipSize)
-pset.addEphemeralConstant("randFloat", partial(random.uniform, 0, 1), float) # note that there might be some places where floats outside this range are valid.
+pset.addEphemeralConstant("randPNorm", partial(random.uniform, 1, MAX_PNORM_SIZE), PNorm)
+pset.addEphemeralConstant("randProbFloat", partial(random.uniform, 0, 1), ProbFloat)
+pset.addEphemeralConstant("randFloat", partial(random.uniform, 0, 10), float)
+pset.addEphemeralConstant("randInt", partial(random.randint, 0, 10), GenericInt)
 pset.addEphemeralConstant("randPaddingMode", partial(random.randint, 0, len(PaddingMode)-1), PaddingMode)
 pset.addEphemeralConstant("randUpsampleMode", partial(random.randint, 0, len(UpsampleMode)-1), UpsampleMode)
 pset.addEphemeralConstant("randSkipMergeType", partial(random.randint, 0, len(SkipMergeType)-1), SkipMergeType)
-
-pset.addTerminal(Tensor1D(), Tensor1D) # seeing a terminal requires us to add a special cell (replace Tensor1D() with custom cell definition later)
+pset.addEphemeralConstant("randOptimizerType", partial(random.randint, 0, len(Optimizer)-1), Optimizer)
