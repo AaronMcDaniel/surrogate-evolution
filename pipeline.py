@@ -1,6 +1,6 @@
 import copy
+import csv
 import hashlib
-import json
 import random
 import subprocess
 import time
@@ -50,7 +50,6 @@ class Pipeline:
         self.num_parents = pipeline_config['num_parents']
         self.crossovers = pipeline_config['crossovers']
         self.mutations = pipeline_config['mutations']
-        self.percent_elite = pipeline_config['percent_elite']
         self.surrogate_enabled = pipeline_config['surrogate_enabled']
         self.objectives = pipeline_config['objectives']
         self.train_epochs = pipeline_config['train_epochs']
@@ -61,6 +60,7 @@ class Pipeline:
         self.max_elite_pool = pipeline_config['max_elite_pool']
         self.train_pool_source = pipeline_config['train_pool_source']
         self.trust_pool_source = pipeline_config['trust_pool_source']
+        self.best_epoch_criteria = pipeline_config['best_epoch_criteria']
 
         # Other useful attributes
         self.holy_grail = pd.DataFrame(columns=['gen', 'hash', 'genome', 'metrics']) # data regarding every evaluated individual; metrics are from best epoch since all other metric data is already stored by eval_script
@@ -152,16 +152,20 @@ class Pipeline:
         # read eval_gen output file
         for hash, genome in self.current_population.items():
             try:
-                with open(f'{self.output_dir}/generation_{self.gen_count}/{hash}/best_epoch.json', 'r') as metrics_f:
-                    data = json.load(metrics_f)
-                    # update current population metrics
-                    self.current_population[hash]['metrics'] = data
-                    # update holy grail dataframe
-                    self.holy_grail.loc[len(self.holy_grail.index)] = [self.gen_count, hash, genome['genome'], data]
-                    # set fitness of current population
-                    for g in self.current_deap_pop:
-                        if str(g) == genome['genome']:
-                            g.fitness.values = tuple([data[key] for key in self.objectives.keys()])
+                dataframe = pd.read_csv(f'{self.output_dir}/generation_{self.gen_count}/{hash}/metrics.csv')
+                if (self.best_epoch_criteria[1].lower() == 'max'):
+                    data = dataframe.nlargest(1, self.best_epoch_criteria[0]).squeeze().to_dict()
+                else:
+                    data = dataframe.nsmallest(1, self.best_epoch_criteria[0]).squeeze().to_dict()
+                del data['epoch_num']
+                # update current population metrics
+                self.current_population[hash]['metrics'] = data
+                # update holy grail dataframe
+                self.holy_grail.loc[len(self.holy_grail.index)] = [self.gen_count, hash, genome['genome'], data]
+                # set fitness of current population
+                for g in self.current_deap_pop:
+                    if str(g) == genome['genome']:
+                        g.fitness.values = tuple([data[key] for key in self.objectives.keys()])
             except FileNotFoundError:
                 # in the case the file isn't found we generate a file with bad metrics and then use that
                 print(f'    Couldn\'t find individual {hash} evaluation... Assuming genome failure and assigning bad metrics')
@@ -169,21 +173,22 @@ class Pipeline:
                 test_metrics = {}
                 for objective, weight in self.objectives.items():
                     test_metrics[objective] = 1000000 if weight < 0 else -1000000
-                output_filename = f'{self.output_dir}/generation_{self.gen_count}/{hash}/best_epoch.json'
+                output_filename = f'{self.output_dir}/generation_{self.gen_count}/{hash}/metrics.csv'
                 os.makedirs(os.path.dirname(output_filename), exist_ok=True)
                 with open(output_filename, 'w') as fh:
-                    fh.write(json.dumps(test_metrics))
+                    writer = csv.writer(fh)
+                    writer.writerow(list(test_metrics.keys()))
+                    writer.writerow(list(test_metrics.values()))
 
-                with open(f'{self.output_dir}/generation_{self.gen_count}/{hash}/best_epoch.json', 'r') as metrics_f:
-                    data = json.load(metrics_f)
-                    # update current population metrics
-                    self.current_population[hash]['metrics'] = data
-                    # update holy grail dataframe
-                    self.holy_grail.loc[len(self.holy_grail.index)] = [self.gen_count, hash, genome['genome'], data]
-                    # set fitness of current population
-                    for g in self.current_deap_pop:
-                        if str(g) == genome['genome']:
-                            g.fitness.values = tuple([data[key] for key in self.objectives.keys()])
+                data = test_metrics
+                # update current population metrics
+                self.current_population[hash]['metrics'] = data
+                # update holy grail dataframe
+                self.holy_grail.loc[len(self.holy_grail.index)] = [self.gen_count, hash, genome['genome'], data]
+                # set fitness of current population
+                for g in self.current_deap_pop:
+                    if str(g) == genome['genome']:
+                        g.fitness.values = tuple([data[key] for key in self.objectives.keys()])
                 
         print(f'Generation {self.gen_count} evaluation done!')
 
