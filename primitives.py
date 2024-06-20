@@ -1,8 +1,17 @@
 from enum import Enum
 from functools import partial
+import itertools
+import os
 import random
 
 from deap import gp
+import toml
+
+
+configs = toml.load(os.path.join(os.path.dirname(os.path.realpath(__file__)), "conf.toml"))
+pipeline_config = configs["pipeline"]
+codec_config = configs["codec"]
+num_loss_components = int(codec_config['num_loss_components'])
 
 
 MAX_CHANNEL_SIZE = 64
@@ -89,6 +98,8 @@ class GenericInt(int):
         super().__init__()
     pass
 
+
+# input parameters that are enums
 class PaddingMode(Enum):
     zeros = 0,
     reflect = 1,
@@ -106,35 +117,73 @@ class SkipMergeType(Enum):
     concat = 0,
     add = 1,
 
-class ConvNextSize(Enum):
+class ConvNeXtSize(Enum):
     Base = 0,
     Large = 1,
     Small = 2,
     Tiny = 3
 
 class DenseNetSize(Enum):
-    _121 = 0,
-    _161 = 1,
-    _169 = 2,
-    _201 = 3
+    z121 = 0,
+    z161 = 1,
+    z169 = 2,
+    z201 = 3
 
-class EfficientNetSize(Enum):
-    B0 = 0,
-    B1 = 1,
-    B2 = 2,
-    B3 = 3,
-    B4 = 4,
-    B5 = 5,
-    B6 = 6,
-    B7 = 7
+class EfficientNet_V2Size(Enum):
+    L = 0,
+    M = 1,
+    S = 2
 
-class MobileNetSize(Enum):
+class MobileNet_V3Size(Enum):
     Large = 0,
     Small = 1
 
 class RegNetSize(Enum):
-    pass
+    z_16GF = 0,
+    z_1_6GF = 1,
+    z_32GF = 2,
+    z_3_2GF = 3,
+    z_400MF = 4,
+    z_800MF = 5,
+    z_8GF = 6,
 
+class ResNeXtSize(Enum):
+    z101_32X8D = 0,
+    z50_32X4D = 1
+
+class ResNetSize(Enum):
+    z101 = 0,
+    z152 = 1,
+    z50 = 2
+
+class ShuffleNet_V2Size(Enum):
+    X0_5 = 0,
+    X1_0 = 1,
+    X1_5 = 2,
+    X2_0 = 3
+
+class Swin_V2Size(Enum):
+    B = 0,
+    S = 1,
+    T = 2
+
+class ViTSize(Enum):
+    B_16 = 0,
+    H_14 = 1,
+    L_16 = 2
+
+class Wide_ResNetSize(Enum):
+    z101_2 = 0,
+    z50_2 = 1
+
+class Weights(Enum):
+    WEIGHT0 = 0,
+    WEIGHT1 = 1,
+    WEIGHT2 = 2
+
+class BoolWeight(Enum):
+    WEIGHTFALSE = 0,
+    WEIGHTTRUE = 1
 
 class Optimizer(Enum):
     Adelta = 0,
@@ -277,55 +326,59 @@ def Skip_2D(tensor: Tensor3D, skip_by: SkipSize, merge_type: SkipMergeType):
 def Skip_1D(tensor: Tensor1D, skip_by: SkipSize, merge_type: SkipMergeType):
     return Tensor1D()
 
-# TODO: cells
-def Detection_Head(tensor: Tensor3D, optimizer: Optimizer, lr: float, iou_thresh: ProbFloat, conf_thresh: ProbFloat, iou_weight: float, diou_weight: float,
+
+# TODO: Heads
+def Detection_Head(tensor: Tensor3D, optimizer: Optimizer, lr: float, iou_weight: float, diou_weight: float,
                    giou_weight: float, ciou_weight: float, precision_weight: float, recall_weight: float, ap_weight: float, center_l2_weight: float, 
                    area_l2_weight: float):
     return FinalTensor()
 
-def ConvNext(tensor: Tensor3D, convnextsize: ConvNextSize):
+
+# Backbones
+def ConvNeXt(tensor: Tensor3D, convnextsize: ConvNeXtSize, weights: BoolWeight):
     return Tensor3D()
 
-def DenseNet(tensor: Tensor3D, densenetsize: DenseNetSize):
+def DenseNet(tensor: Tensor3D, densenetsize: DenseNetSize, weights: BoolWeight):
     return Tensor3D()
 
-def EfficientNet(tensor: Tensor3D):
+def EfficientNet_V2(tensor: Tensor3D, efficientnetsize: EfficientNet_V2Size, weights: BoolWeight):
     return Tensor3D()
 
-def Inception_V3(tensor: Tensor3D):
+def Inception_V3(tensor: Tensor3D, weights: BoolWeight):
     return Tensor3D()
 
-def MaxViT_T(tensor: Tensor3D):
-    return Tensor3D()
-    
-def MobileNet_V3(tensor: Tensor3D):
+def MaxViT_T(tensor: Tensor3D, weights: BoolWeight):
     return Tensor3D()
 
-def RegNet_X(tensor: Tensor3D):
+def MobileNet_V3(tensor: Tensor3D, mobilenetsize: MobileNet_V3Size, weights: BoolWeight):
     return Tensor3D()
 
-def RegNet_Y(tensor: Tensor3D):
+def RegNet_X(tensor: Tensor3D, regnetsize: RegNetSize, weights: Weights):
     return Tensor3D()
 
-def ResNeXt(tensor: Tensor3D):
+def RegNet_Y(tensor: Tensor3D, regnetsize: RegNetSize, weights: Weights):
     return Tensor3D()
 
-def ResNet(tensor: Tensor3D):
+def ResNeXt(tensor: Tensor3D, resnextsize: ResNeXtSize, weights: Weights):
     return Tensor3D()
 
-def ShuffleNet(tensor: Tensor3D):
+def ResNet(tensor: Tensor3D, resnetsize: ResNetSize, weights: Weights):
     return Tensor3D()
 
-def Swin_V2(tensor: Tensor3D):
+def ShuffleNet_V2(tensor: Tensor3D, shufflenetsize: ShuffleNet_V2Size, weights: BoolWeight):
     return Tensor3D()
 
-def ViT(tensor: Tensor3D):
+def Swin_V2(tensor: Tensor3D, swinsize: Swin_V2Size, weights: BoolWeight):
     return Tensor3D()
 
-def Wide_ResNet(tensor: Tensor3D):
+def ViT(tensor: Tensor3D, vitsize: ViTSize, weights: Weights):
     return Tensor3D()
 
-# creating primitive set
+def Wide_ResNet(tensor: Tensor3D, wideresnetsize: Wide_ResNetSize, weights: Weights):
+    return Tensor3D()
+
+
+# creating primitive set from layers and components
 pset = gp.PrimitiveSetTyped("MAIN", [Tensor3D], FinalTensor, "IN")
 pset.addPrimitive(LazyConv2d, 
                   [Tensor3D, ChannelSize, KernelSize, KernelSize, StrideSize, StrideSize, PaddingSize, PaddingSize, PaddingMode, DilationSize, DilationSize, GroupSize], 
@@ -432,7 +485,7 @@ pset.addPrimitive(Skip_2D,
                   Tensor3D)
 
 pset.addPrimitive(Detection_Head,
-                  [Tensor3D, Optimizer, float, ProbFloat, ProbFloat, float, float, float, float, float, float, float, float, float],
+                  [Tensor3D, Optimizer, float] + list(itertools.repeat(float, num_loss_components)),
                   FinalTensor)
 
 pset.addPrimitive(Flatten,
@@ -451,6 +504,64 @@ pset.addPrimitive(Skip_1D,
                   [Tensor1D, SkipSize, SkipMergeType],
                   Tensor1D)
 
+pset.addPrimitive(ConvNeXt,
+                  [Tensor3D, ConvNeXtSize, BoolWeight],
+                  Tensor3D)
+
+pset.addPrimitive(DenseNet,
+                  [Tensor3D, DenseNetSize, BoolWeight],
+                  Tensor3D)
+
+pset.addPrimitive(EfficientNet_V2,
+                  [Tensor3D, EfficientNet_V2Size, BoolWeight],
+                  Tensor3D)
+
+pset.addPrimitive(Inception_V3,
+                  [Tensor3D, BoolWeight],
+                  Tensor3D)
+
+# pset.addPrimitive(MaxViT_T,
+#                   [Tensor3D, BoolWeight],
+#                   Tensor3D)
+
+pset.addPrimitive(MobileNet_V3,
+                  [Tensor3D, MobileNet_V3Size, BoolWeight],
+                  Tensor3D)
+
+pset.addPrimitive(RegNet_X,
+                  [Tensor3D, RegNetSize, Weights],
+                  Tensor3D)
+
+pset.addPrimitive(RegNet_Y,
+                  [Tensor3D, RegNetSize, Weights],
+                  Tensor3D)
+
+pset.addPrimitive(ResNeXt,
+                  [Tensor3D, ResNeXtSize, Weights],
+                  Tensor3D)
+
+pset.addPrimitive(ResNet,
+                  [Tensor3D, ResNetSize, Weights],
+                  Tensor3D)
+
+pset.addPrimitive(ShuffleNet_V2,
+                  [Tensor3D, ShuffleNet_V2Size, BoolWeight],
+                  Tensor3D)
+
+pset.addPrimitive(Swin_V2,
+                  [Tensor3D, Swin_V2Size, BoolWeight],
+                  Tensor3D)
+
+# pset.addPrimitive(ViT,
+#                   [Tensor3D, ViTSize, Weights],
+#                   Tensor3D)
+
+pset.addPrimitive(Wide_ResNet,
+                  [Tensor3D, Wide_ResNetSize, Weights],
+                  Tensor3D)
+
+
+# Basic operators
 def add(a, b):
     return a+b
 
@@ -468,6 +579,8 @@ def protectedDiv(left, right):
         try: return left / right
         except ZeroDivisionError: return 1
 
+
+# Datatype conversions
 def toChannel(a):
     if a == 0:
         return 1
@@ -517,6 +630,7 @@ def toProbFloat(a):
 def dummyOp(input):
     return input
 
+# Adding functions as primitives
 pset.addPrimitive(add, [GenericInt, GenericInt], GenericInt)
 pset.addPrimitive(add, [float, float], float)
 pset.addPrimitive(protectedSub, [GenericInt, GenericInt], GenericInt)
@@ -539,6 +653,19 @@ pset.addPrimitive(dummyOp, [PaddingMode], PaddingMode)
 pset.addPrimitive(dummyOp, [UpsampleMode], UpsampleMode)
 pset.addPrimitive(dummyOp, [SkipMergeType], SkipMergeType)
 pset.addPrimitive(dummyOp, [Optimizer], Optimizer)
+pset.addPrimitive(dummyOp, [Weights], Weights)
+pset.addPrimitive(dummyOp, [BoolWeight], BoolWeight)
+pset.addPrimitive(dummyOp, [ConvNeXtSize], ConvNeXtSize)
+pset.addPrimitive(dummyOp, [DenseNetSize], DenseNetSize)
+pset.addPrimitive(dummyOp, [EfficientNet_V2Size], EfficientNet_V2Size)
+pset.addPrimitive(dummyOp, [MobileNet_V3Size], MobileNet_V3Size)
+pset.addPrimitive(dummyOp, [RegNetSize], RegNetSize)
+pset.addPrimitive(dummyOp, [ResNeXtSize], ResNeXtSize)
+pset.addPrimitive(dummyOp, [ResNetSize], ResNetSize)
+pset.addPrimitive(dummyOp, [ShuffleNet_V2Size], ShuffleNet_V2Size)
+pset.addPrimitive(dummyOp, [Swin_V2Size], Swin_V2Size)
+pset.addPrimitive(dummyOp, [ViTSize], ViTSize)
+pset.addPrimitive(dummyOp, [Wide_ResNetSize], Wide_ResNetSize)
 
 pset.addEphemeralConstant("randChannel", partial(random.randint, 1, MAX_CHANNEL_SIZE), ChannelSize)
 pset.addEphemeralConstant("randKernel", partial(random.randint, 1, MAX_KERNEL_SIZE), KernelSize)
@@ -555,4 +682,17 @@ pset.addEphemeralConstant("randInt", partial(random.randint, 0, 10), GenericInt)
 pset.addEphemeralConstant("randPaddingMode", partial(random.randint, 0, len(PaddingMode)-1), PaddingMode)
 pset.addEphemeralConstant("randUpsampleMode", partial(random.randint, 0, len(UpsampleMode)-1), UpsampleMode)
 pset.addEphemeralConstant("randSkipMergeType", partial(random.randint, 0, len(SkipMergeType)-1), SkipMergeType)
-pset.addEphemeralConstant("randOptimizerType", partial(random.randint, 0, len(Optimizer)-1), Optimizer)
+pset.addEphemeralConstant("randOptimizer", partial(random.randint, 0, len(Optimizer)-1), Optimizer)
+pset.addEphemeralConstant("randWeights", partial(random.randint, 0, len(Weights)-1), Weights)
+pset.addEphemeralConstant("randBoolWeight", partial(random.randint, 0, len(BoolWeight)-1), BoolWeight)
+pset.addEphemeralConstant("randConvNeXtSize", partial(random.randint, 0, len(ConvNeXtSize)-1), ConvNeXtSize)
+pset.addEphemeralConstant("randDenseNetSize", partial(random.randint, 0, len(DenseNetSize)-1), DenseNetSize)
+pset.addEphemeralConstant("randEfficientNet_V2Size", partial(random.randint, 0, len(EfficientNet_V2Size)-1), EfficientNet_V2Size)
+pset.addEphemeralConstant("randMobileNet_V3Size", partial(random.randint, 0, len(MobileNet_V3Size)-1), MobileNet_V3Size)
+pset.addEphemeralConstant("randRegNetSize", partial(random.randint, 0, len(RegNetSize)-1), RegNetSize)
+pset.addEphemeralConstant("randResNeXtSize", partial(random.randint, 0, len(ResNeXtSize)-1), ResNeXtSize)
+pset.addEphemeralConstant("randResNetSize", partial(random.randint, 0, len(ResNetSize)-1), ResNetSize)
+pset.addEphemeralConstant("randShuffleNet_V2Size", partial(random.randint, 0, len(ShuffleNet_V2Size)-1), ShuffleNet_V2Size)
+pset.addEphemeralConstant("randSwin_V2Size", partial(random.randint, 0, len(Swin_V2Size)-1), Swin_V2Size)
+pset.addEphemeralConstant("randViTSize", partial(random.randint, 0, len(ViTSize)-1), ViTSize)
+pset.addEphemeralConstant("randWide_ResNetSize", partial(random.randint, 0, len(Wide_ResNetSize)-1), Wide_ResNetSize)
