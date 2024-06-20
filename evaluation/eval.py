@@ -25,25 +25,31 @@ import pandas as pd
 from core.dataset import NewDataset
 from torch.utils.data import DataLoader
 from codec import Codec
-from torch.optim import lr_scheduler
+from torch.optim import lr_scheduler, optimizer
+import inspect
+import pickle
 
 def engine(cfg, genome):
 
-    # retrieves relevant codec attributes from the config and instantiates model
+    # retrieves codec arguments from the config and decodes the genome into a model_dict
     genome_encoding_strat = cfg['genome_encoding_strat']
-    surrogate_encoding_strat = cfg['surrogate_encoding_strat']
     num_classes = cfg['num_classes']
-    codec = Codec(genome_encoding_strat, surrogate_encoding_strat, num_classes)
-    model_dict = codec.decode_genome(genome)
-    # pytorch model: input = 4D tensor -> [batch_size, num_channels, width, height], output = 2D tensor -> []
+    num_loss_comp = cfg['num_loss_components']
+    codec = Codec(genome_encoding_strat, num_classes)
+
+    # dictionary contains model, and other information encoded in the genome (loss, optimizer)
+    model_dict = codec.decode_genome(genome, num_loss_comp)
+
+    # pytorch model: input = 4D tensor -> [batch_size, num_channels, width, height],
     model = model_dict['model']
 
-    device = torch.device('cuda') if torch.cuda.is_avauilable() else torch.device('cpu')
+    # move model to device and retrieve trainable parameters
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     model.to(device)
     params = [p for p in model.parameters() if p.requires_grad]
 
-    # TO DO: implement later
-    batch_size = dynamic_batch_size(model)
+    # note: use dynamic_batch_size function when implemented
+    batch_size = cfg['batch_size']
 
     # TO DO: implement later
     train_loader, val_loader = prepare_data(cfg)
@@ -53,47 +59,44 @@ def engine(cfg, genome):
     iou_thresh = model_dict['iou_thresh']
     conf_thresh = model_dict['conf_thresh']
 
-    # tensor of dim [4]
-    # note: may have to re-normalize
+    # 1D tensor of dim [4] -> [iou_w, giou_w, diou_w, ciou_w]
+    # note: may have to re-normalize, depending on loss function components
     loss_weights = model_dict['loss_weights']
     # pull priortized iou function from highest weight in vector
-    iou_type = pass
+    _, max_weight_idx = torch.max(loss_weights, dim=0)
+    iou_type = loss_weights[max_weight_idx]
 
-    optimizer = get_optimizer(model_dict)
-    # TO Do: adjust lr scheduler parameters
-    scheduler = model_dict['scheduler'] if 'scheduler' in model_dict else lr_scheduler.CosineAnnealingWarmRestarts(optimizer, )
-    
-    # initialize loss function
-    # criterion = c.ComboLoss(bbox_loss, cls_loss, bbox_weight, cls_weight)
+    # Use model_dict to retrieve optimizer and scheduler
+    optimizer = get_optimizer(params, model_dict)
+    scheduler = get_scheduler(optimizer, model_dict)
 
-    # dictionary used to map (flight_id, frame_id) -> output dictionary { 'boxes': [box1, box2, ...], 'scores': }
-    all_preds = {}
-
+    # all_preds = {epoch_num -> epoch_preds = { (flight_id, frame_id) -> output dictionary { 'boxes': [box1, box2, ...], 'scores': ... }}}
+    all_preds = []
     # create pandas dataframe where each row is different epoch of metrics
-    metrics_df = u.create_metrics_df(num_epochs)
+    metrics_df = pd.DataFrame(columns=['epoch_num', 'train_epoch_loss', 'val_epoch_loss', 'precision', 'recall', 'f1_score', 'average_precision', 'true_positives', 'false_positives', 'false_negatives'])
 
     # training loop
     for epoch in range(1, num_epochs + 1):
+       
+        # epoch_preds = { (flight_id, frame_id) -> output dictionary { 'boxes': [box1, box2, ...], 'scores': ... }}
+        epoch_preds = {}
 
-       train_epoch_loss = train_one_epoch(model, train_loader, loss_weights, criterion, optimizer, scheduler)
+        # train and validate
+        train_epoch_loss = train_one_epoch(model, device, train_loader, loss_weights, optimizer, scheduler)
+        epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, epoch_preds)
 
-        # save model checkpoint with weights
-        torch.save({
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'loss': train_epoch_loss.item()
-        }, outdir)
+        # update metrics_df and all_preds with current epoch's data
+        epoch_metrics['epoch_num'] = epoch
+        epoch_metrics['train_epoch_loss'] = train_epoch_loss
+        metrics_df = metrics_df.append(epoch_metrics, ignore_index=True)
+        all_preds[epoch - 1] = epoch_preds
 
-        # retrieve metrics for one epoch of validation
-        epoch_metrics = val_one_epoch(model, val_loader, iou_thresh, conf_thresh, loss_weights, criterion, all_preds)
-        epoch_metrics['epoch'] = epoch
-
-        # log metrics in dataframe
-        u.log_epoch_metrics(metrics_df, epoch, epoch_metrics)
+        # save metrics_df, best/last epochs, predictions to disc
+        save_best_last_epochs(model, metrics_df, epoch)
+        store_data(metrics_df, all_preds)
 
 # function to train the model for one epoch
-def train_one_epoch(model, train_loader, loss_weights, criterion, optimizer, scheduler):
+def train_one_epoch(model, device, train_loader, loss_weights, optimizer, scheduler):
     # set model to training mode
     model.train()
 
@@ -102,16 +105,16 @@ def train_one_epoch(model, train_loader, loss_weights, criterion, optimizer, sch
     num_images = 0
 
     # loader yields each batch as a tuple (images, targets)
-    # iterates through each batch
-    for images, targets in tqdm(train_loader):
+    data_iter = tqdm(train_loader)
+    for images, targets in data_iter:
 
-        # list of image tensors in the batch of shape [channels, height, width]
-        images = [img.cuda() for img in images]
+        # list of image numpy arrays in the batch of shape [channels, height, width] -> [3, 2048. 2488]
+        images = [numpy_to_tensor(img, device) for img in images]
 
         # list of dictionaries where each represents the ground-truth data of one image in the batch
         # each dictionary contains tensor 'boxes' of shape [num_bboxes, 4]
         # each box is represented as [left, top, width, height]
-        targets = [{k: v.cuda() for k, v in t.items()} for t in targets]
+        targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
         # list of dictionaries where each represents the predicted data for one image in the batch
         # each dictionary also contains boxes 2D tensor and scores 1D tensor
@@ -142,12 +145,14 @@ def train_one_epoch(model, train_loader, loss_weights, criterion, optimizer, sch
     train_epoch_loss /= num_images
     scheduler.step()
 
-    # To DO: also return train time with logger
-    return train_epoch_loss
+    # returns dict of metrics from one epoch
+    return {
+        'train_epoch_loss': train_epoch_loss,
+    }
 
 
 # function to validate model for one epoch
-def val_one_epoch(model, val_loader, iou_thresh, conf_thresh, loss_weights, criterion, iou_type, all_preds):
+def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds):
     # set model to evaluation mode
     model.eval()
 
@@ -167,8 +172,9 @@ def val_one_epoch(model, val_loader, iou_thresh, conf_thresh, loss_weights, crit
         data_iter = tqdm(val_loader)
         # iterates by batch
         for images, targets in data_iter:
-            images = [img.cuda() for img in images]
-            targets = [{k: v.cuda() for k, v in t.items()} for t in targets]
+            # convert image numpy array to tensor and move to device
+            images = [numpy_to_tensor(img, device) for img in images]
+            targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
             # list of output dictionaries, where each corresponds to the predictions for an img in the batch
             outputs = model(images)
@@ -188,7 +194,7 @@ def val_one_epoch(model, val_loader, iou_thresh, conf_thresh, loss_weights, crit
                 frame_id = targets[i]['id']
 
                 # save predictied model outputs in all_preds dictionary
-                all_preds[(flight_id, frame_id)] = output
+                epoch_preds[(flight_id, frame_id)] = output
 
                 # gets the bboxes that actually match from the predictions and truths, as well as false positive and false negative predictions
                 matches, fp, fn = u.match_boxes(pred_boxes, true_boxes, iou_thresh, conf_thresh, "val", iou_type)
@@ -221,6 +227,7 @@ def val_one_epoch(model, val_loader, iou_thresh, conf_thresh, loss_weights, crit
     val_epoch_loss /= num_images
 
     # calculate per-epoch metrics
+    # note: accumulators are meaned
     epoch_pre = sum(total_precisions) / len(total_precisions)
     epoch_rec = sum (total_recalls) / len(total_recalls)
     epoch_f1 = 2 * (epoch_pre * epoch_rec) / (epoch_pre + epoch_rec)
@@ -228,7 +235,7 @@ def val_one_epoch(model, val_loader, iou_thresh, conf_thresh, loss_weights, crit
 
     # returns dict of metrics from one epoch
     return {
-        'epoch_loss': val_epoch_loss,
+        'val_epoch_loss': val_epoch_loss,
         'precision': epoch_pre,
         'recall': epoch_rec,
         'f1_score': epoch_f1,
@@ -238,28 +245,174 @@ def val_one_epoch(model, val_loader, iou_thresh, conf_thresh, loss_weights, crit
         'false_negatives': total_fn,
     }
 
-# returns iterable train and validation dataloaders using custom dataloader defined
-# TO DO: implement provided data loader class
+# returns iterable train and validation dataloaders 
 def prepare_data(batch_size=64):
+
+    # TO DO: validate paths
     notebook_path = os.path.dirname(os.path.realpath("__file__"))
-    local_path = notebook_path + '/data/part1' #this might need to be changed
+    local_path = notebook_path + '/data/part1'
     s3_path = 's3://airborne-obj-detection-challenge-training/part1/'
-    dataset = NewDataset(local_path, s3_path, partial=True, prefix="part1")
-    train_loader = DataLoader(dataset, batch_size, shuffle=True)
-    val_loader = DataLoader(dataset, batch_size, shuffle=True)
+
+    # TO DO: ensure that custom dataset is fully built out to support data processing
+    train_dataset = AOTDataset(local_path, s3_path, partial=True, prefix="part1")
+    val_dataset = AOTDataset(local_path, s3_path, partial=True, prefix="part2")
+
+    train_loader = DataLoader(train_dataset, batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size, shuffle=True)
     return train_loader, val_loader
 
+# TO DO: implement this function
 def dynamic_batch_size(model):
-    return
+    return 64
 
-def store_metrics(metrics_df: pd.DataFrame, best_epoch: dict, outdir: str): # stores all metrics for an individual. Expects a dataframe and a dict for the best epoch metrics
-    all_metrics_out = f'{outdir}/generation_{gen_num}/{hash}/metrics.csv'
-    best_epoch_out = f'{outdir}/generation_{gen_num}/{hash}/best_epoch.csv'
-    os.makedirs(os.path.dirname(all_metrics_out), exist_ok=True)
-    metrics_df.to_csv(all)
-    with open(best_epoch_out, 'w') as fh:
-        fh.write(json.dumps(best_epoch))
+# converts numpy array to tensor and moves it to the device
+def numpy_to_tensor(image, device):
+    img = torch.tensor(image, dtype=torch.float32)
+    # if image is in [height, width, channels], convert to expected shape of [channels, height, width]
+    # tensor.permute changes the order of dimensions in a tensor
+    img = img.permute(2, 0, 1)
+    return img.to(device)
 
+# saves latest model's weights to disc and checks if current epoch is also the best epoch
+def save_best_last_epochs(model, metrics_df, curr_epoch):
+    last_epoch_out = f'{outdir}/generation_{gen_num}/{hash}/last_epoch.pth'
+    best_epoch_out = f'{outdir}/generation_{gen_num}/{hash}/best_epoch.pth'
+
+    # create directories if they don't exist
+    os.makedirs(os.path.dirname(last_epoch_out), exist_ok=True)
+    os.makedirs(os.path.dirname(best_epoch_out), exist_ok=True)
+    
+    # save last epoch weights
+    torch.save(model.state_dict(), last_epoch_out)
+    
+    # retrieve best epoch as epoch with lowest validation loss
+    best_epoch = metrics_df['val_epoch_loss'].idxmin()
+    if curr_epoch == best_epoch:
+        torch.save(model.state_dict(), best_epoch_out)
+
+# saves all model metrics and predictions to disc
+def store_data(metrics_df: pd.DataFrame, all_preds: dict):
+    metrics_out = f'{outdir}/generation_{gen_num}/{hash}/metrics.csv'
+    pickled_preds_out = f'{outdir}/generation_{gen_num}/{hash}/predictions.pkl'
+    
+    # create directory if it doesn't exist
+    os.makedirs(os.path.dirname(metrics_out), exist_ok=True)
+    
+    # save metrics dataframe to CSV
+    metrics_df.to_csv(metrics_out, index=False)
+    
+    # pickle the all_preds dictionary
+    with open(pickled_preds_out, 'wb') as f:
+        # serializes all_preds dictionary and writes to out file
+        pickle.dump(all_preds, f)
+
+# returns learning rate scheduler based on configuration defined by the genome
+def get_scheduler(optimizer, model_dict):
+
+    # set default values for various potential scheduler params
+    default_params = {
+        'StepLR': {'step_size': 30, 'gamma': 0.1, 'last_epoch': -1},
+        'MultiStepLR': {'milestones': [30, 80], 'gamma': 0.1, 'last_epoch': -1},
+        'ExponentialLR': {'gamma': 0.1, 'last_epoch': -1},
+        'ReduceLROnPlateau': {'mode': 'min', 'factor': 0.1, 'patience': 10, 'threshold': 0.0001, 'cooldown': 0, 'min_lr': 0, 'eps': 1e-08},
+        'CosineAnnealingLR': {'T_max': 50, 'eta_min': 0, 'last_epoch': -1},
+        'CosineAnnealingWarmRestarts': {'T_0': 10, 'T_mult': 2, 'eta_min': 0, 'last_epoch': -1},
+        'OneCycleLR': {'max_lr': 0.1, 'total_steps': None, 'epochs': 10, 'steps_per_epoch': None, 'pct_start': 0.3, 'anneal_strategy': 'cos', 'cycle_momentum': True, 'base_momentum': 0.85, 'max_momentum': 0.95, 'div_factor': 25.0, 'final_div_factor': 1e4, 'three_phase': False, 'last_epoch': -1, 'verbose': False},
+        'ConstantLR': {'factor': 1.0, 'total_iters': 5},
+        'MultiplicativeLR': {'lr_lambda': lambda epoch: 0.95, 'last_epoch': -1},
+        'LambdaLR': {'lr_lambda': lambda epoch: 1, 'last_epoch': -1},
+        'LinearLR': {'start_factor': 0.1, 'end_factor': 1.0, 'total_iters': 5, 'last_epoch': -1},
+        'PolynomialLR': {'max_lr': 0.1, 'total_steps': 10, 'power': 1.0, 'last_epoch': -1},
+        'ChainedScheduler': {'schedulers': [], 'last_epoch': -1},
+        'CyclicLR': {'base_lr': 0.001, 'max_lr': 0.1, 'step_size_up': 2000, 'step_size_down': None, 'mode': 'triangular', 'gamma': 1.0, 'scale_fn': None, 'scale_mode': 'cycle', 'cycle_momentum': True, 'base_momentum': 0.8, 'max_momentum': 0.9, 'last_epoch': -1},
+        'SequentialLR': {'schedulers': [], 'milestones': []},
+    }
+
+    # get scheduler type, StepLR is default
+    scheduler_type = model_dict.get('lr_scheduler', 'StepLR')
+    # map scheduler types to their respective classes and retrieve the class
+    scheduler_class_map = {
+        'StepLR': lr_scheduler.StepLR,
+        'MultiStepLR': lr_scheduler.MultiStepLR,
+        'ExponentialLR': lr_scheduler.ExponentialLR,
+        'ReduceLROnPlateau': lr_scheduler.ReduceLROnPlateau,
+        'CosineAnnealingLR': lr_scheduler.CosineAnnealingLR,
+        'CosineAnnealingWarmRestarts': lr_scheduler.CosineAnnealingWarmRestarts,
+        'OneCycleLR': lr_scheduler.OneCycleLR,
+        'ConstantLR': lr_scheduler.ConstantLR,
+        'MultiplicativeLR': lr_scheduler.MultiplicativeLR,
+        'LambdaLR': lr_scheduler.LambdaLR,
+        'LinearLR': lr_scheduler.LinearLR,
+        'PolynomialLR': lr_scheduler.PolynomialLR,
+        'ChainedScheduler': lr_scheduler.ChainedScheduler,
+        'CyclicLR': lr_scheduler.CyclicLR,
+        'SequentialLR': lr_scheduler.SequentialLR
+    }
+    scheduler_class = scheduler_class_map.get(scheduler_type)
+    scheduler_defaults = default_params.get(scheduler_type)
+
+    # update default_params with values from model_dict if they exist
+    scheduler_params = {k: model_dict.get(f'lr_{k}', v) for k, v in scheduler_defaults.items()}
+
+    # get scheduler signature and filter the parameters that are valid for the scheduler
+    sig = inspect.signature(scheduler_class)
+    valid_params = {k: v for k, v in scheduler_params.items() if k in sig.parameters}
+    valid_params['optimizer'] = optimizer
+
+    # instantiate scheduler with correct parameters
+    scheduler = scheduler_class(**valid_params)
+    return scheduler
+
+# returns optimizer based on configuration defined by the genome
+def get_optimizer(params, model_dict):
+
+    # set default values for various potential optimizer parameters
+    default_params = {
+        'SGD': {'lr': 0.1, 'momentum': 0.9, 'weight_decay': 0, 'dampening': 0, 'nesterov': False},
+        'Adadelta': {'lr': 1.0, 'rho': 0.9, 'eps': 1e-6, 'weight_decay': 0},
+        'Adagrad': {'lr': 0.01, 'lr_decay': 0, 'weight_decay': 0, 'eps': 1e-10},
+        'Adam': {'lr': 0.001, 'betas': (0.9, 0.999), 'eps': 1e-8, 'weight_decay': 0, 'amsgrad': False},
+        'AdamW': {'lr': 0.001, 'betas': (0.9, 0.999), 'eps': 1e-8, 'weight_decay': 0.01, 'amsgrad': False},
+        'SparseAdam': {'lr': 0.001, 'betas': (0.9, 0.999), 'eps': 1e-8},
+        'Adamax': {'lr': 0.002, 'betas': (0.9, 0.999), 'eps': 1e-8, 'weight_decay': 0},
+        'ASGD': {'lr': 0.01, 'lambd': 1e-4, 'alpha': 0.75, 't0': 1e6, 'weight_decay': 0},
+        'LBFGS': {'lr': 1.0, 'max_iter': 20, 'max_eval': None, 'tolerance_grad': 1e-5, 'tolerance_change': 1e-9, 'history_size': 100, 'line_search_fn': None},
+        'NAdam': {'lr': 0.002, 'betas': (0.9, 0.999), 'eps': 1e-8, 'weight_decay': 0, 'momentum_decay': 0.004},
+        'RAdam': {'lr': 0.001, 'betas': (0.9, 0.999), 'eps': 1e-8, 'weight_decay': 0},
+        'RMSprop': {'lr': 0.01, 'alpha': 0.99, 'eps': 1e-8, 'weight_decay': 0, 'momentum': 0, 'centered': False},
+        'Rprop': {'lr': 0.01, 'etas': (0.5, 1.2), 'step_sizes': (1e-6, 50)},
+    }
+
+    # retrive optimizer type from model_dict and using class mapping to obtain actual optimizer class
+    optimizer_type = model_dict.get('optimizer', 'SGD')
+    optimizer_class_map = {
+        'SGD': optim.SGD,
+        'Adadelta': optim.Adadelta,
+        'Adam': optim.Adam,
+        'AdamW': optim.AdamW,
+        'SparseAdam': optim.SparseAdam,
+        'Adamax': optim.Adamax,
+        'Adagrad': optim.Adagrad,
+        'ASGD': optim.ASGD,
+        'LBFGS': optim.LBFGS,
+        'NAdam': optim.NAdam,
+        'RMSprop': optim.RMSprop,
+        'Rprop': optim.Rprop
+    }
+    optimizer_class = optimizer_class_map.get(optimizer_type)
+    optimizer_defaults = default_params.get(optimizer_type, {})
+
+    # retrieve any non-default optimizer params from model_dict
+    optimizer_params = {k: model_dict.get(f'optimizer_{k}', v) for k, v in optimizer_defaults.items()}
+
+    # filters passed in parameters based on optimizer signature
+    sig = inspect.signature(optimizer_class)
+    valid_params = {k: v for k, v in optimizer_params.items() if k in sig.parameters}
+    valid_params['params'] = params
+
+    # instantiate the optimizer with the valid parameters
+    optimizer = optimizer_class(**valid_params)
+    return optimizer
 
 if __name__ == "__main__": # makes sure this happens if the script is being run directly
     # parses arguments from sbatch job
@@ -279,12 +432,12 @@ if __name__ == "__main__": # makes sure this happens if the script is being run 
     all_config = pipeline_config | codec_config
 
     # load generated input for current generation
-    with open(f'{infile}', 'r') as input_file:
-        file = list(csv.reader(input_file))
-        line = file[int(index)+1]
-        gen_num = line[0]
-        hash = line[1]
-        genome = line[2]
-
+    input_file = open(f'{infile}', 'r')
+    file = list(csv.reader(input_file))
+    line = file[int(index)+1]
+    gen_num = line[0]
+    hash = line[1]
+    genome = line[2]
+    input_file.close()
     # passes in the command-line args to begin the evaluation
     engine(all_config, genome) # note genome is still in string form

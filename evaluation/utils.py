@@ -252,30 +252,30 @@ def AP(precision, recall, case=1):
     
     return AP
 
-# initializes dataframes with columns for each metric and rows for each epoch
-def create_metrics_df(num_epochs):
-    return pd.DataFrame({
-    'epoch': range(1, num_epochs + 1),
-    'epoch_loss': [None] * num_epochs,
-    'precision': [None] * num_epochs,
-    'recall': [None] * num_epochs,
-    'f1_score': [None] * num_epochs,
-    'average_precision': [None] * num_epochs,
-    'true_positives': [None] * num_epochs,
-    'false_positives': [None] * num_epochs,
-    'false_negatives': [None] * num_epochs
-})
+# # initializes dataframes with columns for each metric and rows for each epoch
+# def create_metrics_df():
+#     return pd.DataFrame({
+#     'epoch': range(1, num_epochs + 1),
+#     'epoch_loss': [None] * num_epochs,
+#     'precision': [None] * num_epochs,
+#     'recall': [None] * num_epochs,
+#     'f1_score': [None] * num_epochs,
+#     'average_precision': [None] * num_epochs,
+#     'true_positives': [None] * num_epochs,
+#     'false_positives': [None] * num_epochs,
+#     'false_negatives': [None] * num_epochs
+# })
 
-# updates metrics dataframe with metrics for a single epoch
-def log_epoch_metrics(metrics_df, epoch, epoch_metrics):
-    metrics_df.loc[metrics_df['epoch'] == epoch, 'epoch_loss'] = epoch_metrics['epoch_loss']
-    metrics_df.loc[metrics_df['epoch'] == epoch, 'precision'] = epoch_metrics['precision']
-    metrics_df.loc[metrics_df['epoch'] == epoch, 'recall'] = epoch_metrics['recall']
-    metrics_df.loc[metrics_df['epoch'] == epoch, 'f1_score'] = epoch_metrics['f1_score']
-    metrics_df.loc[metrics_df['epoch'] == epoch, 'average_precision'] = epoch_metrics['average_precision']
-    metrics_df.loc[metrics_df['epoch'] == epoch, 'true_positives'] = epoch_metrics['true_positives']
-    metrics_df.loc[metrics_df['epoch'] == epoch, 'false_positives'] = epoch_metrics['false_positives']
-    metrics_df.loc[metrics_df['epoch'] == epoch, 'false_negatives'] = epoch_metrics['false_negatives']
+# # updates metrics dataframe with metrics for a single epoch
+# def log_epoch_metrics(metrics_df, epoch, epoch_metrics):
+#     metrics_df.loc[metrics_df['epoch'] == epoch, 'epoch_loss'] = epoch_metrics['epoch_loss']
+#     metrics_df.loc[metrics_df['epoch'] == epoch, 'precision'] = epoch_metrics['precision']
+#     metrics_df.loc[metrics_df['epoch'] == epoch, 'recall'] = epoch_metrics['recall']
+#     metrics_df.loc[metrics_df['epoch'] == epoch, 'f1_score'] = epoch_metrics['f1_score']
+#     metrics_df.loc[metrics_df['epoch'] == epoch, 'average_precision'] = epoch_metrics['average_precision']
+#     metrics_df.loc[metrics_df['epoch'] == epoch, 'true_positives'] = epoch_metrics['true_positives']
+#     metrics_df.loc[metrics_df['epoch'] == epoch, 'false_positives'] = epoch_metrics['false_positives']
+#     metrics_df.loc[metrics_df['epoch'] == epoch, 'false_negatives'] = epoch_metrics['false_negatives']
 
 
 # takes in pred_boxes -> [left, top, width, height, conf] and true_boxes -> [top, left, width, height]
