@@ -3,6 +3,8 @@
 # some enums still need to be defined and documented
 
 [pipeline]
+# initial population size
+initial_population_size = 100
 # population size
 population_size = 50
 # unsustainable population size
