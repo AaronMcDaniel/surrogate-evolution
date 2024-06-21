@@ -1,6 +1,7 @@
 from enum import Enum
 from functools import partial
 import itertools
+import math
 import os
 import random
 
@@ -98,6 +99,71 @@ class GenericInt(int):
         super().__init__()
     pass
 
+class LearningRate(float):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class Momentum(float):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class WeightDecay(float):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class Dampening(float):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class RhoValue(float):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class Lambd(float):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class Alpha(float):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class To(float):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class MomentumDecay(float):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class ETALowerBound(float):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class ETAUpperBound(float):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class StepLowerBound(float):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class StepUpperBound(float):
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
 
 # input parameters that are enums
 class PaddingMode(Enum):
@@ -186,7 +252,7 @@ class BoolWeight(Enum):
     WEIGHTTRUE = 1
 
 class Optimizer(Enum):
-    Adelta = 0,
+    Adadelta = 0,
     Adagrad = 1,
     Adam = 2,
     AdamW = 3,
@@ -376,6 +442,41 @@ def ViT(tensor: Tensor3D, vitsize: ViTSize, weights: Weights):
 
 def Wide_ResNet(tensor: Tensor3D, wideresnetsize: Wide_ResNetSize, weights: Weights):
     return Tensor3D()
+
+
+# Optimizers
+def SGD(lr: LearningRate, momentum: ProbFloat, weight_decay: WeightDecay, dampening: Dampening):
+    return Optimizer()
+
+def Adadelta(lr: LearningRate, rho: RhoValue, weight_decay: WeightDecay):
+    return Optimizer()
+
+def Adagrad(lr: LearningRate, weight_decay: WeightDecay):
+    return Optimizer()
+
+def Adam(lr: LearningRate, weight_decay: WeightDecay, amsgrad: bool):
+    return Optimizer()
+
+def AdamW(lr: LearningRate, weight_decay: WeightDecay, amsgrad: bool):
+    return Optimizer()
+
+def Adamax(lr: LearningRate, weight_decay: WeightDecay):
+    return Optimizer()
+
+def ASGD(lr: LearningRate, lambd: Lambd, alpha: Alpha, t0: To, weight_decay: WeightDecay):
+    return Optimizer()
+
+def NAdam(lr: LearningRate, weight_decay: WeightDecay, momentum_decay: MomentumDecay, decoupled_weight_decay: bool):
+    return Optimizer()
+
+def RAdam(lr: LearningRate, weight_decay: WeightDecay, decoupled_weight_decay: bool):
+    return Optimizer()
+
+def RMSprop(lr: LearningRate, momentum: ProbFloat, alpha: Alpha, centered: bool, weight_decay: WeightDecay):
+    return Optimizer()
+
+def Rprop(lr: LearningRate, eta_lower: ETALowerBound, eta_upper: ETAUpperBound, step_lower: StepLowerBound, step_upper: StepUpperBound, weight_decay: WeightDecay):
+    return Optimizer()
 
 
 # creating primitive set from layers and components
@@ -627,6 +728,53 @@ def toPNorm(a):
 def toProbFloat(a):
     return a%1
 
+# helper method to transform values
+def transform_value(value, lower_bound, upper_bound):
+    # Apply the exponential decay function
+    transformed = 1 / math.exp(value)
+    # Scale the transformed value to the provided bounds
+    scaled_value = lower_bound + (upper_bound - lower_bound) * transformed
+    return scaled_value
+
+def toLearningRate(a):
+    return LearningRate(transform_value(a, 1e-5, 1.0))
+
+def toMomentum(a):
+    return Momentum(transform_value(a, 0.8, 0.99))
+
+def toWeightDecay(a):
+    return WeightDecay(transform_value(a, 1e-5, 1e-2))
+
+def toDampening(a):
+    return Dampening(transform_value(a, 0.0, 0.1))
+
+def toRhoValue(a):
+    return RhoValue(transform_value(a, 0.9, 0.999))
+
+def toLambd(a):
+    return Lambd(transform_value(a, 1e-5, 0.1))
+
+def toAlpha(a):
+    return Alpha(transform_value(a, 1e-6, 0.1))
+
+def toTo(a):
+    return To(transform_value(a, 1e-5, 0.1))
+
+def toMomentumDecay(a):
+    return MomentumDecay(transform_value(a, 1e-5, 0.999))
+
+def toETALowerBound(a):
+    return ETALowerBound(transform_value(a, 1e-5, 0.1))
+
+def toETAUpperBound(a):
+    return ETAUpperBound(transform_value(a, 1e-5, 0.1))
+
+def toStepLowerBound(a):
+    return StepLowerBound(transform_value(a, 1e-5, 0.1))
+
+def toStepUpperBound(a):
+    return StepUpperBound(transform_value(a, 1e-5, 0.1))
+
 def dummyOp(input):
     return input
 
@@ -649,6 +797,19 @@ pset.addPrimitive(toGroup, [GenericInt], GroupSize)
 pset.addPrimitive(toSkip, [GenericInt], SkipSize)
 pset.addPrimitive(toPNorm, [float], PNorm)
 pset.addPrimitive(toProbFloat, [float], ProbFloat)
+# pset.addPrimitive(toLearningRate, [float], LearningRate)
+# pset.addPrimitive(toMomentum, [float], Momentum)
+# pset.addPrimitive(toWeightDecay, [float], WeightDecay)
+# pset.addPrimitive(toDampening, [float], Dampening)
+# pset.addPrimitive(toRhoValue, [float], RhoValue)
+# pset.addPrimitive(toLambd, [float], Lambd)
+# pset.addPrimitive(toAlpha, [float], Alpha)
+# pset.addPrimitive(toTo, [float], To)
+# pset.addPrimitive(toMomentumDecay, [float], MomentumDecay)
+# pset.addPrimitive(toETALowerBound, [float], ETALowerBound)
+# pset.addPrimitive(toETAUpperBound, [float], ETAUpperBound)
+# pset.addPrimitive(toStepLowerBound, [float], StepLowerBound)
+# pset.addPrimitive(toStepUpperBound, [float], StepUpperBound)
 pset.addPrimitive(dummyOp, [PaddingMode], PaddingMode)
 pset.addPrimitive(dummyOp, [UpsampleMode], UpsampleMode)
 pset.addPrimitive(dummyOp, [SkipMergeType], SkipMergeType)
