@@ -8,13 +8,14 @@ import random
 from deap import gp
 import toml
 
-
+# loading config file
 configs = toml.load(os.path.join(os.path.dirname(os.path.realpath(__file__)), "conf.toml"))
 pipeline_config = configs["pipeline"]
 codec_config = configs["codec"]
 num_loss_components = int(codec_config['num_loss_components'])
 
 
+# max bounds for layers
 MAX_CHANNEL_SIZE = 64
 MAX_KERNEL_SIZE = 9
 MAX_STRIDE_SIZE = 9
@@ -25,18 +26,9 @@ MAX_GROUP_SIZE = 1
 MAX_SKIP_SIZE = 5
 MAX_PNORM_SIZE = 3
 
-'''
-NOTE: 1D and 2D TENSOR LAYERS ARE NOW OBSOLETE AND SHOULD BE REMOVED AT SOME POINT
-'''
 
 # placeholder classes to act as types for DEAP's strongly typed primitive set
 class Tensor3D:
-    pass
-
-class Tensor2D:
-    pass
-
-class Tensor1D:
     pass
 
 class FinalTensor: # acts as an end type
@@ -94,75 +86,30 @@ class ProbFloat(float):
         super().__init__()
     pass
 
-class GenericInt(int):
+class GenericInt(int): # exists so that anything with GenericInt isn't treated as a superclass of other int-inheriting types
     def __init__(self, num) -> None:
         super().__init__()
     pass
 
-class LearningRate(float):
-    def __init__(self, num) -> None:
-        super().__init__()
-    pass
+class Optimizer(dict):
+    def __init__(self, initial_dict=None, **kwargs):
+        if initial_dict is None:
+            initial_dict = {}
+        super(Optimizer, self).__init__(initial_dict)
+        self.update(kwargs)
 
-class Momentum(float):
-    def __init__(self, num) -> None:
-        super().__init__()
-    pass
+    def __str__(self):
+        return super().__str__()
+    
+class Scheduler(dict):
+    def __init__(self, initial_dict=None, **kwargs):
+        if initial_dict is None:
+            initial_dict = {}
+        super(Optimizer, self).__init__(initial_dict)
+        self.update(kwargs)
 
-class WeightDecay(float):
-    def __init__(self, num) -> None:
-        super().__init__()
-    pass
-
-class Dampening(float):
-    def __init__(self, num) -> None:
-        super().__init__()
-    pass
-
-class RhoValue(float):
-    def __init__(self, num) -> None:
-        super().__init__()
-    pass
-
-class Lambd(float):
-    def __init__(self, num) -> None:
-        super().__init__()
-    pass
-
-class Alpha(float):
-    def __init__(self, num) -> None:
-        super().__init__()
-    pass
-
-class T0(float):
-    def __init__(self, num) -> None:
-        super().__init__()
-    pass
-
-class MomentumDecay(float):
-    def __init__(self, num) -> None:
-        super().__init__()
-    pass
-
-class ETALowerBound(float):
-    def __init__(self, num) -> None:
-        super().__init__()
-    pass
-
-class ETAUpperBound(float):
-    def __init__(self, num) -> None:
-        super().__init__()
-    pass
-
-class StepLowerBound(float):
-    def __init__(self, num) -> None:
-        super().__init__()
-    pass
-
-class StepUpperBound(float):
-    def __init__(self, num) -> None:
-        super().__init__()
-    pass
+    def __str__(self):
+        return super().__str__()
 
 
 # input parameters that are enums
@@ -251,16 +198,6 @@ class BoolWeight(Enum):
     WEIGHTFALSE = 0,
     WEIGHTTRUE = 1
 
-class Optimizer(dict):
-    def __init__(self, initial_dict=None, **kwargs):
-        if initial_dict is None:
-            initial_dict = {}
-        super(Optimizer, self).__init__(initial_dict)
-        self.update(kwargs)
-
-    def __str__(self):
-        return super().__str__()
-
 
 # Conv layers
 def LazyConv2d(tensor: Tensor3D, out_channels: ChannelSize, kernel_size0: KernelSize, kernel_size1: KernelSize, stride0: StrideSize, stride1: StrideSize, padding0: PaddingSize, padding1: PaddingSize, padding_mode: PaddingMode, 
@@ -299,47 +236,23 @@ def AdaptiveAvgPool2d(tensor: Tensor3D, output_size0: OutputSize, output_size1: 
 def ReLU_2D(tensor: Tensor3D):
     return Tensor3D()
 
-def ReLU_1D(tensor: Tensor1D):
-    return Tensor1D()
-
 def LeakyReLU_2D(tensor: Tensor3D, negative_slope: float):
     return Tensor3D()
-
-def LeakyReLU_1D(tensor: Tensor1D, negative_slope: float):
-    return Tensor1D()
 
 def RReLU_2D(tensor: Tensor3D, lower: float, upper: float):
     return Tensor3D()
 
-def RReLU_1D(tensor: Tensor1D, lower: float, upper: float):
-    return Tensor1D()
-
 def LogSigmoid_2D(tensor: Tensor3D):
     return Tensor3D()
-
-def LogSigmoid_1D(tensor: Tensor1D):
-    return Tensor1D()
 
 def Sigmoid_2D(tensor: Tensor3D):
     return Tensor3D()
 
-def Sigmoid_1D(tensor: Tensor1D):
-    return Tensor1D()
-
 def Tanh_2D(tensor: Tensor3D):
     return Tensor3D()
 
-def Tanh_1D(tensor: Tensor1D):
-    return Tensor1D()
-
 def Threshold_2D(tensor: Tensor3D, threshold: float, value: float):
     return Tensor3D()
-
-def Threshold_1D(tensor: Tensor1D, threshold: float, value: float):
-    return Tensor1D()
-
-def Softmax(tensor: Tensor1D):
-    return Tensor1D()
 
 
 # TODO: MultiHeadAttention
@@ -352,27 +265,11 @@ def LazyBatchNorm2d(tensor: Tensor3D, eps: float, momentum: float):
 def Dropout_2D(tensor: Tensor3D, p: ProbFloat):
     return Tensor3D()
 
-def Dropout_1D(tensor: Tensor1D, p: ProbFloat):
-    return Tensor1D()
-
-
-# Flatten layers
-def Flatten(tensor: Tensor3D | Tensor2D | Tensor1D):
-    return Tensor1D()
-
-
-# Linear layers
-def LazyLinear(tensor: Tensor1D, out_features: OutputSize):
-    return Tensor1D()
-
 
 # TODO: transformer layers
 
 
 # Vision layers
-def Upsample_1D(tensor: Tensor1D, scaling_factor: float, mode: UpsampleMode):
-    return Tensor1D()
-    
 def Upsample_2D(tensor: Tensor3D, scaling_factor: float, mode: UpsampleMode):
     return Tensor3D()
 
@@ -383,9 +280,6 @@ def Upsample_2D(tensor: Tensor3D, scaling_factor: float, mode: UpsampleMode):
 # layers or similar to make it work.  
 def Skip_2D(tensor: Tensor3D, skip_by: SkipSize, merge_type: SkipMergeType):
     return Tensor3D()
-
-def Skip_1D(tensor: Tensor1D, skip_by: SkipSize, merge_type: SkipMergeType):
-    return Tensor1D()
 
 
 # TODO: Heads
@@ -438,38 +332,151 @@ def Wide_ResNet(tensor: Tensor3D, wideresnetsize: Wide_ResNetSize, weights: Weig
 
 
 # Optimizers
-def SGD(lr: LearningRate, momentum: ProbFloat, weight_decay: WeightDecay, dampening: Dampening):
+def SGD(lr: float, momentum: float, weight_decay: float, dampening: float) -> Optimizer:
+    lr = transform_value(lr, 1e-5, 1)
+    momentum = transform_value(momentum, 0, 1)
+    weight_decay = transform_value(weight_decay, 0, 1)
+    dampening = transform_value(dampening, 0, 1)
     return Optimizer({'optimizer': 'SGD', 'lr': lr, 'momentum': momentum, 'weight_decay': weight_decay, 'dampening': dampening})
 
-def Adadelta(lr: LearningRate, rho: RhoValue, weight_decay: WeightDecay):
+def Adadelta(lr: float, rho: float, weight_decay: float) -> Optimizer:
+    lr = transform_value(lr, 1e-5, 1)
+    rho = transform_value(rho, 0.5, 1)
+    weight_decay = transform_value(weight_decay, 0, 1)
     return Optimizer({'optimizer': 'Adadelta', 'lr': lr, 'rho': rho, 'weight_decay': weight_decay})
 
-def Adagrad(lr: LearningRate, weight_decay: WeightDecay):
+def Adagrad(lr: float, weight_decay: float) -> Optimizer:
+    lr = transform_value(lr, 1e-5, 1)
+    weight_decay = transform_value(weight_decay, 0, 1)
     return Optimizer({'optimizer': 'Adagrad', 'lr': lr, 'weight_decay': weight_decay})
 
-def Adam(lr: LearningRate, weight_decay: WeightDecay, amsgrad: bool):
+def Adam(lr: float, weight_decay: float, amsgrad: bool) -> Optimizer:
+    lr = transform_value(lr, 1e-5, 1)
+    weight_decay = transform_value(weight_decay, 0, 1)
     return Optimizer({'optimizer': 'Adam', 'lr': lr, 'weight_decay': weight_decay, 'amsgrad': amsgrad})
 
-def AdamW(lr: LearningRate, weight_decay: WeightDecay, amsgrad: bool):
+def AdamW(lr: float, weight_decay: float, amsgrad: bool) -> Optimizer:
+    lr = transform_value(lr, 1e-5, 1)
+    weight_decay = transform_value(weight_decay, 0, 1)
     return Optimizer({'optimizer': 'AdamW', 'lr': lr, 'weight_decay': weight_decay, 'amsgrad': amsgrad})
 
-def Adamax(lr: LearningRate, weight_decay: WeightDecay):
+def Adamax(lr: float, weight_decay: float) -> Optimizer:
+    lr = transform_value(lr, 1e-5, 1)
+    weight_decay = transform_value(weight_decay, 0, 1)
     return Optimizer({'optimizer': 'Adamax', 'lr': lr, 'weight_decay': weight_decay})
 
-def ASGD(lr: LearningRate, lambd: Lambd, alpha: Alpha, t0: T0, weight_decay: WeightDecay):
+def ASGD(lr: float, lambd: float, alpha: float, t0: float, weight_decay: float) -> Optimizer:
+    lr = transform_value(lr, 1e-5, 1)
+    lambd = transform_value(lambd, 1e-5, 1)
+    alpha = transform_value(alpha, 1e-5, 1)
+    t0 = transform_value(t0, 1, 1e3)
+    weight_decay = transform_value(weight_decay, 0, 1)
     return Optimizer({'optimizer': 'ASGD', 'lr': lr, 'lambd': lambd, 'alpha': alpha, 't0': t0, 'weight_decay': weight_decay})
 
-def NAdam(lr: LearningRate, weight_decay: WeightDecay, momentum_decay: MomentumDecay, decoupled_weight_decay: bool):
+def NAdam(lr: float, weight_decay: float, momentum_decay: float, decoupled_weight_decay: bool) -> Optimizer:
+    lr = transform_value(lr, 1e-5, 1)
+    weight_decay = transform_value(weight_decay, 0, 1)
+    momentum_decay = transform_value(momentum_decay, 0.5, 1)
     return Optimizer({'optimizer': 'NAdam', 'lr': lr, 'weight_decay': weight_decay, 'momentum_decay': momentum_decay, 'decoupled_weight_decay': decoupled_weight_decay})
 
-def RAdam(lr: LearningRate, weight_decay: WeightDecay, decoupled_weight_decay: bool):
+def RAdam(lr: float, weight_decay: float, decoupled_weight_decay: bool) -> Optimizer:
+    lr = transform_value(lr, 1e-5, 1)
+    weight_decay = transform_value(weight_decay, 0, 1)
     return Optimizer({'optimizer': 'RAdam', 'lr': lr, 'weight_decay': weight_decay, 'decoupled_weight_decay': decoupled_weight_decay})
 
-def RMSprop(lr: LearningRate, momentum: ProbFloat, alpha: Alpha, centered: bool, weight_decay: WeightDecay):
-    return Optimizer({'optimizer': 'RMSProp', 'lr': lr, 'momentum': momentum, 'alpha': alpha, 'centered': centered, 'weight_decay': weight_decay})
+def RMSprop(lr: float, momentum: float, alpha: float, centered: bool, weight_decay: float) -> Optimizer:
+    lr = transform_value(lr, 1e-5, 1)
+    momentum = transform_value(momentum, 0, 1)
+    alpha = transform_value(alpha, 0.5, 1)
+    weight_decay = transform_value(weight_decay, 0, 1)
+    return Optimizer({'optimizer': 'RMSprop', 'lr': lr, 'momentum': momentum, 'alpha': alpha, 'centered': centered, 'weight_decay': weight_decay})
 
-def Rprop(lr: LearningRate, eta_lower: ETALowerBound, eta_upper: ETAUpperBound, step_lower: StepLowerBound, step_upper: StepUpperBound):
-    return Optimizer({'optimizer': 'RProp', 'lr': lr, 'eta_lower': eta_lower, 'eta_upper': eta_upper, 'step_lower': step_lower, 'step_upper': step_upper})
+def Rprop(lr: float, eta_lower: float, eta_upper: float, step_lower: float, step_upper: float) -> Optimizer:
+    lr = transform_value(lr, 1e-5, 1)
+    eta_lower = transform_value(eta_lower, 1e-7, 1e-2)
+    eta_upper = transform_value(eta_upper, 1e-3, 1)
+    step_lower = transform_value(step_lower, 1e-5, 1)
+    step_upper = transform_value(step_upper, 1, 100)
+    return Optimizer({'optimizer': 'Rprop', 'lr': lr, 'eta_lower': eta_lower, 'eta_upper': eta_upper, 'step_lower': step_lower, 'step_upper': step_upper})
+
+
+# Schedulers
+def StepLR(step_size: int, gamma: float) -> Scheduler:
+    step_size = int(transform_value(step_size, 1, 100))
+    gamma = transform_value(gamma, 0.01, 0.99)
+    return Scheduler({'scheduler': 'StepLR', 'step_size': step_size, 'gamma': gamma})
+
+def MultiStepLR(gamma: float) -> Scheduler:
+    gamma = transform_value(gamma, 0.01, 0.99)
+    return Scheduler({'scheduler': 'MultiStepLR', 'gamma': gamma})
+
+def ExponentialLR(gamma: float) -> Scheduler:
+    gamma = transform_value(gamma, 0.01, 0.99)
+    return Scheduler({'scheduler': 'ExponentialLR', 'gamma': gamma})
+
+# FIX MODE FOR REDUCELRONPLATEAU
+#
+
+def ReduceLROnPlateau(mode: str, factor: float, patience: int, threshold: float, cooldown: int, min_lr: float, eps: float) -> Scheduler:
+    factor = transform_value(factor, 0.01, 0.99)
+    patience = int(transform_value(patience, 1, 100))
+    threshold = transform_value(threshold, 1e-5, 1e-2)
+    cooldown = int(transform_value(cooldown, 0, 10))
+    min_lr = transform_value(min_lr, 0, 1e-2)
+    eps = transform_value(eps, 1e-8, 1e-4)
+    return Scheduler({'scheduler': 'ReduceLROnPlateau', 'mode': mode, 'factor': factor, 'patience': patience, 'threshold': threshold, 'cooldown': cooldown, 'min_lr': min_lr, 'eps': eps})
+
+def CosineAnnealingLR(T_max: int, eta_min: float) -> Scheduler:
+    T_max = int(transform_value(T_max, 1, 100))
+    eta_min = transform_value(eta_min, 0, 1e-2)
+    return Scheduler({'scheduler': 'CosineAnnealingLR', 'T_max': T_max, 'eta_min': eta_min})
+
+def CosineAnnealingWarmRestarts(T_0: int, T_mult: int, eta_min: float) -> Scheduler:
+    T_0 = int(transform_value(T_0, 1, 100))
+    T_mult = int(transform_value(T_mult, 1, 10))
+    eta_min = transform_value(eta_min, 0, 1e-2)
+    return Scheduler({'scheduler': 'CosineAnnealingWarmRestarts', 'T_0': T_0, 'T_mult': T_mult, 'eta_min': eta_min})
+
+# FIX ANNEAL STRATEGY!!!!!!
+# FIX TOTAL STEPS
+
+def OneCycleLR(max_lr: float, total_steps: int, epochs: int, steps_per_epoch: int, pct_start: float, anneal_strategy: str, cycle_momentum: bool, base_momentum: float, max_momentum: float, div_factor: float, final_div_factor: float, three_phase: bool) -> Scheduler:
+    max_lr = transform_value(max_lr, 1e-5, 1)
+    pct_start = transform_value(pct_start, 0, 1)
+    base_momentum = transform_value(base_momentum, 0.5, 1)
+    max_momentum = transform_value(max_momentum, 0.5, 1)
+    div_factor = transform_value(div_factor, 1, 100)
+    final_div_factor = transform_value(final_div_factor, 1, 1e5)
+    return Scheduler({'scheduler': 'OneCycleLR', 'max_lr': max_lr, 'total_steps': total_steps, 'epochs': epochs, 'steps_per_epoch': steps_per_epoch, 'pct_start': pct_start, 'anneal_strategy': anneal_strategy, 'cycle_momentum': cycle_momentum, 'base_momentum': base_momentum, 'max_momentum': max_momentum, 'div_factor': div_factor, 'final_div_factor': final_div_factor, 'three_phase': three_phase})
+
+def ConstantLR(factor: float, total_iters: int) -> Scheduler:
+    factor = transform_value(factor, 0.01, 1)
+    total_iters = int(transform_value(total_iters, 1, 100))
+    return Scheduler({'scheduler': 'ConstantLR', 'factor': factor, 'total_iters': total_iters})
+
+def LinearLR(start_factor: float, end_factor: float, total_iters: int) -> Scheduler:
+    start_factor = transform_value(start_factor, 0.01, 1)
+    end_factor = transform_value(end_factor, 0.01, 1)
+    total_iters = int(transform_value(total_iters, 1, 100))
+    return Scheduler({'scheduler': 'LinearLR', 'start_factor': start_factor, 'end_factor': end_factor, 'total_iters': total_iters})
+
+def PolynomialLR(max_lr: float, total_steps: int, power: float) -> Scheduler:
+    max_lr = transform_value(max_lr, 1e-5, 1)
+    total_steps = int(transform_value(total_steps, 1, 1000))
+    power = transform_value(power, 0.5, 3)
+    return Scheduler({'scheduler': 'PolynomialLR', 'max_lr': max_lr, 'total_steps': total_steps, 'power': power})
+
+# FIX MODE AND SCALE MODE!!!!
+# FIX This function
+
+def CyclicLR(base_lr: float, max_lr: float, step_size_up: int, step_size_down: int, mode: str, gamma: float, scale_fn, scale_mode: str, cycle_momentum: bool, base_momentum: float, max_momentum: float) -> Scheduler:
+    base_lr = transform_value(base_lr, 1e-5, 1)
+    max_lr = transform_value(max_lr, 1e-5, 1)
+    step_size_up = int(transform_value(step_size_up, 1, 10000))
+    gamma = transform_value(gamma, 0.5, 1)
+    base_momentum = transform_value(base_momentum, 0.5, 1)
+    max_momentum = transform_value(max_momentum, 0.5, 1)
+    return Scheduler({'scheduler': 'CyclicLR', 'base_lr': base_lr, 'max_lr': max_lr, 'step_size_up': step_size_up, 'step_size_down': step_size_down, 'mode': mode, 'gamma': gamma, 'scale_fn': scale_fn, 'scale_mode': scale_mode, 'cycle_momentum': cycle_momentum, 'base_momentum': base_momentum, 'max_momentum': max_momentum})
 
 
 # creating primitive set from layers and components
@@ -510,53 +517,25 @@ pset.addPrimitive(ReLU_2D,
                   [Tensor3D],
                   Tensor3D)
 
-pset.addPrimitive(ReLU_1D,
-                  [Tensor1D],
-                  Tensor1D)
-
 pset.addPrimitive(LeakyReLU_2D,
                   [Tensor3D, float],
                   Tensor3D)
-
-pset.addPrimitive(LeakyReLU_1D,
-                  [Tensor1D, float],
-                  Tensor1D)
 
 pset.addPrimitive(LogSigmoid_2D,
                   [Tensor3D],
                   Tensor3D)
 
-pset.addPrimitive(LogSigmoid_1D,
-                  [Tensor1D],
-                  Tensor1D)
-
 pset.addPrimitive(Sigmoid_2D,
                   [Tensor3D],
                   Tensor3D)
-
-pset.addPrimitive(Sigmoid_1D,
-                  [Tensor1D],
-                  Tensor1D)
 
 pset.addPrimitive(Tanh_2D,
                   [Tensor3D],
                   Tensor3D)
 
-pset.addPrimitive(Tanh_1D,
-                  [Tensor1D],
-                  Tensor1D)
-
 pset.addPrimitive(Threshold_2D,
                   [Tensor3D, float, float],
                   Tensor3D)
-
-pset.addPrimitive(Threshold_1D,
-                  [Tensor1D, float, float],
-                  Tensor1D)
-
-pset.addPrimitive(Softmax,
-                  [Tensor1D],
-                  Tensor1D)
 
 pset.addPrimitive(LazyBatchNorm2d,
                   [Tensor3D, float, float],
@@ -566,14 +545,6 @@ pset.addPrimitive(Dropout_2D,
                   [Tensor3D, ProbFloat],
                   Tensor3D)
 
-pset.addPrimitive(Dropout_1D,
-                  [Tensor1D, ProbFloat],
-                  Tensor1D)
-
-pset.addPrimitive(Upsample_1D,
-                  [Tensor1D, float, UpsampleMode],
-                  Tensor1D)
-
 pset.addPrimitive(Skip_2D,
                   [Tensor3D, SkipSize, SkipMergeType],
                   Tensor3D)
@@ -582,21 +553,9 @@ pset.addPrimitive(Detection_Head,
                   [Tensor3D, Optimizer] + list(itertools.repeat(float, num_loss_components)),
                   FinalTensor)
 
-pset.addPrimitive(Flatten,
-                  [Tensor3D],
-                  Tensor1D)
-
-pset.addPrimitive(LazyLinear,
-                  [Tensor1D, OutputSize],
-                  Tensor1D)
-
 pset.addPrimitive(Upsample_2D,
                   [Tensor3D, float, UpsampleMode],
                   Tensor3D)
-
-pset.addPrimitive(Skip_1D,
-                  [Tensor1D, SkipSize, SkipMergeType],
-                  Tensor1D)
 
 pset.addPrimitive(ConvNeXt,
                   [Tensor3D, ConvNeXtSize, BoolWeight],
@@ -655,47 +614,47 @@ pset.addPrimitive(Wide_ResNet,
                   Tensor3D)
 
 pset.addPrimitive(SGD,
-                  [LearningRate, ProbFloat, WeightDecay, Dampening],
+                  [float, float, float, float],
                   Optimizer)
 
 pset.addPrimitive(Adadelta,
-                  [LearningRate, RhoValue, WeightDecay],
+                  [float, float, float],
                   Optimizer)
 
 pset.addPrimitive(Adagrad,
-                  [LearningRate, WeightDecay],
+                  [float, float],
                   Optimizer)
 
 pset.addPrimitive(Adam,
-                  [LearningRate, WeightDecay, bool],
+                  [float, float, bool],
                   Optimizer)
 
 pset.addPrimitive(AdamW,
-                  [LearningRate, WeightDecay, bool],
+                  [float, float, bool],
                   Optimizer)
 
 pset.addPrimitive(Adamax,
-                  [LearningRate, WeightDecay],
+                  [float, float],
                   Optimizer)
 
 pset.addPrimitive(ASGD,
-                  [LearningRate, Lambd, Alpha, T0, WeightDecay],
+                  [float, float, float, float, float],
                   Optimizer)
 
 pset.addPrimitive(NAdam,
-                  [LearningRate, WeightDecay, MomentumDecay, bool],
+                  [float, float, float, bool],
                   Optimizer)
 
 pset.addPrimitive(RAdam,
-                  [LearningRate, WeightDecay, bool],
+                  [float, float, bool],
                   Optimizer)
 
 pset.addPrimitive(RMSprop,
-                  [LearningRate, ProbFloat, Alpha, bool, WeightDecay],
+                  [float, float, float, bool, float],
                   Optimizer)
 
 pset.addPrimitive(Rprop,
-                  [LearningRate, ETALowerBound, ETAUpperBound, StepLowerBound, StepUpperBound],
+                  [float, float, float, float, float],
                   Optimizer)
 
 
@@ -764,67 +723,25 @@ def toPNorm(a):
 def toProbFloat(a):
     return a%1
 
-# helper method to transform values
-# def transform_value(value, lower_bound, upper_bound):
-#     # Apply the exponential decay function
-#     transformed = 1 / math.exp(value)
-#     # Scale the transformed value to the provided bounds
-#     scaled_value = lower_bound + (upper_bound - lower_bound) * transformed
-#     return scaled_value
+def dummyOp(input):
+    return input
 
+
+# helper method to transform values
 def transform_value(value, lower_bound, upper_bound):
-    # Apply the sigmoid function to the input value
-    transformed = 1 / (1 + math.exp(-value))
+    # Apply the exponential decay function
+    transformed = 1 / math.exp(value)
     # Scale the transformed value to the provided bounds
     scaled_value = lower_bound + (upper_bound - lower_bound) * transformed
     return scaled_value
 
-def toLearningRate(a):
-    return LearningRate(transform_value(a, 1e-5, 0.1))
 
-def toMomentum(a):
-    return Momentum(transform_value(a, 0.8, 0.99))
-
-def toWeightDecay(a):
-    return WeightDecay(transform_value(a, 1e-5, 1e-2))
-
-def toDampening(a):
-    return Dampening(transform_value(a, 0.0, 0.1))
-
-def toRhoValue(a):
-    return RhoValue(transform_value(a, 0.9, 0.999))
-
-def toLambd(a):
-    return Lambd(transform_value(a, 1e-5, 0.1))
-
-def toAlpha(a):
-    return Alpha(transform_value(a, 1e-6, 0.1))
-
-def toT0(a):
-    return T0(transform_value(a, 1e-5, 0.1))
-
-def toMomentumDecay(a):
-    return MomentumDecay(transform_value(a, 1e-5, 0.999))
-
-def toETALowerBound(a):
-    return ETALowerBound(transform_value(a, 1e-5, 0.1))
-
-def toETAUpperBound(a):
-    return ETAUpperBound(transform_value(a, 1e-5, 0.1))
-
-def toStepLowerBound(a):
-    return StepLowerBound(transform_value(a, 1e-5, 0.1))
-
-def toStepUpperBound(a):
-    return StepUpperBound(transform_value(a, 1e-5, 0.1))
-
-def dummyOp(input):
-    return input
-
+# helper to generate a random boolean
 def genRandBool():
     return bool(random.getrandbits(1))
 
-# Adding functions as primitives
+
+# adding functions as primitives
 pset.addPrimitive(add, [GenericInt, GenericInt], GenericInt)
 pset.addPrimitive(add, [float, float], float)
 pset.addPrimitive(protectedSub, [GenericInt, GenericInt], GenericInt)
@@ -843,19 +760,6 @@ pset.addPrimitive(toGroup, [GenericInt], GroupSize)
 pset.addPrimitive(toSkip, [GenericInt], SkipSize)
 pset.addPrimitive(toPNorm, [float], PNorm)
 pset.addPrimitive(toProbFloat, [float], ProbFloat)
-pset.addPrimitive(toLearningRate, [float], LearningRate)
-pset.addPrimitive(toMomentum, [float], Momentum)
-pset.addPrimitive(toWeightDecay, [float], WeightDecay)
-pset.addPrimitive(toDampening, [float], Dampening)
-pset.addPrimitive(toRhoValue, [float], RhoValue)
-pset.addPrimitive(toLambd, [float], Lambd)
-pset.addPrimitive(toAlpha, [float], Alpha)
-pset.addPrimitive(toT0, [float], T0)
-pset.addPrimitive(toMomentumDecay, [float], MomentumDecay)
-pset.addPrimitive(toETALowerBound, [float], ETALowerBound)
-pset.addPrimitive(toETAUpperBound, [float], ETAUpperBound)
-pset.addPrimitive(toStepLowerBound, [float], StepLowerBound)
-pset.addPrimitive(toStepUpperBound, [float], StepUpperBound)
 pset.addPrimitive(dummyOp, [PaddingMode], PaddingMode)
 pset.addPrimitive(dummyOp, [UpsampleMode], UpsampleMode)
 pset.addPrimitive(dummyOp, [SkipMergeType], SkipMergeType)
@@ -874,6 +778,11 @@ pset.addPrimitive(dummyOp, [ViTSize], ViTSize)
 pset.addPrimitive(dummyOp, [Wide_ResNetSize], Wide_ResNetSize)
 pset.addPrimitive(dummyOp, [bool], bool)
 
+# adding ephemeral constants
+pset.addEphemeralConstant("randProbFloat", partial(random.uniform, 0, 1), ProbFloat)
+pset.addEphemeralConstant("randFloat", partial(random.uniform, 0, 100), float)
+pset.addEphemeralConstant("randInt", partial(random.randint, 0, 100), GenericInt)
+pset.addEphemeralConstant("randBool", genRandBool, bool)
 pset.addEphemeralConstant("randChannel", partial(random.randint, 1, MAX_CHANNEL_SIZE), ChannelSize)
 pset.addEphemeralConstant("randKernel", partial(random.randint, 1, MAX_KERNEL_SIZE), KernelSize)
 pset.addEphemeralConstant("randStride", partial(random.randint, 1, MAX_STRIDE_SIZE), StrideSize)
@@ -883,9 +792,6 @@ pset.addEphemeralConstant("randDilation", partial(random.randint, 1, MAX_DILATIO
 pset.addEphemeralConstant("randGroup", partial(random.randint, 1, MAX_GROUP_SIZE), GroupSize)
 pset.addEphemeralConstant("randSkipSize", partial(random.randint, 1, MAX_SKIP_SIZE), SkipSize)
 pset.addEphemeralConstant("randPNorm", partial(random.uniform, 1, MAX_PNORM_SIZE), PNorm)
-pset.addEphemeralConstant("randProbFloat", partial(random.uniform, 0, 1), ProbFloat)
-pset.addEphemeralConstant("randFloat", partial(random.uniform, 0, 10), float)
-pset.addEphemeralConstant("randInt", partial(random.randint, 0, 10), GenericInt)
 pset.addEphemeralConstant("randPaddingMode", partial(random.randint, 0, len(PaddingMode)-1), PaddingMode)
 pset.addEphemeralConstant("randUpsampleMode", partial(random.randint, 0, len(UpsampleMode)-1), UpsampleMode)
 pset.addEphemeralConstant("randSkipMergeType", partial(random.randint, 0, len(SkipMergeType)-1), SkipMergeType)
@@ -902,18 +808,4 @@ pset.addEphemeralConstant("randShuffleNet_V2Size", partial(random.randint, 0, le
 pset.addEphemeralConstant("randSwin_V2Size", partial(random.randint, 0, len(Swin_V2Size)-1), Swin_V2Size)
 pset.addEphemeralConstant("randViTSize", partial(random.randint, 0, len(ViTSize)-1), ViTSize)
 pset.addEphemeralConstant("randWide_ResNetSize", partial(random.randint, 0, len(Wide_ResNetSize)-1), Wide_ResNetSize)
-pset.addEphemeralConstant("randLearningRate", partial(random.uniform, 0, 1), LearningRate)
-pset.addEphemeralConstant("randMomentum", partial(random.uniform, 0, 1), Momentum)
-pset.addEphemeralConstant("randWeightDecay", partial(random.uniform, 0, 1), WeightDecay)
-pset.addEphemeralConstant("randDampening", partial(random.uniform, 0, 1), Dampening)
-pset.addEphemeralConstant("randRhoValue", partial(random.uniform, 0, 1), RhoValue)
-pset.addEphemeralConstant("randLambd", partial(random.uniform, 0, 1), Lambd)
-pset.addEphemeralConstant("randAlpha", partial(random.uniform, 0, 1), Alpha)
-pset.addEphemeralConstant("randT0", partial(random.uniform, 0, 1), T0)
-pset.addEphemeralConstant("randMomentumDecay", partial(random.uniform, 0, 1), MomentumDecay)
-pset.addEphemeralConstant("randETALowerBound", partial(random.uniform, 0, 1), ETALowerBound)
-pset.addEphemeralConstant("randETAUpperBound", partial(random.uniform, 0, 1), ETAUpperBound)
-pset.addEphemeralConstant("randStepLowerBound", partial(random.uniform, 0, 1), StepLowerBound)
-pset.addEphemeralConstant("randStepUpperBound", partial(random.uniform, 0, 1), StepUpperBound)
-pset.addEphemeralConstant("randBool", genRandBool, bool)
 pset.addTerminal(Optimizer({'optimizer': 'SGD', 'lr': 0.1, 'momentum': 0.9, 'weight_decay': 0,'dampening': 0}), Optimizer) # default terminal for optimizer (SGD with default params)
