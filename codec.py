@@ -9,6 +9,7 @@ import torchvision.transforms as transforms
 
 import primitives
 
+# define list of backbones
 BACKBONES = [
     "ConvNeXt",
     "DenseNet",
@@ -27,6 +28,7 @@ BACKBONES = [
 ]
 
 
+# these classes help extract features from existing classification models to obtain backbones
 class FeatureExtractor(nn.Module):
     def __init__(self):
         super(FeatureExtractor, self).__init__()
@@ -236,6 +238,7 @@ class Wide_ResNetFeatures(FeatureExtractor):
         return self.model(x)
 
 
+# class representing output network that is dynamically built
 class DynamicNetwork(nn.Module):
     def __init__(self, module_list, skips):
         super(DynamicNetwork, self).__init__()
@@ -250,6 +253,7 @@ class DynamicNetwork(nn.Module):
         return out
 
 
+# codec class
 class Codec:
     def __init__(self, genome_encoding_strat, surrogate_encoding_strat, num_classes) -> None:
         self.genome_encoding_strat = genome_encoding_strat
@@ -307,6 +311,7 @@ class Codec:
                 return s
     
 
+    # builds module list from parsed information
     def add_to_module_list(self, module_list, idx, layer_info, num_loss_components):
         layer_name = layer_info[0]
         layer_args = layer_info[1:]
@@ -495,7 +500,8 @@ class Codec:
                     backbone = Wide_ResNetFeatures(backboneName, weightType)
                     module_list.append(backbone)
                     return
-                
+
+        # check for special layers that require some processing        
         elif layer_name in ['LazyConv2d', 'LazyConvTranspose2d']:
             padding=(layer_args[5], layer_args[6])
             if min(layer_args[1], layer_args[2]) < 2*max(layer_args[5], layer_args[6]): # make sure that kernel size is less than twice the padding
@@ -558,6 +564,7 @@ class Codec:
         elif layer_name in ['Skip_1D', 'Skip_2D']:
             pass # TODO implement skip layer
 
+        # detection head layer
         elif layer_name == 'Detection_Head':
             # extracting other details for training and val from the head
             loss_weights = layer_args[1:]
@@ -574,7 +581,7 @@ class Codec:
             for k, v in optimizer_dict.items():
                 if k not in ['optimizer', 'eta_lower', 'eta_upper', 'step_lower', 'step_upper']:
                     out_dict[f'optimizer_{k}'] = v
-            if optimizer_dict['optimizer'] == 'RProp':
+            if optimizer_dict['optimizer'] == 'Rprop':
                 out_dict[f'optimizer_etas'] = (optimizer_dict['eta_lower'], optimizer_dict['eta_upper'])
                 out_dict[f'optimizer_step_sizes'] = (optimizer_dict['step_lower'], optimizer_dict['step_upper'])
             out_dict['loss_weights'] = tensor
@@ -584,6 +591,7 @@ class Codec:
             module_list.append(eval(f'nn.{layer_name.split('_')[0]}')(*layer_args))
     
 
+    # function to add appropriate detection head to custom backbone
     def add_head(self, module_list, skip_info): # adds rcnn head for now should be customizable later
         dummy_input = torch.randn(1, 3, 2048, 2448).to(self.device)
         model = DynamicNetwork(module_list, skip_info)
