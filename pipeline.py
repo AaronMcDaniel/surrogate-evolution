@@ -21,7 +21,7 @@ CORES = 8
 MEM = '32GB'
 JOB_TIME = '1-00:00'
 SCRIPT = 'test/dummy_eval.py'
-EXCEPTED_NODES = ['ice109', 'ice111', 'ice161', 'ice113', 'ice116', 'ice114', 'ice170', 'ice149', 'ice158', 'ice177', 'ice178']
+EXCEPTED_NODES = ['ice109', 'ice111', 'ice161', 'ice113', 'ice116', 'ice114', 'ice170', 'ice149', 'ice158', 'ice177', 'ice178', 'ice120']
 
 class Pipeline:
     def __init__(self, output_dir, config_dir, force_wipe = False, clean = False) -> None:
@@ -91,7 +91,7 @@ class Pipeline:
                 
         creator.create("Individual", genome_type, fitness=creator.FitnessMulti)
         self.toolbox = base.Toolbox()
-        self.toolbox.register("expr", gp.genHalfAndHalf, pset=self.pset, min_=3, max_=8)
+        self.toolbox.register("expr", gp.genHalfAndHalf, pset=self.pset, min_=4, max_=8)
         self.toolbox.register("individual", tools.initIterate, creator.Individual, self.toolbox.expr)
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
 

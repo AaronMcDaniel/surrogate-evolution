@@ -279,7 +279,7 @@ class Codec:
                 if element != ')':
                     stack.append(element)
                 else:
-                    arguments = nn.ModuleList()
+                    arguments = []
                     while stack[-1] != '(':
                         arguments.insert(0, stack.pop())
                     stack.pop()
@@ -560,7 +560,7 @@ class Codec:
 
         elif layer_name == 'Detection_Head':
             # extracting other details for training and val from the head
-            loss_weights = layer_args[2:]
+            loss_weights = layer_args[1:]
             if len(loss_weights) > num_loss_components:
                 loss_weights = loss_weights[:num_loss_components]
             weights_sum = sum(loss_weights)
@@ -568,11 +568,17 @@ class Codec:
             weight_tensor = torch.tensor(loss_weights, dtype=torch.float32)
             tensor = torch.zeros(num_loss_components, dtype=torch.float32)
             tensor[:len(weight_tensor)] = weight_tensor
-            return {
-                'optimizer': (list(primitives.Optimizer)[layer_args[0]]).name,
-                'lr': layer_args[1],
-                'loss_weights': tensor
-            }
+            out_dict = {}
+            optimizer_dict = eval(layer_args[0])
+            out_dict['optimizer'] = optimizer_dict['optimizer']
+            for k, v in optimizer_dict.items():
+                if k not in ['optimizer', 'eta_lower', 'eta_upper', 'step_lower', 'step_upper']:
+                    out_dict[f'optimizer_{k}'] = v
+            if optimizer_dict['optimizer'] == 'RProp':
+                out_dict[f'optimizer_etas'] = (optimizer_dict['eta_lower'], optimizer_dict['eta_upper'])
+                out_dict[f'optimizer_step_sizes'] = (optimizer_dict['step_lower'], optimizer_dict['step_upper'])
+            out_dict['loss_weights'] = tensor
+            return out_dict
             
         else: # this is for layers that can have arguments simply unpacked
             module_list.append(eval(f'nn.{layer_name.split('_')[0]}')(*layer_args))

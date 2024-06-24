@@ -134,7 +134,7 @@ class Alpha(float):
         super().__init__()
     pass
 
-class To(float):
+class T0(float):
     def __init__(self, num) -> None:
         super().__init__()
     pass
@@ -251,20 +251,15 @@ class BoolWeight(Enum):
     WEIGHTFALSE = 0,
     WEIGHTTRUE = 1
 
-class Optimizer(Enum):
-    Adadelta = 0,
-    Adagrad = 1,
-    Adam = 2,
-    AdamW = 3,
-    SparseAdam = 4,
-    Adamax = 5,
-    ASGD = 6,
-    LBFGS = 7,
-    NAdam = 8,
-    RAdam = 9,
-    RMSprop = 10,
-    Rprop = 11,
-    SGD = 12
+class Optimizer(dict):
+    def __init__(self, initial_dict=None, **kwargs):
+        if initial_dict is None:
+            initial_dict = {}
+        super(Optimizer, self).__init__(initial_dict)
+        self.update(kwargs)
+
+    def __str__(self):
+        return super().__str__()
 
 
 # Conv layers
@@ -394,9 +389,7 @@ def Skip_1D(tensor: Tensor1D, skip_by: SkipSize, merge_type: SkipMergeType):
 
 
 # TODO: Heads
-def Detection_Head(tensor: Tensor3D, optimizer: Optimizer, lr: float, iou_weight: float, diou_weight: float,
-                   giou_weight: float, ciou_weight: float, precision_weight: float, recall_weight: float, ap_weight: float, center_l2_weight: float, 
-                   area_l2_weight: float):
+def Detection_Head(tensor: Tensor3D, optimizer: Optimizer):
     return FinalTensor()
 
 
@@ -446,37 +439,37 @@ def Wide_ResNet(tensor: Tensor3D, wideresnetsize: Wide_ResNetSize, weights: Weig
 
 # Optimizers
 def SGD(lr: LearningRate, momentum: ProbFloat, weight_decay: WeightDecay, dampening: Dampening):
-    return Optimizer()
+    return Optimizer({'optimizer': 'SGD', 'lr': lr, 'momentum': momentum, 'weight_decay': weight_decay, 'dampening': dampening})
 
 def Adadelta(lr: LearningRate, rho: RhoValue, weight_decay: WeightDecay):
-    return Optimizer()
+    return Optimizer({'optimizer': 'Adadelta', 'lr': lr, 'rho': rho, 'weight_decay': weight_decay})
 
 def Adagrad(lr: LearningRate, weight_decay: WeightDecay):
-    return Optimizer()
+    return Optimizer({'optimizer': 'Adagrad', 'lr': lr, 'weight_decay': weight_decay})
 
 def Adam(lr: LearningRate, weight_decay: WeightDecay, amsgrad: bool):
-    return Optimizer()
+    return Optimizer({'optimizer': 'Adam', 'lr': lr, 'weight_decay': weight_decay, 'amsgrad': amsgrad})
 
 def AdamW(lr: LearningRate, weight_decay: WeightDecay, amsgrad: bool):
-    return Optimizer()
+    return Optimizer({'optimizer': 'AdamW', 'lr': lr, 'weight_decay': weight_decay, 'amsgrad': amsgrad})
 
 def Adamax(lr: LearningRate, weight_decay: WeightDecay):
-    return Optimizer()
+    return Optimizer({'optimizer': 'Adamax', 'lr': lr, 'weight_decay': weight_decay})
 
-def ASGD(lr: LearningRate, lambd: Lambd, alpha: Alpha, t0: To, weight_decay: WeightDecay):
-    return Optimizer()
+def ASGD(lr: LearningRate, lambd: Lambd, alpha: Alpha, t0: T0, weight_decay: WeightDecay):
+    return Optimizer({'optimizer': 'ASGD', 'lr': lr, 'lambd': lambd, 'alpha': alpha, 't0': t0, 'weight_decay': weight_decay})
 
 def NAdam(lr: LearningRate, weight_decay: WeightDecay, momentum_decay: MomentumDecay, decoupled_weight_decay: bool):
-    return Optimizer()
+    return Optimizer({'optimizer': 'NAdam', 'lr': lr, 'weight_decay': weight_decay, 'momentum_decay': momentum_decay, 'decoupled_weight_decay': decoupled_weight_decay})
 
 def RAdam(lr: LearningRate, weight_decay: WeightDecay, decoupled_weight_decay: bool):
-    return Optimizer()
+    return Optimizer({'optimizer': 'RAdam', 'lr': lr, 'weight_decay': weight_decay, 'decoupled_weight_decay': decoupled_weight_decay})
 
 def RMSprop(lr: LearningRate, momentum: ProbFloat, alpha: Alpha, centered: bool, weight_decay: WeightDecay):
-    return Optimizer()
+    return Optimizer({'optimizer': 'RMSProp', 'lr': lr, 'momentum': momentum, 'alpha': alpha, 'centered': centered, 'weight_decay': weight_decay})
 
-def Rprop(lr: LearningRate, eta_lower: ETALowerBound, eta_upper: ETAUpperBound, step_lower: StepLowerBound, step_upper: StepUpperBound, weight_decay: WeightDecay):
-    return Optimizer()
+def Rprop(lr: LearningRate, eta_lower: ETALowerBound, eta_upper: ETAUpperBound, step_lower: StepLowerBound, step_upper: StepUpperBound):
+    return Optimizer({'optimizer': 'RProp', 'lr': lr, 'eta_lower': eta_lower, 'eta_upper': eta_upper, 'step_lower': step_lower, 'step_upper': step_upper})
 
 
 # creating primitive set from layers and components
@@ -586,7 +579,7 @@ pset.addPrimitive(Skip_2D,
                   Tensor3D)
 
 pset.addPrimitive(Detection_Head,
-                  [Tensor3D, Optimizer, float] + list(itertools.repeat(float, num_loss_components)),
+                  [Tensor3D, Optimizer] + list(itertools.repeat(float, num_loss_components)),
                   FinalTensor)
 
 pset.addPrimitive(Flatten,
@@ -661,6 +654,50 @@ pset.addPrimitive(Wide_ResNet,
                   [Tensor3D, Wide_ResNetSize, Weights],
                   Tensor3D)
 
+pset.addPrimitive(SGD,
+                  [LearningRate, ProbFloat, WeightDecay, Dampening],
+                  Optimizer)
+
+pset.addPrimitive(Adadelta,
+                  [LearningRate, RhoValue, WeightDecay],
+                  Optimizer)
+
+pset.addPrimitive(Adagrad,
+                  [LearningRate, WeightDecay],
+                  Optimizer)
+
+pset.addPrimitive(Adam,
+                  [LearningRate, WeightDecay, bool],
+                  Optimizer)
+
+pset.addPrimitive(AdamW,
+                  [LearningRate, WeightDecay, bool],
+                  Optimizer)
+
+pset.addPrimitive(Adamax,
+                  [LearningRate, WeightDecay],
+                  Optimizer)
+
+pset.addPrimitive(ASGD,
+                  [LearningRate, Lambd, Alpha, T0, WeightDecay],
+                  Optimizer)
+
+pset.addPrimitive(NAdam,
+                  [LearningRate, WeightDecay, MomentumDecay, bool],
+                  Optimizer)
+
+pset.addPrimitive(RAdam,
+                  [LearningRate, WeightDecay, bool],
+                  Optimizer)
+
+pset.addPrimitive(RMSprop,
+                  [LearningRate, ProbFloat, Alpha, bool, WeightDecay],
+                  Optimizer)
+
+pset.addPrimitive(Rprop,
+                  [LearningRate, ETALowerBound, ETAUpperBound, StepLowerBound, StepUpperBound],
+                  Optimizer)
+
 
 # Basic operators
 def add(a, b):
@@ -688,7 +725,6 @@ def toChannel(a):
     return ChannelSize(a%MAX_CHANNEL_SIZE)+1 if a > MAX_CHANNEL_SIZE else ChannelSize(a)
 
 def toKernel(a):
-    if a == 0: return 3
     if a < 3: return 3
     return KernelSize(a%MAX_KERNEL_SIZE)+3 if a > MAX_KERNEL_SIZE else KernelSize(a)
 
@@ -701,9 +737,9 @@ def toPadding(a):
     return PaddingSize(a%MAX_PADDING_SIZE) if a > MAX_PADDING_SIZE else PaddingSize(a)
 
 def toOutput(a):
-    if a == 0:
-        return 1
-    return OutputSize(a%MAX_OUTPUT_SIZE)+1 if a > MAX_OUTPUT_SIZE else OutputSize(a)
+    if a < 7:
+        return 7
+    return OutputSize(a%MAX_OUTPUT_SIZE)+7 if a > MAX_OUTPUT_SIZE else OutputSize(a)
 
 def toDilation(a):
     if a == 0:
@@ -721,7 +757,7 @@ def toSkip(a):
     return SkipSize(a%MAX_SKIP_SIZE)+1 if a > MAX_SKIP_SIZE else SkipSize(a)
 
 def toPNorm(a):
-    if a == 0:
+    if a < 2:
         return 2
     return PNorm(a%MAX_PNORM_SIZE)+2 if a > MAX_PNORM_SIZE else PNorm(a)
 
@@ -729,15 +765,22 @@ def toProbFloat(a):
     return a%1
 
 # helper method to transform values
+# def transform_value(value, lower_bound, upper_bound):
+#     # Apply the exponential decay function
+#     transformed = 1 / math.exp(value)
+#     # Scale the transformed value to the provided bounds
+#     scaled_value = lower_bound + (upper_bound - lower_bound) * transformed
+#     return scaled_value
+
 def transform_value(value, lower_bound, upper_bound):
-    # Apply the exponential decay function
-    transformed = 1 / math.exp(value)
+    # Apply the sigmoid function to the input value
+    transformed = 1 / (1 + math.exp(-value))
     # Scale the transformed value to the provided bounds
     scaled_value = lower_bound + (upper_bound - lower_bound) * transformed
     return scaled_value
 
 def toLearningRate(a):
-    return LearningRate(transform_value(a, 1e-5, 1.0))
+    return LearningRate(transform_value(a, 1e-5, 0.1))
 
 def toMomentum(a):
     return Momentum(transform_value(a, 0.8, 0.99))
@@ -757,8 +800,8 @@ def toLambd(a):
 def toAlpha(a):
     return Alpha(transform_value(a, 1e-6, 0.1))
 
-def toTo(a):
-    return To(transform_value(a, 1e-5, 0.1))
+def toT0(a):
+    return T0(transform_value(a, 1e-5, 0.1))
 
 def toMomentumDecay(a):
     return MomentumDecay(transform_value(a, 1e-5, 0.999))
@@ -777,6 +820,9 @@ def toStepUpperBound(a):
 
 def dummyOp(input):
     return input
+
+def genRandBool():
+    return bool(random.getrandbits(1))
 
 # Adding functions as primitives
 pset.addPrimitive(add, [GenericInt, GenericInt], GenericInt)
@@ -797,23 +843,22 @@ pset.addPrimitive(toGroup, [GenericInt], GroupSize)
 pset.addPrimitive(toSkip, [GenericInt], SkipSize)
 pset.addPrimitive(toPNorm, [float], PNorm)
 pset.addPrimitive(toProbFloat, [float], ProbFloat)
-# pset.addPrimitive(toLearningRate, [float], LearningRate)
-# pset.addPrimitive(toMomentum, [float], Momentum)
-# pset.addPrimitive(toWeightDecay, [float], WeightDecay)
-# pset.addPrimitive(toDampening, [float], Dampening)
-# pset.addPrimitive(toRhoValue, [float], RhoValue)
-# pset.addPrimitive(toLambd, [float], Lambd)
-# pset.addPrimitive(toAlpha, [float], Alpha)
-# pset.addPrimitive(toTo, [float], To)
-# pset.addPrimitive(toMomentumDecay, [float], MomentumDecay)
-# pset.addPrimitive(toETALowerBound, [float], ETALowerBound)
-# pset.addPrimitive(toETAUpperBound, [float], ETAUpperBound)
-# pset.addPrimitive(toStepLowerBound, [float], StepLowerBound)
-# pset.addPrimitive(toStepUpperBound, [float], StepUpperBound)
+pset.addPrimitive(toLearningRate, [float], LearningRate)
+pset.addPrimitive(toMomentum, [float], Momentum)
+pset.addPrimitive(toWeightDecay, [float], WeightDecay)
+pset.addPrimitive(toDampening, [float], Dampening)
+pset.addPrimitive(toRhoValue, [float], RhoValue)
+pset.addPrimitive(toLambd, [float], Lambd)
+pset.addPrimitive(toAlpha, [float], Alpha)
+pset.addPrimitive(toT0, [float], T0)
+pset.addPrimitive(toMomentumDecay, [float], MomentumDecay)
+pset.addPrimitive(toETALowerBound, [float], ETALowerBound)
+pset.addPrimitive(toETAUpperBound, [float], ETAUpperBound)
+pset.addPrimitive(toStepLowerBound, [float], StepLowerBound)
+pset.addPrimitive(toStepUpperBound, [float], StepUpperBound)
 pset.addPrimitive(dummyOp, [PaddingMode], PaddingMode)
 pset.addPrimitive(dummyOp, [UpsampleMode], UpsampleMode)
 pset.addPrimitive(dummyOp, [SkipMergeType], SkipMergeType)
-pset.addPrimitive(dummyOp, [Optimizer], Optimizer)
 pset.addPrimitive(dummyOp, [Weights], Weights)
 pset.addPrimitive(dummyOp, [BoolWeight], BoolWeight)
 pset.addPrimitive(dummyOp, [ConvNeXtSize], ConvNeXtSize)
@@ -827,6 +872,7 @@ pset.addPrimitive(dummyOp, [ShuffleNet_V2Size], ShuffleNet_V2Size)
 pset.addPrimitive(dummyOp, [Swin_V2Size], Swin_V2Size)
 pset.addPrimitive(dummyOp, [ViTSize], ViTSize)
 pset.addPrimitive(dummyOp, [Wide_ResNetSize], Wide_ResNetSize)
+pset.addPrimitive(dummyOp, [bool], bool)
 
 pset.addEphemeralConstant("randChannel", partial(random.randint, 1, MAX_CHANNEL_SIZE), ChannelSize)
 pset.addEphemeralConstant("randKernel", partial(random.randint, 1, MAX_KERNEL_SIZE), KernelSize)
@@ -843,7 +889,6 @@ pset.addEphemeralConstant("randInt", partial(random.randint, 0, 10), GenericInt)
 pset.addEphemeralConstant("randPaddingMode", partial(random.randint, 0, len(PaddingMode)-1), PaddingMode)
 pset.addEphemeralConstant("randUpsampleMode", partial(random.randint, 0, len(UpsampleMode)-1), UpsampleMode)
 pset.addEphemeralConstant("randSkipMergeType", partial(random.randint, 0, len(SkipMergeType)-1), SkipMergeType)
-pset.addEphemeralConstant("randOptimizer", partial(random.randint, 0, len(Optimizer)-1), Optimizer)
 pset.addEphemeralConstant("randWeights", partial(random.randint, 0, len(Weights)-1), Weights)
 pset.addEphemeralConstant("randBoolWeight", partial(random.randint, 0, len(BoolWeight)-1), BoolWeight)
 pset.addEphemeralConstant("randConvNeXtSize", partial(random.randint, 0, len(ConvNeXtSize)-1), ConvNeXtSize)
@@ -857,3 +902,18 @@ pset.addEphemeralConstant("randShuffleNet_V2Size", partial(random.randint, 0, le
 pset.addEphemeralConstant("randSwin_V2Size", partial(random.randint, 0, len(Swin_V2Size)-1), Swin_V2Size)
 pset.addEphemeralConstant("randViTSize", partial(random.randint, 0, len(ViTSize)-1), ViTSize)
 pset.addEphemeralConstant("randWide_ResNetSize", partial(random.randint, 0, len(Wide_ResNetSize)-1), Wide_ResNetSize)
+pset.addEphemeralConstant("randLearningRate", partial(random.uniform, 0, 1), LearningRate)
+pset.addEphemeralConstant("randMomentum", partial(random.uniform, 0, 1), Momentum)
+pset.addEphemeralConstant("randWeightDecay", partial(random.uniform, 0, 1), WeightDecay)
+pset.addEphemeralConstant("randDampening", partial(random.uniform, 0, 1), Dampening)
+pset.addEphemeralConstant("randRhoValue", partial(random.uniform, 0, 1), RhoValue)
+pset.addEphemeralConstant("randLambd", partial(random.uniform, 0, 1), Lambd)
+pset.addEphemeralConstant("randAlpha", partial(random.uniform, 0, 1), Alpha)
+pset.addEphemeralConstant("randT0", partial(random.uniform, 0, 1), T0)
+pset.addEphemeralConstant("randMomentumDecay", partial(random.uniform, 0, 1), MomentumDecay)
+pset.addEphemeralConstant("randETALowerBound", partial(random.uniform, 0, 1), ETALowerBound)
+pset.addEphemeralConstant("randETAUpperBound", partial(random.uniform, 0, 1), ETAUpperBound)
+pset.addEphemeralConstant("randStepLowerBound", partial(random.uniform, 0, 1), StepLowerBound)
+pset.addEphemeralConstant("randStepUpperBound", partial(random.uniform, 0, 1), StepUpperBound)
+pset.addEphemeralConstant("randBool", genRandBool, bool)
+pset.addTerminal(Optimizer({'optimizer': 'SGD', 'lr': 0.1, 'momentum': 0.9, 'weight_decay': 0,'dampening': 0}), Optimizer) # default terminal for optimizer (SGD with default params)
