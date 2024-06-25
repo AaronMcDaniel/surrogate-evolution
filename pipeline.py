@@ -1,7 +1,9 @@
 import copy
+import csv
 import hashlib
-import json
+import pickle
 import random
+import shutil
 import subprocess
 import time
 import toml
@@ -19,38 +21,40 @@ CORES = 8
 MEM = '32GB'
 JOB_TIME = '1-00:00'
 SCRIPT = 'test/dummy_eval.py'
-EXCEPTED_NODES = ['ice109', 'ice111', 'ice161', 'ice113', 'ice116', 'ice114', 'ice170', 'ice149', 'ice158', 'ice177', 'ice178']
+EXCEPTED_NODES = ['ice109', 'ice111', 'ice161', 'ice113', 'ice116', 'ice114', 'ice170', 'ice149', 'ice158', 'ice177', 'ice178', 'ice120']
 
 class Pipeline:
-    def __init__(self, output_dir, force_wipe = False, clean = False) -> None:
+    def __init__(self, output_dir, config_dir, force_wipe = False, clean = False) -> None:
         self.output_dir = output_dir
         self.force_wipe = force_wipe
         self.clean = clean
         self.logs_dir = os.path.join(self.output_dir, 'logs')
+        self.attempt_resume = False
+
         # Check if output location already exists
         if os.path.exists(self.output_dir):
             if not self.force_wipe:
-                raise Exception('Ouput directory already exists. If you want to overwrite, use -f')
+                self.attempt_resume = True
             else:
                 self.clear_outputs()
                 os.makedirs(self.logs_dir)
+                shutil.copy(config_dir, output_dir)
         else:
             os.makedirs(self.output_dir)
             os.makedirs(self.logs_dir)
+            shutil.copy(config_dir, output_dir)
 
         # Begin by loading config attributes
-        try:
-            configs = toml.load(os.path.join(os.path.dirname(os.path.realpath(__file__)), "conf.toml"))
-            pipeline_config = configs["pipeline"]
-            codec_config = configs["codec"]
-        except:
-            raise Exception('Could not find configuration toml file with "pipeline" and "codec" table')
+        configs = toml.load(config_dir)
+        pipeline_config = configs["pipeline"]
+        codec_config = configs["codec"]
+
+        self.initial_population_size = pipeline_config['initial_population_size']
         self.population_size = pipeline_config['population_size']
         self.unsustainable_population_size = pipeline_config['unsustainable_population_size']
         self.num_parents = pipeline_config['num_parents']
         self.crossovers = pipeline_config['crossovers']
         self.mutations = pipeline_config['mutations']
-        self.percent_elite = pipeline_config['percent_elite']
         self.surrogate_enabled = pipeline_config['surrogate_enabled']
         self.objectives = pipeline_config['objectives']
         self.train_epochs = pipeline_config['train_epochs']
@@ -62,6 +66,7 @@ class Pipeline:
         self.train_pool_source = pipeline_config['train_pool_source']
         self.trust_pool_source = pipeline_config['trust_pool_source']
         self.num_classes = pipeline_config['num_classes']
+        self.best_epoch_criteria = pipeline_config['best_epoch_criteria']
 
         # Other useful attributes
         self.holy_grail = pd.DataFrame(columns=['gen', 'hash', 'genome', 'metrics']) # data regarding every evaluated individual; metrics are from best epoch since all other metric data is already stored by eval_script
@@ -74,6 +79,7 @@ class Pipeline:
         self.pset = primitives.pset # primitive set
         self.gen_count = 1
         self.num_genome_fails = 0
+        self.total_evaluated_individuals = 0
 
         # Setting up pipeline
         creator.create("FitnessMulti", base.Fitness, weights=tuple(self.objectives.values()))
@@ -86,7 +92,7 @@ class Pipeline:
                 
         creator.create("Individual", genome_type, fitness=creator.FitnessMulti)
         self.toolbox = base.Toolbox()
-        self.toolbox.register("expr", gp.genHalfAndHalf, pset=self.pset, min_=3, max_=8)
+        self.toolbox.register("expr", gp.genHalfAndHalf, pset=self.pset, min_=4, max_=8)
         self.toolbox.register("individual", tools.initIterate, creator.Individual, self.toolbox.expr)
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
 
@@ -111,11 +117,43 @@ class Pipeline:
             self.toolbox.register(mutation, eval(f'gp.mut{str.upper(res[0])+res[1:]}'))
 
 
+    def initialize(self, seed_file = None):
+        if self.attempt_resume:
+            print('Attempting to resume...')
+            self.holy_grail = pd.read_csv(os.path.join(self.output_dir, 'out.csv'))
+            metric_columns = [col for col in self.holy_grail.columns if col not in ['gen', 'hash', 'genome']]
+            self.holy_grail['metrics'] = self.holy_grail[metric_columns].apply(lambda row: row.to_dict(), axis=1)
+            self.holy_grail = self.holy_grail.drop(columns=metric_columns)
+            print('Found holy grail (out.csv)!')
+            self.gen_count = self.holy_grail['gen'].iloc[-1]
+            current_pop = self.holy_grail[self.holy_grail['gen'] == self.gen_count].to_dict('records')
+            self.current_deap_pop = []
+            self.current_population = {}
+            for genome in current_pop:
+                metrics = genome.copy()
+                del metrics['gen']
+                del metrics['hash']
+                del metrics['genome']
+                self.current_population[genome['hash']] = {'genome': genome['genome'], 'metrics': metrics}
+            checkpoint_path = os.path.join(self.output_dir, 'checkpoint')
+            with open(os.path.join(checkpoint_path,'latest_pop.pkl'), 'rb') as f:
+                self.current_deap_pop = pickle.load(f)
+            print('Found latest_pop.pkl!')
+            with open(os.path.join(checkpoint_path,'elites.pkl'), 'rb') as f:
+                self.elite = pickle.load(f)
+            print('Found elites.pkl!')
+            with open(os.path.join(checkpoint_path,'hof.pkl'), 'rb') as f:
+                self.hall_of_fame = pickle.load(f)
+            print('Found hof.pkl!')
+        else:
+            self.init_pop(seed_file)
+            
+
     def init_pop(self, seed_file = None):
         print('Initializing population...')
         # TODO: add seed file support
         self.current_population = {}
-        pop = self.toolbox.population(n=self.population_size)
+        pop = self.toolbox.population(n=self.initial_population_size)
         self.current_deap_pop = pop
         for genome in pop:
             genome_string = str(genome)
@@ -131,10 +169,15 @@ class Pipeline:
         for hash, genome in self.current_population.items():
                 lines.append({'gen': self.gen_count, 'hash': hash, 'genome': genome['genome']}) # eval script can get num_epochs, genome_encoding_strat and other parameters from config file
         input_data = pd.DataFrame(lines)
-        input_data.to_csv('eval_input.csv', index=False)
+        eval_input_path = os.path.join(self.output_dir, 'eval_inputs', f'eval_input_gen{self.gen_count}.csv')
+        os.makedirs(os.path.dirname(eval_input_path), exist_ok=True)
+        input_data.to_csv(eval_input_path, index=False)
 
         # create bash script for job file
-        self.create_job_file(self.population_size)
+        self.create_job_file(len(self.current_population), self.gen_count)
+
+        # create this gen's log diretory
+        os.makedirs(os.path.join(self.logs_dir, f'generation_{self.gen_count}'))
 
         # dispatch job
         print('    Dispatching jobs...')
@@ -150,43 +193,51 @@ class Pipeline:
                 break
         print('    Done!')
 
+        fails = 0
         # read eval_gen output file
         for hash, genome in self.current_population.items():
             try:
-                with open(f'{self.output_dir}/generation_{self.gen_count}/{hash}/best_epoch.json', 'r') as metrics_f:
-                    data = json.load(metrics_f)
-                    # update current population metrics
-                    self.current_population[hash]['metrics'] = data
-                    # update holy grail dataframe
-                    self.holy_grail.loc[len(self.holy_grail.index)] = [self.gen_count, hash, genome['genome'], data]
-                    # set fitness of current population
-                    for g in self.current_deap_pop:
-                        if str(g) == genome['genome']:
-                            g.fitness.values = tuple([data[key] for key in self.objectives.keys()])
+                dataframe = pd.read_csv(f'{self.output_dir}/generation_{self.gen_count}/{hash}/metrics.csv')
+                if (self.best_epoch_criteria[1].lower() == 'max'):
+                    data = dataframe.nlargest(1, self.best_epoch_criteria[0]).squeeze().to_dict()
+                else:
+                    data = dataframe.nsmallest(1, self.best_epoch_criteria[0]).squeeze().to_dict()
+                del data['epoch_num']
+                # update current population metrics
+                self.current_population[hash]['metrics'] = data
+                # update holy grail dataframe
+                self.holy_grail.loc[len(self.holy_grail.index)] = [self.gen_count, hash, genome['genome'], data]
+                # set fitness of current population
+                for g in self.current_deap_pop:
+                    if str(g) == genome['genome']:
+                        g.fitness.values = tuple([data[key] for key in self.objectives.keys()])
             except FileNotFoundError:
                 # in the case the file isn't found we generate a file with bad metrics and then use that
                 print(f'    Couldn\'t find individual {hash} evaluation... Assuming genome failure and assigning bad metrics')
                 self.num_genome_fails += 1
+                fails += 1
                 test_metrics = {}
                 for objective, weight in self.objectives.items():
                     test_metrics[objective] = 1000000 if weight < 0 else -1000000
-                output_filename = f'{self.output_dir}/generation_{self.gen_count}/{hash}/best_epoch.json'
+                output_filename = f'{self.output_dir}/generation_{self.gen_count}/{hash}/metrics.csv'
                 os.makedirs(os.path.dirname(output_filename), exist_ok=True)
                 with open(output_filename, 'w') as fh:
-                    fh.write(json.dumps(test_metrics))
+                    writer = csv.writer(fh)
+                    writer.writerow(list(test_metrics.keys()))
+                    writer.writerow(list(test_metrics.values()))
 
-                with open(f'{self.output_dir}/generation_{self.gen_count}/{hash}/best_epoch.json', 'r') as metrics_f:
-                    data = json.load(metrics_f)
-                    # update current population metrics
-                    self.current_population[hash]['metrics'] = data
-                    # update holy grail dataframe
-                    self.holy_grail.loc[len(self.holy_grail.index)] = [self.gen_count, hash, genome['genome'], data]
-                    # set fitness of current population
-                    for g in self.current_deap_pop:
-                        if str(g) == genome['genome']:
-                            g.fitness.values = tuple([data[key] for key in self.objectives.keys()])
-                
-        print(f'Generation {self.gen_count} evaluation done!')
+                data = test_metrics
+                # update current population metrics
+                self.current_population[hash]['metrics'] = data
+                # update holy grail dataframe
+                self.holy_grail.loc[len(self.holy_grail.index)] = [self.gen_count, hash, genome['genome'], data]
+                # set fitness of current population
+                for g in self.current_deap_pop:
+                    if str(g) == genome['genome']:
+                        g.fitness.values = tuple([data[key] for key in self.objectives.keys()])
+        
+        self.total_evaluated_individuals += len(self.current_population)
+        print(f'Generation {self.gen_count} evaluation done! Genome failures: {fails}')
 
 
     def select_parents(self): # current population is an attribute so no need for input args
@@ -214,7 +265,7 @@ class Pipeline:
             to_remove = to_remove[['gen', 'hash']].values.tolist()
             for gen, hash in to_remove:
                 os.popen(f'rm -rf {self.output_dir}/generation_{gen}/{hash}/')
-        print('Done!')
+            print('Done!')
 
 
     def overpopulate(self, mating_pool): # mating pool is selected_parents + elite pool
@@ -295,6 +346,16 @@ class Pipeline:
 
     def log_info(self):
         print('Logging data...')
+        # store current pop, elite pool, and hof as pickle files
+        checkpoint_path = os.path.join(self.output_dir, 'checkpoint') 
+        if not os.path.exists(checkpoint_path):
+            os.makedirs(checkpoint_path)
+        with open(os.path.join(checkpoint_path,'latest_pop.pkl'), 'wb') as f:
+            pickle.dump(self.current_deap_pop, f)
+        with open(os.path.join(checkpoint_path,'elites.pkl'), 'wb') as f:
+            pickle.dump(self.elite_pool, f)
+        with open(os.path.join(checkpoint_path,'hof.pkl'), 'wb') as f:
+            pickle.dump(self.hall_of_fame, f)
         # store holy grail
         holy_grail_expanded = self.holy_grail.join(pd.json_normalize(self.holy_grail['metrics'])).drop('metrics', axis='columns')
         holy_grail_expanded.to_csv(f'{self.output_dir}/out.csv', index=False)
@@ -309,6 +370,7 @@ class Pipeline:
 
     def step_gen(self):
         self.gen_count += 1
+        self.attempt_resume = False
 
 
     def __get_hash(self, s):
@@ -321,7 +383,7 @@ class Pipeline:
         print('Done!')
 
 
-    def create_job_file(self, num_jobs):
+    def create_job_file(self, num_jobs, gen_num):
         batch_script = f"""#!/bin/bash
 #SBATCH --job-name={JOB_NAME}
 #SBATCH --nodes={NODES}
@@ -330,15 +392,15 @@ class Pipeline:
 #SBATCH --cpus-per-task={CORES}
 #SBATCH --mem={MEM}
 #SBATCH --time={JOB_TIME}
-#SBATCH --output={self.logs_dir}/evaluation.%A.%a.log
-#SBATCH --error={self.logs_dir}/evaluation_error.%A.%a.log
+#SBATCH --output={self.logs_dir}/generation_{gen_num}/evaluation.%A.%a.log
+#SBATCH --error={self.logs_dir}/generation_{gen_num}/evaluation_error.%A.%a.log
 #SBATCH --array=0-{num_jobs-1}
 
 module load anaconda3/2023.07
 module load cuda/12.1.1
 
 # Execute the Python script with SLURM_ARRAY_TASK_ID as argument. Script also has optional args -i and -o to specify input file and output directory respectively
-conda run -n myenv --no-capture-output python -u {SCRIPT} $((SLURM_ARRAY_TASK_ID)) -o {self.output_dir}
+conda run -n myenv --no-capture-output python -u {SCRIPT} $((SLURM_ARRAY_TASK_ID)) -i {self.output_dir}/eval_inputs/eval_input_gen{gen_num}.csv -o {self.output_dir}
 """
         with open(f'{JOB_NAME}.job', 'w') as fh:
             fh.write(batch_script)
