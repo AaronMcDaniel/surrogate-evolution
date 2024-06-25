@@ -1,7 +1,12 @@
 import csv
 import toml
 import sys
+
+import os
+project_dir = os.path.abspath(os.path.dirname(__file__))
+sys.path.append(project_dir)
 sys.path.insert(0, '/gv1/projects/GRIP_Precog_Opt/precog-opt-grip')
+from dataset.aot_dataset import AOTDataset
 import torch
 import torchvision
 import torch.nn as nn
@@ -63,17 +68,19 @@ def engine(cfg, genome):
     # note: may have to re-normalize, depending on loss function components
     loss_weights = model_dict['loss_weights']
     # pull priortized iou function from highest weight in vector
-    _, max_weight_idx = torch.max(loss_weights, dim=0)
-    iou_type = loss_weights[max_weight_idx]
+    # _, max_weight_idx = torch.max(loss_weights, dim=0)
+    # iou_type = loss_weights[max_weight_idx]
+    iou_type = "ciou"
 
     # Use model_dict to retrieve optimizer and scheduler
     optimizer = get_optimizer(params, model_dict)
-    scheduler = get_scheduler(optimizer, model_dict)
+    # pass in num_epochs and batch_size for certain scheduler parameters
+    scheduler = get_scheduler(optimizer, model_dict, num_epochs, len(train_loader))
 
     # all_preds = {epoch_num -> epoch_preds = { (flight_id, frame_id) -> output dictionary { 'boxes': [box1, box2, ...], 'scores': ... }}}
     all_preds = []
     # create pandas dataframe where each row is different epoch of metrics
-    metrics_df = pd.DataFrame(columns=['epoch_num', 'train_epoch_loss', 'val_epoch_loss', 'precision', 'recall', 'f1_score', 'average_precision', 'true_positives', 'false_positives', 'false_negatives'])
+    metrics_df = create_metrics_df()
 
     # training loop
     for epoch in range(1, num_epochs + 1):
@@ -82,8 +89,8 @@ def engine(cfg, genome):
         epoch_preds = {}
 
         # train and validate
-        train_epoch_loss = train_one_epoch(model, device, train_loader, loss_weights, optimizer, scheduler)
-        epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, epoch_preds)
+        train_epoch_loss = train_one_epoch(model, device, train_loader, loss_weights, iou_type, optimizer, scheduler)
+        epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds)
 
         # update metrics_df and all_preds with current epoch's data
         epoch_metrics['epoch_num'] = epoch
@@ -96,13 +103,13 @@ def engine(cfg, genome):
         store_data(metrics_df, all_preds)
 
 # function to train the model for one epoch
-def train_one_epoch(model, device, train_loader, loss_weights, optimizer, scheduler):
+def train_one_epoch(model, device, train_loader, loss_weights, iou_type, optimizer, scheduler):
     # set model to training mode
     model.train()
 
     # initialize accumulators
     train_epoch_loss = 0.0
-    num_images = 0
+    num_preds = 0
 
     # loader yields each batch as a tuple (images, targets)
     data_iter = tqdm(train_loader)
@@ -122,7 +129,6 @@ def train_one_epoch(model, device, train_loader, loss_weights, optimizer, schedu
 
         # iterate through the list of outputs to access results on a per-image basis
         for i, output in enumerate(outputs):
-            num_images += 1
 
             # retrive true boxes and predicted boxes + confidence scoress
             true_boxes = targets[i]['bboxes']
@@ -131,21 +137,25 @@ def train_one_epoch(model, device, train_loader, loss_weights, optimizer, schedu
 
             # concatenate scores on the end of the predicted bounding boxes
             pred_boxes = u.cat_scores(pred_boxes, scores)
-
-            # calculate loss per image and add to batch loss
-            train_image_loss = c.compute_iou_loss(pred_boxes, true_boxes, loss_weights)
+            matches = u.match_boxes(pred_boxes, true_boxes, 0.0, 0.0, "train", iou_type)
+            
+            # compute_loss returns a tensor of dim[8]
+            # the last loss value in the tensor is the weighted sum of the 7 loss components
+            loss_tensor = c.compute_iou_loss(matches, loss_weights, iou_type)
+            train_image_loss = loss_tensor[7]
             train_epoch_loss += train_image_loss
+            num_preds += len(pred_boxes)
 
         # backpropagation
         train_epoch_loss.backward()
         optimizer.zero_grad()
         optimizer.step()
     
-    # mean epoch loss for number of batches
-    train_epoch_loss /= num_images
+    # divide total train epoch loss by number of predictions 
+    train_epoch_loss /= num_preds
     scheduler.step()
 
-    # returns dict of metrics from one epoch
+    # returns dict containing the meaned train epoch loss
     return {
         'train_epoch_loss': train_epoch_loss,
     }
@@ -157,15 +167,13 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
     model.eval()
 
     # initialize accumulators
-    val_epoch_loss = 0.0
-    num_images = 0
-    total_tp = 0
-    total_fp = 0
-    total_fn = 0
-    total_f1_scores = []
-    total_precisions = []
-    total_recalls = []
-    total_avg_pre = []
+    val_epoch_loss, iou_loss, giou_loss, diou_loss, ciou_loss, center_loss, size_loss, obj_loss = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    num_preds, num_labels, total_tp, total_fp, total_fn = 0, 0, 0, 0, 0
+
+    # list stores confidences of all predictions
+    confidences = []
+    # list stores boolean representing whether a prediction is a true positive or false negative
+    confusion_status = []
 
     # disables gradient calculations
     with torch.no_grad():
@@ -181,7 +189,6 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
 
             # iterate through each image's output dictionary
             for i, output in enumerate(outputs):
-                num_images += 1
 
                 # gets the true boxes and predicted boxes + scores for the same image
                 true_boxes = targets[i]['bboxes']
@@ -200,42 +207,64 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
                 matches, fp, fn = u.match_boxes(pred_boxes, true_boxes, iou_thresh, conf_thresh, "val", iou_type)
 
                 # calculate confusion matrix for a single image and add them to accumulators
-                tp = len(matches)
-                fp = len(fp)
-                fn = len(fn)
-                total_tp += tp
-                total_fp += fp
-                total_fn += fn
+                num_tp = len(matches)
+                num_fp = len(fp)
+                num_fn = len(fn)
+                total_tp += num_tp
+                total_fp += num_fp
+                total_fn += num_fn
 
-                # calculate f1, precision, and recall for a single image
-                pre = u.precision(tp, fp)
-                rec = u.recall(tp, fn)
-                total_precisions.append(pre)
-                total_recalls.append(rec)
+                num_preds += len(pred_boxes)
+                num_labels += len(true_boxes)
 
-                # calculate precision-recall curve and average precision for a single image
-                pre_curve, rec_curve = u.precision_recall_curve(pred_boxes, true_boxes, conf_thresh)
-                avg_pre = u.AP(pre_curve, rec_curve)
-                total_avg_pre.append(avg_pre)
+                loss_matches = u.match_boxes(pred_boxes, true_boxes, 0.0, 0.0, "train", 'ciou')
+                loss_tensor = c.compute_iou_loss(loss_matches, loss_weights, iou_type)
 
-                # default loss calculation is iou but can be configured to another calculation
-                val_image_loss = c.compute_iou_loss(pred_boxes, true_boxes, loss_weights)
-                # add image loss to the accumulated epoch loss
+                # weighted sum loss = index 7 of loss tensor
+                val_image_loss = loss_tensor[7]
                 val_epoch_loss += val_image_loss
+                iou_loss += loss_tensor[0]
+                giou_loss += loss_tensor[1]
+                diou_loss += loss_tensor[2]
+                ciou_loss += loss_tensor[3]
+                center_loss += loss_tensor[4]
+                size_loss += loss_tensor[5]
+                obj_loss += loss_tensor[6]
+
+                # update confidences and confusion_status lists
+                for _, (true_pos, _) in matches.items():
+                    confidences.append(true_pos[4].item())
+                    confusion_status.append(True)
+                for false_pos in fp:
+                    confidences.append(false_pos[4].item())
+                    confusion_status.append(False)
 
     # mean epoch loss by the number of images seen in the epoch
-    val_epoch_loss /= num_images
+    val_epoch_loss /= num_preds
+    iou_loss /= num_preds
+    giou_loss /= num_preds
+    diou_loss /= num_preds
+    ciou_loss/= num_preds
+    center_loss/= num_preds
+    size_loss /= num_preds
+    obj_loss /= num_preds
 
     # calculate per-epoch metrics
-    # note: accumulators are meaned
-    epoch_pre = sum(total_precisions) / len(total_precisions)
-    epoch_rec = sum (total_recalls) / len(total_recalls)
-    epoch_f1 = 2 * (epoch_pre * epoch_rec) / (epoch_pre + epoch_rec)
-    epoch_avg_pre = sum(total_avg_pre) / len(total_avg_pre)
+    epoch_f1, epoch_pre, epoch_rec = u.f1_score(total_tp, total_fn, total_fp)
+
+    pre_curve, rec_curve = u.precision_recall_curve(confidences, confusion_status, num_labels)
+    epoch_avg_pre = u.AP(pre_curve, rec_curve)
 
     # returns dict of metrics from one epoch
     return {
         'val_epoch_loss': val_epoch_loss,
+        'iou_loss':iou_loss,
+        'giou_loss': giou_loss,
+        'diou_loss': diou_loss,
+        'ciou_loss': ciou_loss,
+        'center_loss': center_loss,
+        'size_loss': size_loss,
+        'obj_loss': obj_loss,
         'precision': epoch_pre,
         'recall': epoch_rec,
         'f1_score': epoch_f1,
@@ -248,14 +277,8 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
 # returns iterable train and validation dataloaders 
 def prepare_data(batch_size=64):
 
-    # TO DO: validate paths
-    notebook_path = os.path.dirname(os.path.realpath("__file__"))
-    local_path = notebook_path + '/data/part1'
-    s3_path = 's3://airborne-obj-detection-challenge-training/part1/'
-
-    # TO DO: ensure that custom dataset is fully built out to support data processing
-    train_dataset = AOTDataset(local_path, s3_path, partial=True, prefix="part1")
-    val_dataset = AOTDataset(local_path, s3_path, partial=True, prefix="part2")
+    train_dataset = AOTDataset('train')
+    val_dataset = AOTDataset('val')
 
     train_loader = DataLoader(train_dataset, batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size, shuffle=True)
@@ -264,6 +287,13 @@ def prepare_data(batch_size=64):
 # TO DO: implement this function
 def dynamic_batch_size(model):
     return 64
+
+def create_metrics_df():
+    return pd.DataFrame(columns=['epoch_num', 'train_epoch_loss', 'val_epoch_loss', 
+                                       'iou_loss', 'giou_loss', 'diou_loss', 'ciou_loss',
+                                       'center_loss', 'size_loss', 'obj_loss', 'precision', 
+                                       'recall', 'f1_score', 'average_precision', 
+                                       'true_positives', 'false_positives', 'false_negatives'])
 
 # converts numpy array to tensor and moves it to the device
 def numpy_to_tensor(image, device):
@@ -307,7 +337,7 @@ def store_data(metrics_df: pd.DataFrame, all_preds: dict):
         pickle.dump(all_preds, f)
 
 # returns learning rate scheduler based on configuration defined by the genome
-def get_scheduler(optimizer, model_dict):
+def get_scheduler(optimizer, model_dict, num_epochs, batch_size):
 
     # set default values for various potential scheduler params
     default_params = {
@@ -317,7 +347,7 @@ def get_scheduler(optimizer, model_dict):
         'ReduceLROnPlateau': {'mode': 'min', 'factor': 0.1, 'patience': 10, 'threshold': 0.0001, 'cooldown': 0, 'min_lr': 0, 'eps': 1e-08},
         'CosineAnnealingLR': {'T_max': 50, 'eta_min': 0, 'last_epoch': -1},
         'CosineAnnealingWarmRestarts': {'T_0': 10, 'T_mult': 2, 'eta_min': 0, 'last_epoch': -1},
-        'OneCycleLR': {'max_lr': 0.1, 'total_steps': None, 'epochs': 10, 'steps_per_epoch': None, 'pct_start': 0.3, 'anneal_strategy': 'cos', 'cycle_momentum': True, 'base_momentum': 0.85, 'max_momentum': 0.95, 'div_factor': 25.0, 'final_div_factor': 1e4, 'three_phase': False, 'last_epoch': -1, 'verbose': False},
+        'OneCycleLR': {'max_lr': 0.1, 'total_steps': None, 'epochs': num_epochs, 'steps_per_epoch': batch_size, 'pct_start': 0.3, 'anneal_strategy': 'cos', 'cycle_momentum': True, 'base_momentum': 0.85, 'max_momentum': 0.95, 'div_factor': 25.0, 'final_div_factor': 1e4, 'three_phase': False, 'last_epoch': -1, 'verbose': False},
         'ConstantLR': {'factor': 1.0, 'total_iters': 5},
         'MultiplicativeLR': {'lr_lambda': lambda epoch: 0.95, 'last_epoch': -1},
         'LambdaLR': {'lr_lambda': lambda epoch: 1, 'last_epoch': -1},
@@ -352,7 +382,7 @@ def get_scheduler(optimizer, model_dict):
     scheduler_defaults = default_params.get(scheduler_type)
 
     # update default_params with values from model_dict if they exist
-    scheduler_params = {k: model_dict.get(f'lr_{k}', v) for k, v in scheduler_defaults.items()}
+    scheduler_params = {k: model_dict.get(f'scheduler_{k}', v) for k, v in scheduler_defaults.items()}
 
     # get scheduler signature and filter the parameters that are valid for the scheduler
     sig = inspect.signature(scheduler_class)

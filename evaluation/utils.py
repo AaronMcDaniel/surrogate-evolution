@@ -9,10 +9,11 @@ import heapq
 from sortedcontainers import SortedListWithKey
 import math
 import pandas as pd
+import matplotlib.pyplot as plt
 
 # used to match predictions and truths based on thresholds and compute the confusion matrix
 # note: could also be implemented with a balanced BST (from sortedcontainers) instead of heap
-def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="val", iou_type="iou"):
+def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="val", iou_type="ciou"):
 
     # train mode is used for loss calculation and factors in all predictions
     if mode =="train":
@@ -171,12 +172,12 @@ def match_boxes_alt(pred_boxes, true_boxes, iou_thresh, conf_thresh):
 # precision quantifies the accuracy of good predictions made by the model
 # takes in the number of true positives and the number of false negatives
 def precision(tp, fp):
-    return tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    return tp / (tp + fp + 1e-9)
 
 # recall quantifies the completeness of the objects detected in the image
 # takes in the number of true positives and the number of false negatives
 def recall(tp, fn):
-    return tp / (tp + fn) if (tp + np) > 0 else 0.0
+    return tp / (tp + fn + 1e-9)
 
 # f1-score gives balanced measure of model's performance based on precision and recall
 # takes in number of true positives, number of false negatives, and number of false positives
@@ -185,53 +186,60 @@ def f1_score(tp, fn, fp):
     recall = recall(tp, fn)
     return ((2 * precision * recall) / (precision + recall)), precision, recall
 
-# precision-recall curve shows trade-off between precision and recall at different iou thresholds
-# takes in predictions, ground-truths, and fixed confidence threshold
-def precision_recall_curve(pred_boxes, true_boxes, conf_thresh):
+# precision-recall curve shows trade-off between precision and recall at different confidence thresholds
+# takes in list of prediction confidences, their associated confusion_status (true pos or false pos), and number of total true objects
+# src: https://zihaogeng.medium.com/how-to-evaluate-an-object-detection-model-iou-precision-recall-and-map-f7cc12e0dcf6
+def precision_recall_curve(confidences, confusion_status, num_labels):
+    # convert lists to numpy arrays for sorting
+    confidences = np.array(confidences)
+    confusion_status = np.array(confusion_status)
+
+    # sort lists by descending confidence
+    sorted_indices = np.argsort(-confidences)
+    confidences = confidences[sorted_indices]
+    confusion_status = confusion_status[sorted_indices]
+
+    tp = 0
+    fp = 0
     precisions = []
     recalls = []
+    prev_conf = None
 
-    # step thresholds by 0.1
-    # TO-DO: Scale threshold by true positive prediction
-    thresholds = np.arrange(start=0.0, stop=1.1, step=0.1)
-
-    # iterates through thresholds
-    for thresh in thresholds:
+    for i, is_tp in enumerate(confusion_status):
+        # determine if new prediction instance is a true positive or false negative
+        # note: all other predictions automatically filtered by current confidence threshold
+        if is_tp: 
+            tp += 1
+        else:
+            fp += 1
         
-        # match boxes must be calculated at every single threshold due to NMS step
-        matches, fps, fns = match_boxes(pred_boxes,true_boxes, thresh, conf_thresh)
+        # don't add new point on the curve if confidence is same as previous threshold
+        if prev_conf is None or confidences[i] != prev_conf:
+            pre = tp / (tp + fp + 1e-9)
+            rec = tp / (num_labels + 1e-9)
+            precisions.append(pre)
+            recalls.append(rec)
 
-        # get confusion matrix for current threshold
-        tp = len(matches)
-        fp = len(fps)
-        fn = len(fns)
-
-        # calculate precison and recall using tp, fp, fn
-        p = precision(tp, fp)
-        r = recall(tp, fn)
-
-        # add the new data points
-        precisions.append(p)
-        recalls.append(r)
-
-    # return points on curve
-    return precisions, recalls
+        prev_conf = confidences[i]
+    
+    return np.array(precisions), np.array(recalls)
 
 # AP is the weighted-sum of precisions at each threshold where the weight is increase in recall
 # takes in precision and recall curves as lists
 # src: https://github.com/rbgirshick/py-faster-rcnn.
-def AP(precision, recall, case=1):
-
-    # first convert to numpy array
-    precision = np.array(precision)
-    recall = np.array(recall)
+def AP(precision, recall, case=2):
 
     # adds sentinel values to the beginning and end to handle edge cases
-    precision = np.concatenate(([0.], recall, [min(recall[-1] + 1E-3, 1.)]))
-    recall = np.concatenate(([0.], precision, [0.]))
-    
+    # precision = np.concatenate(([0.], recall, [min(recall[-1] + 1E-3, 1.)]))
+    # recall = np.concatenate(([0.], precision, [0.]))
+    precision = np.concatenate(([0.], precision, [0.]))
+    recall = np.concatenate(([0.], recall, [1.]))
+
     # computes precision envelope to ensure precision does not decrease as recall increases
-    precision = np.flip(np.maximum.accumulate(np.flip(precision)))
+    for i in range(precision.size - 1, 0, -1):
+        precision[i - 1] = np.maximum(precision[i - 1], precision[i])
+
+    # precision = np.flip(np.maximum.accumulate(np.flip(precision)))
 
     # 101-point interpolation from COCO
     if case == 1:
@@ -251,6 +259,20 @@ def AP(precision, recall, case=1):
         AP = np.sum((recall[x + 1] - recall[x]) * precision[x + 1])
     
     return AP
+
+def plot_PR_curve(precisions, recalls, ap, save_path='PR_curve.png'):
+    plt.figure(figsize=(8, 6))
+    plt.plot(recalls, precisions, marker='o', label=f'PR curve (AP = {ap:.2f})')
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.title('Precision-Recall Curve')
+    plt.legend()
+    plt.grid(True)
+    if save_path:
+        plt.savefig(save_path)
+    else:
+        plt.show()
+
 
 # # initializes dataframes with columns for each metric and rows for each epoch
 # def create_metrics_df():
@@ -315,6 +337,7 @@ def iou(pred_boxes, true_boxes):
     
     # calculate IoU
     iou = inter_area / union_area
+    iou = torch.clamp(iou, min=0.0, max=1.0)
 
     return iou
     # return ops.box_iou(pred_boxes, true_boxes)
@@ -368,6 +391,7 @@ def giou(pred_boxes, true_boxes):
     
     # calculate GIoU
     giou = iou - (enclose_area - union_area) / enclose_area
+    giou = torch.clamp(giou, min=-1.0, max=1.0)
     
     return giou
 
@@ -419,8 +443,8 @@ def diou(pred_boxes, true_boxes):
     enclose_y2 = torch.max(pred_boxes_y2, true_boxes_y2)
     
     # calculate the area of the smallest enclosing box
-    enclose_diagonal = (enclose_x2 - enclose_x1) ** 2 + (enclose_y2 - enclose_y1) ** 2
-    # print(f"c^2: {enclose_diagonal}")
+    enclose_diagonal = torch.clamp((enclose_x2 - enclose_x1), min=0) ** 2 + torch.clamp((enclose_y2 - enclose_y1), min=0) ** 2
+    # enclose_diagonal = (enclose_x2 - enclose_x1) ** 2 + (enclose_y2 - enclose_y1) ** 2
 
     # calculate box centers for predicted and ground-truth
     pred_c1, pred_c2 = calc_box_center(pred_boxes)
@@ -433,7 +457,9 @@ def diou(pred_boxes, true_boxes):
     # print(f"d^2: {center_distance_squared}")
 
     # calculate DIoU as IoU - (d^2) / (C^2)
-    diou = iou - (center_distance_squared / enclose_diagonal)
+    u = center_distance_squared / enclose_diagonal
+    diou = iou - u
+    diou = torch.clamp(diou, min=-1.0, max=1.0)
     # print(f"DIoU: {diou}")
 
     return diou
@@ -490,7 +516,7 @@ def ciou(pred_boxes, true_boxes):
     enclose_y2 = torch.max(pred_boxes_y2, true_boxes_y2)
     
     # calculate the area of the smallest enclosing box
-    enclose_diagonal = (enclose_x2 - enclose_x1) ** 2 + (enclose_y2 - enclose_y1) ** 2
+    enclose_diagonal = torch.clamp((enclose_x2 - enclose_x1), min=0) ** 2 + torch.clamp((enclose_y2 - enclose_y1), min=0) ** 2
 
     # calculate box centers for predicted and ground-truth
     pred_c1, pred_c2 = calc_box_center(pred_boxes)
@@ -498,26 +524,38 @@ def ciou(pred_boxes, true_boxes):
 
     # calculate the euclidian distance between the predicted center and the ground-truth center
     center_distance_squared = (pred_c1 - true_c1) ** 2 + (pred_c2 - true_c2) ** 2
+    u = center_distance_squared / enclose_diagonal
 
     # v measures the consistency of aspect ratios for bboxes
-    v = (4 / math.pi ** 2) * torch.pow(torch.atan(true_box_width / true_box_height) - torch.atan(pred_box_width / pred_box_height), 2)
-
-    # alpha is a positive trade-off parameter
-    alpha = v / (1 - iou + v + 1e-16)
+    v = (4 / (torch.pi ** 2)) * torch.pow((torch.atan(true_box_width / true_box_height) - torch.atan(pred_box_width / pred_box_height)), 2)
+    print(f"v {v}")
+    # alpha is a positive trade-off parameter, must be calculated without tracking gradients
+    with torch.no_grad():
+        # Could use S as the scaling factor based on IoU score
+        # Would need to provide an iou_threshold
+        # S = (iou > 0.0).float()
+        # alpha = S * v / (1 - iou + v + 1e-16)
+        alpha = v / (1 - iou + v + 1e-16)
+        print(f"alpha {alpha}")
 
     # calculate ciou
-    ciou = iou - (center_distance_squared / enclose_diagonal + v * alpha)
+    ciou = iou - u - alpha * v
+    ciou = torch.clamp(ciou, min=-1.0, max=1.0)
     return ciou
 
 
 # takes in boxes in format [x, y, w, h] and converts to [x1, y1, x2, y2]
 def convert_boxes_to_x1y1x2y2(boxes):
+    if boxes.dim() == 1:
+        boxes = boxes.unsqueeze(0)
     # adds w, h to x, y coordinate to obtain x2, y2
     converted_boxes = torch.cat([boxes[:, :2], boxes[:, :2] + boxes[:, 2:4]], dim=1)
     return converted_boxes
 
 # takes in boxes in format [x1, y1, x2, y2] and ensures that x2 > x1, and y2 > y1
 def normalize_boxes(boxes):
+    if boxes.dim() == 1:
+        boxes = boxes.unsqueeze(0)
     boxes_x1 = torch.min(boxes[:, 0], boxes[:, 2])
     boxes_y1 = torch.min(boxes[:, 1], boxes[:, 3])
     boxes_x2 = torch.max(boxes[:, 0], boxes[:, 2])
@@ -530,10 +568,23 @@ def calc_box_area(x1, y1, x2, y2):
 
 # takes in a box tensor of format [x, y, w, h]
 def calc_box_center(boxes):
+    if boxes.dim() == 1:
+        boxes = boxes.unsqueeze(0)
     # Will this break it, needs to be a tensor
     c1 = boxes[:, 0] + (boxes[:, 2] / 2.0)
     c2 = boxes[:, 1] + (boxes[:, 3] / 2.0)
     return c1, c2
+
+# calculates squared euclidean distance between two batches of points
+# pts1 & pts2 = tensor of shape (N, 2) where N is number of points
+def calc_euclidean_squared(pts1, pts2):
+    if pts1.dim() == 1:
+        pts1 = pts1.unsqueeze(0)
+    if pts2.dim() == 1:
+        pts2 = pts2.unsqueeze(0)
+    x1, y1, x2, y2 = pts1[:, 0], pts1[:, 1], pts2[:, 0], pts2[:, 1]
+    # returns tensor of shape (N,)
+    return ((y2 - y1)**2 + (x2 - x1)**2)   
 
 def iou_matrix(pred_boxes, true_boxes, iou_type="iou"):
     # note: torchvision calculates predictions as rows (ie for true in true_boxes] for pred in pred_boxes]))
@@ -548,7 +599,7 @@ def iou_matrix(pred_boxes, true_boxes, iou_type="iou"):
 
 # function applies non-max suppression to a set of predicted bounding boxes
 # takes in an int representing the case and switches implementation based on that
-def non_max_suppresion(pred_boxes, iou_thresh, case=1, iou_type="iou"):
+def non_max_suppresion(pred_boxes, iou_thresh, case=1, iou_type="ciou"):
     
     # original custom implementation
     if case == 1:
@@ -631,22 +682,22 @@ def non_max_suppresion(pred_boxes, iou_thresh, case=1, iou_type="iou"):
 # each box represented as [left, top, width height]
 # returns pred_boxes as a 2D tensor of [N, 5] dim, where each box is represented as [l, t, w, h, conf]
 def cat_scores(pred_boxes, scores):
-
     # reshape scores tensor to be [N, 1]
     scores = scores.view(-1, 1)
-
     # concatenate tensor along the last dimension
     return torch.cat((pred_boxes, scores), dim=1)
 
-# pred_boxes = torch.tensor([
-#     [3, 3, 4, 4],
-#     [4, 4, 1, 1],
-#     [9, 9, 2, 2]
-# ], dtype=torch.float32)
 
-# scores = torch.tensor([0.3, 0.4, 0.8], dtype=torch.float32)
+# confidences = [0.93, 0.08, 0.53, 0.63, 0.33, 0.67, 0.91]
+# confusion_status = [True, False, True, False, False, False, True]
+# num_labels = 6
+confidences = [0.99, 0.99, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.65, 0.55]
+confusion_status = [True, True, False, True, False, False, True, True, False, False]
+num_labels = 5
 
-# pred_boxes = cat_scores(pred_boxes, scores)
-
-# res = non_max_suppresion(pred_boxes, 0.5, 1)
-# print(res)
+precisions, recalls = precision_recall_curve(confidences, confusion_status, num_labels)
+ap = AP(precisions, recalls, 1)
+print(f"precisions: {precisions}")
+print(f"recalls: {recalls}")
+print(f"ap: {ap}")
+plot_PR_curve(precisions, recalls, ap)
