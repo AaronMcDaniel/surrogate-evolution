@@ -17,6 +17,7 @@ def detection_model_summary(model, input_size):
     print("----------------------------------------------------------------------------")
     print("Layer (type: depth-idx)                   Output Shape              Param #")
     print("============================================================================")
+    model = model.to(device)
     dummy_input = torch.randn(1, *input_size).to(device)
     hooks = []
     module_idx = 0
@@ -89,7 +90,8 @@ def tree_genome_summary(genome, num_loss_components):
         layer_args = layer[1:]
         if layer[0] == "Detection_Head":
             print('----------Hyperparameters----------')
-            loss_weights = layer_args[1:]
+            print(layer)
+            loss_weights = layer_args[2:]
             if len(loss_weights) > num_loss_components:
                 loss_weights = loss_weights[:num_loss_components]
             weights_sum = sum(loss_weights)
@@ -97,18 +99,20 @@ def tree_genome_summary(genome, num_loss_components):
             weight_tensor = torch.tensor(loss_weights, dtype=torch.float32)
             tensor = torch.zeros(num_loss_components, dtype=torch.float32)
             tensor[:len(weight_tensor)] = weight_tensor
-            out_dict = {}
             optimizer_dict = eval(layer_args[0])
-            out_dict['optimizer'] = optimizer_dict['optimizer']
+            scheduler_dict = eval(layer_args[1])
+            print(f'optimizer: {optimizer_dict['optimizer']}')
             for k, v in optimizer_dict.items():
                 if k not in ['optimizer', 'eta_lower', 'eta_upper', 'step_lower', 'step_upper']:
-                    out_dict[f'optimizer_{k}'] = v
+                    print(f'optimizer_{k}: {v}')
             if optimizer_dict['optimizer'] == 'Rprop':
-                out_dict[f'optimizer_etas'] = (optimizer_dict['eta_lower'], optimizer_dict['eta_upper'])
-                out_dict[f'optimizer_step_sizes'] = (optimizer_dict['step_lower'], optimizer_dict['step_upper'])
-            out_dict['loss_weights'] = tensor
-            for k, v in out_dict.items():
-                print(f'{k}: {v}')
+                print(f'optimizer_etas: {(optimizer_dict['eta_lower'], optimizer_dict['eta_upper'])}')
+                print(f'optimizer_step_sizes: {(optimizer_dict['step_lower'], optimizer_dict['step_upper'])}')
+            print(f'lr_scheduler: {scheduler_dict['lr_scheduler']}')
+            for k, v in scheduler_dict.items():
+                if k != 'lr_scheduler':
+                    print(f'scheduler_{k}: {v}')
+            print(f'loss_weights: {tensor}')
     print('=======================================')
 
 
