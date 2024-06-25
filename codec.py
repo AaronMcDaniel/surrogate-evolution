@@ -538,9 +538,11 @@ class Codec:
                 ))
             
         elif layer_name == 'FractionalMaxPool2d':
+            x_outratio = layer_args[2] if layer_args[2] > 0.5 else 0.5
+            y_outratio = layer_args[3] if layer_args[3] > 0.5 else 0.5
             module_list.append(nn.FractionalMaxPool2d(
                     kernel_size=(layer_args[0], layer_args[1]),
-                    output_ratio=(layer_args[2], layer_args[3]),
+                    output_ratio=(x_outratio, y_outratio),
                 ))
         
         elif layer_name == 'LPPool2d':
@@ -567,7 +569,7 @@ class Codec:
         # detection head layer
         elif layer_name == 'Detection_Head':
             # extracting other details for training and val from the head
-            loss_weights = layer_args[1:]
+            loss_weights = layer_args[2:]
             if len(loss_weights) > num_loss_components:
                 loss_weights = loss_weights[:num_loss_components]
             weights_sum = sum(loss_weights)
@@ -577,13 +579,18 @@ class Codec:
             tensor[:len(weight_tensor)] = weight_tensor
             out_dict = {}
             optimizer_dict = eval(layer_args[0])
+            scheduler_dict = eval(layer_args[1])
             out_dict['optimizer'] = optimizer_dict['optimizer']
+            out_dict['lr_scheduler'] = scheduler_dict['lr_scheduler']
             for k, v in optimizer_dict.items():
                 if k not in ['optimizer', 'eta_lower', 'eta_upper', 'step_lower', 'step_upper']:
                     out_dict[f'optimizer_{k}'] = v
             if optimizer_dict['optimizer'] == 'Rprop':
                 out_dict[f'optimizer_etas'] = (optimizer_dict['eta_lower'], optimizer_dict['eta_upper'])
                 out_dict[f'optimizer_step_sizes'] = (optimizer_dict['step_lower'], optimizer_dict['step_upper'])
+            for k, v in scheduler_dict.items():
+                if k != 'lr_scheduler':
+                    out_dict[f'scheduler_{k}'] = v
             out_dict['loss_weights'] = tensor
             return out_dict
             
@@ -599,7 +606,7 @@ class Codec:
         output = test_model(dummy_input)
         model.out_channels = output.shape[1]
         anchor_generator = AnchorGenerator(
-            sizes=((16, 32, 64, 128),),
+            sizes=((16, 32, 64, 128, 256, 512),),
             aspect_ratios=((0.5, 1.0, 2.0),)
         )
         roi_pooler = torchvision.ops.MultiScaleRoIAlign(
