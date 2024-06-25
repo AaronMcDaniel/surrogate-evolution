@@ -90,7 +90,6 @@ def tree_genome_summary(genome, num_loss_components):
         layer_args = layer[1:]
         if layer[0] == "Detection_Head":
             print('----------Hyperparameters----------')
-            print(layer)
             loss_weights = layer_args[2:]
             if len(loss_weights) > num_loss_components:
                 loss_weights = loss_weights[:num_loss_components]
