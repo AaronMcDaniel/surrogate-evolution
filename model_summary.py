@@ -64,6 +64,12 @@ def detection_model_summary(model, input_size):
 
 # Custom summary function for tree-encoded genome
 def tree_genome_summary(genome, num_loss_components):
+    HEADS = [
+        "FasterRCNN_Head",
+        "FCOS_Head",
+        "RetinaNet_Head",
+        'SSD_Head'
+    ]
     print('----------Genome Architecture----------')
     # parse tree decoding into layer list
     layer_list = []
@@ -88,7 +94,7 @@ def tree_genome_summary(genome, num_loss_components):
     for layer in layer_list:
         print(layer[0])
         layer_args = layer[1:]
-        if layer[0] == "Detection_Head":
+        if layer[0] in HEADS:
             print('----------Hyperparameters----------')
             loss_weights = layer_args[2:]
             if len(loss_weights) > num_loss_components:

@@ -3,8 +3,13 @@ import re
 import torch
 import torch.nn as nn
 import torchvision
-from torchvision.models.detection import FasterRCNN
-from torchvision.models.detection.rpn import AnchorGenerator
+from torchvision.models.detection.faster_rcnn import FasterRCNN
+from torchvision.models.detection.fcos import FCOS
+from torchvision.models.detection.retinanet import RetinaNet
+from torchvision.models.detection.ssd import SSD
+from torchvision.models.detection.rpn import AnchorGenerator as RCNNAnchorGenerator
+from torchvision.models.detection.anchor_utils import AnchorGenerator
+from torchvision.models.detection.anchor_utils import DefaultBoxGenerator
 import torchvision.transforms as transforms
 
 import primitives
@@ -25,6 +30,13 @@ BACKBONES = [
     "Swin_V2",
     "ViT",
     "Wide_ResNet"
+]
+
+HEADS = [
+    "FasterRCNN_Head",
+    "FCOS_Head",
+    "RetinaNet_Head",
+    "SSD_Head"
 ]
 
 
@@ -295,10 +307,12 @@ class Codec:
                         info = self.add_to_module_list(module_list, idx, layer_info, num_loss_components)
                         idx += 1
 
+            head = info[0]
+            model_dict = info[1]
             skip_info = torch.randn(4,4)
-            model = self.add_head(module_list, skip_info)
-            info['model'] = model
-            return info
+            model = self.add_head(head, module_list, skip_info)
+            model_dict['model'] = model
+            return model_dict
         
 
     def __parse_arg(self, s):
@@ -567,7 +581,7 @@ class Codec:
             pass # TODO implement skip layer
 
         # detection head layer
-        elif layer_name == 'Detection_Head':
+        elif layer_name in HEADS:
             # extracting other details for training and val from the head
             loss_weights = layer_args[2:]
             if len(loss_weights) > num_loss_components:
@@ -592,33 +606,64 @@ class Codec:
                 if k != 'lr_scheduler':
                     out_dict[f'scheduler_{k}'] = v
             out_dict['loss_weights'] = tensor
-            return out_dict
+            return (layer_name, out_dict)
             
         else: # this is for layers that can have arguments simply unpacked
             module_list.append(eval(f'nn.{layer_name.split('_')[0]}')(*layer_args))
     
 
     # function to add appropriate detection head to custom backbone
-    def add_head(self, module_list, skip_info): # adds rcnn head for now should be customizable later
+    def add_head(self, head, module_list, skip_info): # adds rcnn head for now should be customizable later
         dummy_input = torch.randn(1, 3, 2048, 2448).to(self.device)
         model = DynamicNetwork(module_list, skip_info)
         test_model = model.to(self.device)
         output = test_model(dummy_input)
         model.out_channels = output.shape[1]
-        anchor_generator = AnchorGenerator(
-            sizes=((16, 32, 64, 128, 256, 512),),
-            aspect_ratios=((0.5, 1.0, 2.0),)
-        )
-        roi_pooler = torchvision.ops.MultiScaleRoIAlign(
-            featmap_names=['0'],
-            output_size=21,
-            sampling_ratio=4
-        )
-        model = FasterRCNN(
-            model,
-            num_classes=self.num_classes,
-            rpn_anchor_generator=anchor_generator,
-            box_roi_pool=roi_pooler
-        )
+        if head == 'FasterRCNN_Head':
+            anchor_generator = RCNNAnchorGenerator(
+                sizes=((8, 16, 32, 64, 128, 256),),
+                aspect_ratios=((0.5, 1.0, 2.0),)
+            )
+            roi_pooler = torchvision.ops.MultiScaleRoIAlign(
+                featmap_names=['0'],
+                output_size=21,
+                sampling_ratio=4
+            )
+            model = FasterRCNN(
+                model,
+                num_classes=self.num_classes,
+                rpn_anchor_generator=anchor_generator,
+                box_roi_pool=roi_pooler
+            )
+        if head == 'FCOS_Head':
+            anchor_generator = AnchorGenerator(
+                sizes=((8,), (16,), (32,), (64,), (128,), (256,)),
+                aspect_ratios=((0.5,),)
+            )
+            model = FCOS(
+                model,
+                num_classes=self.num_classes,
+                anchor_generator=anchor_generator
+            )
+        if head == 'RetinaNet_Head':
+            anchor_generator = AnchorGenerator(
+                sizes=((8, 16, 32, 64, 128, 256),),
+                aspect_ratios=((0.5, 1.0, 2.0),)
+            )
+            model = RetinaNet(
+                model,
+                num_classes=self.num_classes,
+                anchor_generator=anchor_generator
+            )
+        if head == 'SSD_Head':
+            anchor_generator = DefaultBoxGenerator(
+                aspect_ratios=[(0.5, 1.0, 2.0)],
+                scales=[8, 16, 32, 64, 128, 256]
+            )
+            model = SSD(
+                model,
+                num_classes=self.num_classes,
+                anchor_generator=anchor_generator
+            )   
         return model   
         
