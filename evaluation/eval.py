@@ -1,12 +1,7 @@
 import csv
 import toml
 import sys
-
-import os
-project_dir = os.path.abspath(os.path.dirname(__file__))
-sys.path.append(project_dir)
-sys.path.insert(0, '/gv1/projects/GRIP_Precog_Opt/precog-opt-grip')
-from dataset.aot_dataset import AOTDataset
+from aot_dataset as data
 import torch
 import torchvision
 import torch.nn as nn
@@ -157,7 +152,7 @@ def train_one_epoch(model, device, train_loader, loss_weights, iou_type, optimiz
 
     # returns dict containing the meaned train epoch loss
     return {
-        'train_epoch_loss': train_epoch_loss,
+        'train_epoch_loss': train_epoch_loss
     }
 
 

@@ -10,7 +10,7 @@ def get_model_dict(num_loss_components):
     backbone.out_channels = 1024  # ConvNeXt's output feature maps channels
 
     anchor_generator = AnchorGenerator(
-                sizes=((16, 32, 64, 128),),
+                sizes=((16, 32, 64, 128, 256, 512),),
                 aspect_ratios=((0.5, 1.0, 2.0),)
             )
     roi_pooler = torchvision.ops.MultiScaleRoIAlign(
