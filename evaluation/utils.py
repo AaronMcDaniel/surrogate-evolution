@@ -18,7 +18,7 @@ def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="v
     # train mode is used for loss calculation and factors in all predictions
     if mode =="train":
         matrix = iou_matrix(pred_boxes[:, :4], true_boxes, iou_type)
-        print(matrix)
+        # print(matrix)
         matches = {}
 
         # for train, only care about what the max iou of each column is
@@ -29,7 +29,7 @@ def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="v
             max_iou, max_j = matrix[:, i].max(0)
             matches[true_boxes[max_j.item()]] = (pred_boxes[i], max_iou.item())
 
-        print(matches)
+        # print(matches)
 
         return matches
 
@@ -41,11 +41,19 @@ def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="v
 
         # apply NMS to the predictions, specify threshold and NMS implementaton 
         pred_boxes = non_max_suppresion(pred_boxes, iou_thresh, 1, iou_type)
-        print(f"Predictions after NMS: {pred_boxes}")
+        # print(f"Predictions after NMS: {pred_boxes}")
+
+        if pred_boxes.size(0) == 0:
+            # print("No predictions left after NMS and confidence threshold filtering")
+            return {}, [], true_boxes.tolist()
 
         # matrix = iou_matrix(pred_boxes, true_boxes)
         matrix = iou_matrix(pred_boxes[:, :4], true_boxes, iou_type)
-        print(f"IoU matrix: {matrix}")
+        # print(f"CIoU matrix: {matrix}")
+
+        if matrix.numel() == 0:
+            # print("IoU matrix is empty")
+            return {}, pred_boxes.tolist(), true_boxes.tolist()
 
         # dictionary to hold matches where key = true bbox index and value = tuple(prediction index, iou)
         init_matches = {}
@@ -59,7 +67,7 @@ def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="v
             if (max_iou >= iou_thresh): 
                 init_matches[i] = (max_j.item(), max_iou.item())
 
-        print(f"Initial matches: {init_matches}")
+        # print(f"Initial matches: {init_matches}")
 
         # note: matches should have at most M entries, where M is the number of true bounding boxes from the iou matrix and the number of rows
         # there are no duplicate truths because the max was taken from each row
@@ -118,9 +126,9 @@ def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="v
         fp = [pred_boxes[i] for i in range(pred_boxes.shape[0]) if i not in used_preds]
         fn = [true_boxes[i] for i in range(true_boxes.shape[0]) if i not in used_truths]
 
-        print(f"Final matches: {final_matches}")
-        print(f"False positives: {fp}")
-        print(f"False negatives: {fn}")
+        # print(f"Final matches: {final_matches}")
+        # print(f"False positives: {fp}")
+        # print(f"False negatives: {fn}")
 
         return final_matches, fp, fn
 
@@ -182,9 +190,9 @@ def recall(tp, fn):
 # f1-score gives balanced measure of model's performance based on precision and recall
 # takes in number of true positives, number of false negatives, and number of false positives
 def f1_score(tp, fn, fp):
-    precision = precision(tp, fp)
-    recall = recall(tp, fn)
-    return ((2 * precision * recall) / (precision + recall)), precision, recall
+    pre= precision(tp, fp)
+    rec = recall(tp, fn)
+    return ((2 * pre * rec) / (pre + rec + 1e-9)), pre, rec
 
 # precision-recall curve shows trade-off between precision and recall at different confidence thresholds
 # takes in list of prediction confidences, their associated confusion_status (true pos or false pos), and number of total true objects
@@ -528,7 +536,7 @@ def ciou(pred_boxes, true_boxes):
 
     # v measures the consistency of aspect ratios for bboxes
     v = (4 / (torch.pi ** 2)) * torch.pow((torch.atan(true_box_width / true_box_height) - torch.atan(pred_box_width / pred_box_height)), 2)
-    print(f"v {v}")
+    # print(f"v {v}")
     # alpha is a positive trade-off parameter, must be calculated without tracking gradients
     with torch.no_grad():
         # Could use S as the scaling factor based on IoU score
@@ -536,7 +544,7 @@ def ciou(pred_boxes, true_boxes):
         # S = (iou > 0.0).float()
         # alpha = S * v / (1 - iou + v + 1e-16)
         alpha = v / (1 - iou + v + 1e-16)
-        print(f"alpha {alpha}")
+        # print(f"alpha {alpha}")
 
     # calculate ciou
     ciou = iou - u - alpha * v
@@ -550,6 +558,16 @@ def convert_boxes_to_x1y1x2y2(boxes):
         boxes = boxes.unsqueeze(0)
     # adds w, h to x, y coordinate to obtain x2, y2
     converted_boxes = torch.cat([boxes[:, :2], boxes[:, :2] + boxes[:, 2:4]], dim=1)
+    return converted_boxes
+
+# takes in boxes in format [x1, y1, x2, y2] and converts to [x, y, w, h]
+def convert_boxes_to_xywh(boxes):
+    if boxes.dim() == 1:
+        boxes = boxes.unsqueeze(0)
+
+    w = boxes[:, 2] - boxes[:, 0]
+    h = boxes[:, 3] - boxes[:, 1]
+    converted_boxes = torch.cat([boxes[:, :2], w.unsqueeze(1), h.unsqueeze(1)], dim=1)
     return converted_boxes
 
 # takes in boxes in format [x1, y1, x2, y2] and ensures that x2 > x1, and y2 > y1
@@ -574,6 +592,7 @@ def calc_box_center(boxes):
     c1 = boxes[:, 0] + (boxes[:, 2] / 2.0)
     c2 = boxes[:, 1] + (boxes[:, 3] / 2.0)
     return c1, c2
+
 
 # calculates squared euclidean distance between two batches of points
 # pts1 & pts2 = tensor of shape (N, 2) where N is number of points
@@ -691,13 +710,13 @@ def cat_scores(pred_boxes, scores):
 # confidences = [0.93, 0.08, 0.53, 0.63, 0.33, 0.67, 0.91]
 # confusion_status = [True, False, True, False, False, False, True]
 # num_labels = 6
-confidences = [0.99, 0.99, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.65, 0.55]
-confusion_status = [True, True, False, True, False, False, True, True, False, False]
-num_labels = 5
+# confidences = [0.99, 0.99, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.65, 0.55]
+# confusion_status = [True, True, False, True, False, False, True, True, False, False]
+# num_labels = 5
 
-precisions, recalls = precision_recall_curve(confidences, confusion_status, num_labels)
-ap = AP(precisions, recalls, 1)
-print(f"precisions: {precisions}")
-print(f"recalls: {recalls}")
-print(f"ap: {ap}")
-plot_PR_curve(precisions, recalls, ap)
+# precisions, recalls = precision_recall_curve(confidences, confusion_status, num_labels)
+# ap = AP(precisions, recalls, 1)
+# print(f"precisions: {precisions}")
+# print(f"recalls: {recalls}")
+# print(f"ap: {ap}")
+# plot_PR_curve(precisions, recalls, ap)

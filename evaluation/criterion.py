@@ -11,7 +11,7 @@ import utils as u
     
 # takes in matches for a single image along with tensor of dim [7] representing the weights for each iou function and the iou function used to make matches
 # returns tensor of dim [8], which is [iou_loss, giou_loss, diou_loss, ciou_loss, center_loss, size_loss, obj_loss, weighted_sum_losses]
-def compute_weighted_loss(matches, loss_weights, iou_used_to_match):
+def compute_weighted_loss(matches, loss_weights, iou_used_to_match="ciou"):
     loss_types = ["iou", "giou", "diou", "ciou", "center", "size", "obj"]
 
     # ensure weights tensor is compatible for dotting
@@ -63,7 +63,7 @@ def obj_loss(matches, iou_thresh=0.0):
         indices = torch.tensor([i for i, match in enumerate(matches)], dtype=torch.long)
         # iou_scores = torch.tensor([match[1] for match in matches.values()], dtype=torch.float32)
         iou_scores = torch.tensor([iou_score for _, (_, iou_score) in matches.items()], dtype=torch.float32)
-        print(f"iou-scores in obj_loss: {iou_scores}")
+        # print(f"iou-scores in obj_loss: {iou_scores}")
         true_obj[indices] = iou_scores.clamp(min=iou_thresh, max=1.0)
 
     loss = BCEobj(pred_obj, true_obj)
@@ -151,38 +151,38 @@ class ComboLoss(nn.Module):
        combo_loss = self.cls_loss * self.cls_loss(pred_labels, true_labels) + self.bbox_weight * self.bbox_loss(pred_boxes, true_boxes)
        return combo_loss
 
-# testing
-pred_boxes = torch.tensor([
-        [0, 0, 10, 10, 0.9],
-        [1, 1, 9, 9, 0.85],
-        [2, 2, 8, 8, 0.95]
-    ], dtype=torch.float32)
+# # # testing
+# pred_boxes = torch.tensor([
+#         [0, 0, 10, 10, 0.9],
+#         [1, 1, 9, 9, 0.85],
+#         [2, 2, 8, 8, 0.95]
+#     ], dtype=torch.float32)
 
-true_boxes = torch.tensor([
-    [0, 0, 10, 10],
-    [1, 1, 9, 9]
-], dtype=torch.float32)
+# true_boxes = torch.tensor([
+#     [0, 0, 10, 10],
+#     [1, 1, 9, 9]
+# ], dtype=torch.float32)
 
-# loss_weights = F.softmax(torch.rand(7), dim=0)
-loss_weights = torch.tensor([1, 1, 1, 1, 1, 1, 1])
-matches = u.match_boxes(pred_boxes, true_boxes, 0.0, 0.0, "train", "ciou")
-weighted_loss = compute_weighted_loss(matches, loss_weights, "ciou")
-iou = iou_loss(matches)
-diou = diou_loss(matches)
-giou = giou_loss(matches)
-ciou = ciou_loss(matches)
-obj = obj_loss(matches)
-center = center_loss(matches)
-size = size_loss(matches)
-expected_result = iou + diou + giou + ciou + obj + center + size
+# # loss_weights = F.softmax(torch.rand(7), dim=0)
+# loss_weights = torch.tensor([1, 1, 1, 1, 1, 1, 1])
+# matches = u.match_boxes(pred_boxes, true_boxes, 0.0, 0.0, "train", "ciou")
+# weighted_loss = compute_weighted_loss(matches, loss_weights, "ciou")
+# iou = iou_loss(matches)
+# diou = diou_loss(matches)
+# giou = giou_loss(matches)
+# ciou = ciou_loss(matches)
+# obj = obj_loss(matches)
+# center = center_loss(matches)
+# size = size_loss(matches)
+# expected_result = iou + diou + giou + ciou + obj + center + size
 
-print(f"Loss Tensor: {weighted_loss}")
-print(f"Weighted Sum Loss: {weighted_loss[7].item()}")
-print(f"Expected Weighted Sum: {expected_result.item()}")
-print(f"IoU Loss: {iou.item()}")
-print(f"DIoU Loss: {diou.item()}")
-print(f"GIoU Loss: {giou.item()}")
-print(f"CIoU Loss: {ciou.item()}")
-print(f"Objectness Loss: {obj.item()}")
-print(f"Center Loss: {center.item()}")
-print(f"Size Loss: {size.item()}")
+# print(f"Loss Tensor: {weighted_loss}")
+# print(f"Weighted Sum Loss: {weighted_loss[7].item()}")
+# print(f"Expected Weighted Sum: {expected_result.item()}")
+# print(f"IoU Loss: {iou.item()}")
+# print(f"DIoU Loss: {diou.item()}")
+# print(f"GIoU Loss: {giou.item()}")
+# print(f"CIoU Loss: {ciou.item()}")
+# print(f"Objectness Loss: {obj.item()}")
+# print(f"Center Loss: {center.item()}")
+# print(f"Size Loss: {size.item()}")
