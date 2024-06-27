@@ -65,14 +65,3 @@ def get_model_dict(model_type, num_classes, num_loss_components):
     out_dict['loss_weights'] = weights
     out_dict['model'] = model
     return out_dict
-
-sample_target =[{'frame_id': 121, 'flight_id': 'part1807cdb45e6974c419230fe14402b099d', 'timestamp': 1538127510431866640, 'boxes': torch.tensor([[79.6243, 45.9459, 1933.9768,  707.3359],
-        ]).to('cuda'), 'horizons': torch.tensor([1.]).to('cuda'), 'ranges': torch.tensor([150.2472]).to('cuda'), 'all_labels': torch.tensor([40]).to('cuda'), 'labels': torch.tensor([ 5]).to('cuda'), 'num_detections': 1, 'path': 'Images/part1807cdb45e6974c419230fe14402b099d/1538127510431866640807cdb45e6974c419230fe14402b099d.png', 'image_id': 'Images/part1807cdb45e6974c419230fe14402b099d/1538127510431866640807cdb45e6974c419230fe14402b099d.png'}]
-
-model = get_model_dict('FasterRCNN', 7, 9)['model']
-model = model.to('cuda')
-dummy_input = torch.randn(1, 3, 2048, 2448).to('cuda')
-detection_model_summary(model, input_size=(3, 2048, 2448))
-
-model.train()
-print(model(dummy_input, sample_target))
