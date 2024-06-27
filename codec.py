@@ -3,9 +3,9 @@ import re
 import torch
 import torch.nn as nn
 import torchvision
-from torchvision.models.detection.faster_rcnn import FasterRCNN
-from torchvision.models.detection.fcos import FCOS
-from torchvision.models.detection.retinanet import RetinaNet
+from custom_detectors.custom_rcnn import CustomFasterRCNN
+from custom_detectors.custom_fcos import CustomFCOS
+from custom_detectors.custom_retinanet import CustomRetinaNet
 from torchvision.models.detection.ssd import SSD
 from torchvision.models.detection.rpn import AnchorGenerator as RCNNAnchorGenerator
 from torchvision.models.detection.anchor_utils import AnchorGenerator
@@ -14,7 +14,7 @@ import torchvision.transforms as transforms
 
 import primitives
 
-# define list of backbones
+# define list of backbones and heads
 BACKBONES = [
     "ConvNeXt",
     "DenseNet",
@@ -629,31 +629,34 @@ class Codec:
                 output_size=21,
                 sampling_ratio=4
             )
-            model = FasterRCNN(
+            model = CustomFasterRCNN(
                 model,
                 num_classes=self.num_classes,
                 rpn_anchor_generator=anchor_generator,
-                box_roi_pool=roi_pooler
+                box_roi_pool=roi_pooler,
+                box_score_thresh=0.05
             )
         if head == 'FCOS_Head':
             anchor_generator = AnchorGenerator(
                 sizes=((8,), (16,), (32,), (64,), (128,), (256,)),
-                aspect_ratios=((0.5,),)
+                aspect_ratios=((1.0,),)
             )
-            model = FCOS(
+            model = CustomFCOS(
                 model,
                 num_classes=self.num_classes,
-                anchor_generator=anchor_generator
+                anchor_generator=anchor_generator,
+                score_thresh=0.05
             )
         if head == 'RetinaNet_Head':
             anchor_generator = AnchorGenerator(
                 sizes=((8, 16, 32, 64, 128, 256),),
                 aspect_ratios=((0.5, 1.0, 2.0),)
             )
-            model = RetinaNet(
+            model = CustomRetinaNet(
                 model,
                 num_classes=self.num_classes,
-                anchor_generator=anchor_generator
+                anchor_generator=anchor_generator,
+                score_thresh=0.05
             )
         if head == 'SSD_Head':
             anchor_generator = DefaultBoxGenerator(
