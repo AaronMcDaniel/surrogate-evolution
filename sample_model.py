@@ -29,6 +29,7 @@ def get_model_dict(model_type, num_classes, num_loss_components):
             num_classes=num_classes,
             rpn_anchor_generator=anchor_generator,
             box_roi_pool=roi_pooler,
+            score_thresh = 0.2
         )
     elif model_type == 'FCOS':
         anchor_generator = AnchorGenerator(
@@ -49,6 +50,7 @@ def get_model_dict(model_type, num_classes, num_loss_components):
             model,
             num_classes=num_classes,
             anchor_generator=anchor_generator,
+            score_thresh=0.2
         )
 
     else:
