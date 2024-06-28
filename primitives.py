@@ -105,7 +105,7 @@ class Scheduler(dict):
     def __init__(self, initial_dict=None, **kwargs):
         if initial_dict is None:
             initial_dict = {}
-        super(Optimizer, self).__init__(initial_dict)
+        super(Scheduler, self).__init__(initial_dict)
         self.update(kwargs)
 
     def __str__(self):
@@ -198,6 +198,19 @@ class BoolWeight(Enum):
     WEIGHTFALSE = 0,
     WEIGHTTRUE = 1
 
+class AnnealStrategy(Enum):
+    cos = 0
+    linear = 1
+
+class CyclicLRMode(Enum):
+    triangular = 0
+    triangular2 = 1
+    exp_range = 2
+
+class CyclicLRScaleMode(Enum):
+    cycle = 0
+    iterations = 1
+
 
 # Conv layers
 def LazyConv2d(tensor: Tensor3D, out_channels: ChannelSize, kernel_size0: KernelSize, kernel_size1: KernelSize, stride0: StrideSize, stride1: StrideSize, padding0: PaddingSize, padding1: PaddingSize, padding_mode: PaddingMode, 
@@ -281,9 +294,17 @@ def Upsample_2D(tensor: Tensor3D, scaling_factor: float, mode: UpsampleMode):
 def Skip_2D(tensor: Tensor3D, skip_by: SkipSize, merge_type: SkipMergeType):
     return Tensor3D()
 
+# Detection Heads
+def FasterRCNN_Head(tensor: Tensor3D, optimizer: Optimizer, scheduler: Scheduler):
+    return FinalTensor()
 
-# TODO: Heads
-def Detection_Head(tensor: Tensor3D, optimizer: Optimizer):
+def FCOS_Head(tensor: Tensor3D, optimizer: Optimizer, scheduler: Scheduler):
+    return FinalTensor()
+
+def RetinaNet_Head(tensor: Tensor3D, optimizer: Optimizer, scheduler: Scheduler):
+    return FinalTensor()
+
+def SSD_Head(tensor: Tensor3D, optimizer: Optimizer, scheduler: Scheduler):
     return FinalTensor()
 
 
@@ -333,69 +354,69 @@ def Wide_ResNet(tensor: Tensor3D, wideresnetsize: Wide_ResNetSize, weights: Weig
 
 # Optimizers
 def SGD(lr: float, momentum: float, weight_decay: float, dampening: float) -> Optimizer:
-    lr = transform_value(lr, 1e-5, 1)
-    momentum = transform_value(momentum, 0, 1)
-    weight_decay = transform_value(weight_decay, 0, 1)
-    dampening = transform_value(dampening, 0, 1)
+    lr = transform_value(lr, 1e-4, 1e-1)
+    momentum = transform_value(momentum, 0, 0.9)
+    weight_decay = transform_value(weight_decay, 0, 1e-2)
+    dampening = transform_value(dampening, 0, 0.9)
     return Optimizer({'optimizer': 'SGD', 'lr': lr, 'momentum': momentum, 'weight_decay': weight_decay, 'dampening': dampening})
 
 def Adadelta(lr: float, rho: float, weight_decay: float) -> Optimizer:
-    lr = transform_value(lr, 1e-5, 1)
-    rho = transform_value(rho, 0.5, 1)
-    weight_decay = transform_value(weight_decay, 0, 1)
+    lr = transform_value(lr, 1e-4, 1e-1)
+    rho = transform_value(rho, 0.9, 0.999)
+    weight_decay = transform_value(weight_decay, 0, 1e-2)
     return Optimizer({'optimizer': 'Adadelta', 'lr': lr, 'rho': rho, 'weight_decay': weight_decay})
 
 def Adagrad(lr: float, weight_decay: float) -> Optimizer:
-    lr = transform_value(lr, 1e-5, 1)
-    weight_decay = transform_value(weight_decay, 0, 1)
+    lr = transform_value(lr, 1e-4, 1e-1)
+    weight_decay = transform_value(weight_decay, 0, 1e-2)
     return Optimizer({'optimizer': 'Adagrad', 'lr': lr, 'weight_decay': weight_decay})
 
 def Adam(lr: float, weight_decay: float, amsgrad: bool) -> Optimizer:
-    lr = transform_value(lr, 1e-5, 1)
-    weight_decay = transform_value(weight_decay, 0, 1)
+    lr = transform_value(lr, 1e-4, 1e-3)
+    weight_decay = transform_value(weight_decay, 0, 1e-2)
     return Optimizer({'optimizer': 'Adam', 'lr': lr, 'weight_decay': weight_decay, 'amsgrad': amsgrad})
 
 def AdamW(lr: float, weight_decay: float, amsgrad: bool) -> Optimizer:
-    lr = transform_value(lr, 1e-5, 1)
-    weight_decay = transform_value(weight_decay, 0, 1)
+    lr = transform_value(lr, 1e-4, 1e-3)
+    weight_decay = transform_value(weight_decay, 0, 1e-2)
     return Optimizer({'optimizer': 'AdamW', 'lr': lr, 'weight_decay': weight_decay, 'amsgrad': amsgrad})
 
 def Adamax(lr: float, weight_decay: float) -> Optimizer:
-    lr = transform_value(lr, 1e-5, 1)
-    weight_decay = transform_value(weight_decay, 0, 1)
+    lr = transform_value(lr, 1e-4, 1e-3)
+    weight_decay = transform_value(weight_decay, 0, 1e-2)
     return Optimizer({'optimizer': 'Adamax', 'lr': lr, 'weight_decay': weight_decay})
 
 def ASGD(lr: float, lambd: float, alpha: float, t0: float, weight_decay: float) -> Optimizer:
-    lr = transform_value(lr, 1e-5, 1)
-    lambd = transform_value(lambd, 1e-5, 1)
-    alpha = transform_value(alpha, 1e-5, 1)
+    lr = transform_value(lr, 1e-4, 1e-1)
+    lambd = transform_value(lambd, 1e-5, 1e-1)
+    alpha = transform_value(alpha, 1e-5, 1e-1)
     t0 = transform_value(t0, 1, 1e3)
-    weight_decay = transform_value(weight_decay, 0, 1)
+    weight_decay = transform_value(weight_decay, 0, 1e-2)
     return Optimizer({'optimizer': 'ASGD', 'lr': lr, 'lambd': lambd, 'alpha': alpha, 't0': t0, 'weight_decay': weight_decay})
 
 def NAdam(lr: float, weight_decay: float, momentum_decay: float, decoupled_weight_decay: bool) -> Optimizer:
-    lr = transform_value(lr, 1e-5, 1)
-    weight_decay = transform_value(weight_decay, 0, 1)
-    momentum_decay = transform_value(momentum_decay, 0.5, 1)
+    lr = transform_value(lr, 1e-4, 1e-3)
+    weight_decay = transform_value(weight_decay, 0, 1e-2)
+    momentum_decay = transform_value(momentum_decay, 0.9, 0.999)
     return Optimizer({'optimizer': 'NAdam', 'lr': lr, 'weight_decay': weight_decay, 'momentum_decay': momentum_decay, 'decoupled_weight_decay': decoupled_weight_decay})
 
 def RAdam(lr: float, weight_decay: float, decoupled_weight_decay: bool) -> Optimizer:
-    lr = transform_value(lr, 1e-5, 1)
-    weight_decay = transform_value(weight_decay, 0, 1)
+    lr = transform_value(lr, 1e-4, 1e-3)
+    weight_decay = transform_value(weight_decay, 0, 1e-2)
     return Optimizer({'optimizer': 'RAdam', 'lr': lr, 'weight_decay': weight_decay, 'decoupled_weight_decay': decoupled_weight_decay})
 
 def RMSprop(lr: float, momentum: float, alpha: float, centered: bool, weight_decay: float) -> Optimizer:
-    lr = transform_value(lr, 1e-5, 1)
-    momentum = transform_value(momentum, 0, 1)
-    alpha = transform_value(alpha, 0.5, 1)
-    weight_decay = transform_value(weight_decay, 0, 1)
+    lr = transform_value(lr, 1e-4, 1e-1)
+    momentum = transform_value(momentum, 0, 0.9)
+    alpha = transform_value(alpha, 0.9, 0.999)
+    weight_decay = transform_value(weight_decay, 0, 1e-2)
     return Optimizer({'optimizer': 'RMSprop', 'lr': lr, 'momentum': momentum, 'alpha': alpha, 'centered': centered, 'weight_decay': weight_decay})
 
 def Rprop(lr: float, eta_lower: float, eta_upper: float, step_lower: float, step_upper: float) -> Optimizer:
-    lr = transform_value(lr, 1e-5, 1)
-    eta_lower = transform_value(eta_lower, 1e-7, 1e-2)
+    lr = transform_value(lr, 1e-4, 1e-1)
+    eta_lower = transform_value(eta_lower, 1e-6, 1e-2)
     eta_upper = transform_value(eta_upper, 1e-3, 1)
-    step_lower = transform_value(step_lower, 1e-5, 1)
+    step_lower = transform_value(step_lower, 1e-5, 0.1)
     step_upper = transform_value(step_upper, 1, 100)
     return Optimizer({'optimizer': 'Rprop', 'lr': lr, 'eta_lower': eta_lower, 'eta_upper': eta_upper, 'step_lower': step_lower, 'step_upper': step_upper})
 
@@ -404,79 +425,71 @@ def Rprop(lr: float, eta_lower: float, eta_upper: float, step_lower: float, step
 def StepLR(step_size: int, gamma: float) -> Scheduler:
     step_size = int(transform_value(step_size, 1, 100))
     gamma = transform_value(gamma, 0.01, 0.99)
-    return Scheduler({'scheduler': 'StepLR', 'step_size': step_size, 'gamma': gamma})
+    return Scheduler({'lr_scheduler': 'StepLR', 'step_size': step_size, 'gamma': gamma})
 
 def MultiStepLR(gamma: float) -> Scheduler:
     gamma = transform_value(gamma, 0.01, 0.99)
-    return Scheduler({'scheduler': 'MultiStepLR', 'gamma': gamma})
+    return Scheduler({'lr_scheduler': 'MultiStepLR', 'gamma': gamma})
 
 def ExponentialLR(gamma: float) -> Scheduler:
     gamma = transform_value(gamma, 0.01, 0.99)
-    return Scheduler({'scheduler': 'ExponentialLR', 'gamma': gamma})
+    return Scheduler({'lr_scheduler': 'ExponentialLR', 'gamma': gamma})
 
-# FIX MODE FOR REDUCELRONPLATEAU
-#
-
-def ReduceLROnPlateau(mode: str, factor: float, patience: int, threshold: float, cooldown: int, min_lr: float, eps: float) -> Scheduler:
+def ReduceLROnPlateau(factor: float, patience: int, threshold: float, cooldown: int, min_lr: float, eps: float) -> Scheduler:
     factor = transform_value(factor, 0.01, 0.99)
     patience = int(transform_value(patience, 1, 100))
     threshold = transform_value(threshold, 1e-5, 1e-2)
     cooldown = int(transform_value(cooldown, 0, 10))
     min_lr = transform_value(min_lr, 0, 1e-2)
     eps = transform_value(eps, 1e-8, 1e-4)
-    return Scheduler({'scheduler': 'ReduceLROnPlateau', 'mode': mode, 'factor': factor, 'patience': patience, 'threshold': threshold, 'cooldown': cooldown, 'min_lr': min_lr, 'eps': eps})
+    return Scheduler({'lr_scheduler': 'ReduceLROnPlateau', 'factor': factor, 'patience': patience, 'threshold': threshold, 'cooldown': cooldown, 'min_lr': min_lr, 'eps': eps})
 
 def CosineAnnealingLR(T_max: int, eta_min: float) -> Scheduler:
     T_max = int(transform_value(T_max, 1, 100))
     eta_min = transform_value(eta_min, 0, 1e-2)
-    return Scheduler({'scheduler': 'CosineAnnealingLR', 'T_max': T_max, 'eta_min': eta_min})
+    return Scheduler({'lr_scheduler': 'CosineAnnealingLR', 'T_max': T_max, 'eta_min': eta_min})
 
 def CosineAnnealingWarmRestarts(T_0: int, T_mult: int, eta_min: float) -> Scheduler:
     T_0 = int(transform_value(T_0, 1, 100))
     T_mult = int(transform_value(T_mult, 1, 10))
     eta_min = transform_value(eta_min, 0, 1e-2)
-    return Scheduler({'scheduler': 'CosineAnnealingWarmRestarts', 'T_0': T_0, 'T_mult': T_mult, 'eta_min': eta_min})
+    return Scheduler({'lr_scheduler': 'CosineAnnealingWarmRestarts', 'T_0': T_0, 'T_mult': T_mult, 'eta_min': eta_min})
 
-# FIX ANNEAL STRATEGY!!!!!!
-# FIX TOTAL STEPS
-
-def OneCycleLR(max_lr: float, total_steps: int, epochs: int, steps_per_epoch: int, pct_start: float, anneal_strategy: str, cycle_momentum: bool, base_momentum: float, max_momentum: float, div_factor: float, final_div_factor: float, three_phase: bool) -> Scheduler:
-    max_lr = transform_value(max_lr, 1e-5, 1)
+def OneCycleLR(max_lr: float, pct_start: float, anneal_strategy: AnnealStrategy, cycle_momentum: bool, base_momentum: float, max_momentum: float, div_factor: float, final_div_factor: float, three_phase: bool) -> Scheduler:
+    max_lr = transform_value(max_lr, 1e-3, 1)
     pct_start = transform_value(pct_start, 0, 1)
     base_momentum = transform_value(base_momentum, 0.5, 1)
     max_momentum = transform_value(max_momentum, 0.5, 1)
     div_factor = transform_value(div_factor, 1, 100)
     final_div_factor = transform_value(final_div_factor, 1, 1e5)
-    return Scheduler({'scheduler': 'OneCycleLR', 'max_lr': max_lr, 'total_steps': total_steps, 'epochs': epochs, 'steps_per_epoch': steps_per_epoch, 'pct_start': pct_start, 'anneal_strategy': anneal_strategy, 'cycle_momentum': cycle_momentum, 'base_momentum': base_momentum, 'max_momentum': max_momentum, 'div_factor': div_factor, 'final_div_factor': final_div_factor, 'three_phase': three_phase})
+    return Scheduler({'lr_scheduler': 'OneCycleLR', 'max_lr': max_lr, 'pct_start': pct_start, 'anneal_strategy': list(AnnealStrategy)[anneal_strategy].name, 'cycle_momentum': cycle_momentum, 'base_momentum': base_momentum, 'max_momentum': max_momentum, 'div_factor': div_factor, 'final_div_factor': final_div_factor, 'three_phase': three_phase})
 
 def ConstantLR(factor: float, total_iters: int) -> Scheduler:
     factor = transform_value(factor, 0.01, 1)
     total_iters = int(transform_value(total_iters, 1, 100))
-    return Scheduler({'scheduler': 'ConstantLR', 'factor': factor, 'total_iters': total_iters})
+    return Scheduler({'lr_scheduler': 'ConstantLR', 'factor': factor, 'total_iters': total_iters})
 
 def LinearLR(start_factor: float, end_factor: float, total_iters: int) -> Scheduler:
     start_factor = transform_value(start_factor, 0.01, 1)
     end_factor = transform_value(end_factor, 0.01, 1)
     total_iters = int(transform_value(total_iters, 1, 100))
-    return Scheduler({'scheduler': 'LinearLR', 'start_factor': start_factor, 'end_factor': end_factor, 'total_iters': total_iters})
+    return Scheduler({'lr_scheduler': 'LinearLR', 'start_factor': start_factor, 'end_factor': end_factor, 'total_iters': total_iters})
 
 def PolynomialLR(max_lr: float, total_steps: int, power: float) -> Scheduler:
-    max_lr = transform_value(max_lr, 1e-5, 1)
+    max_lr = transform_value(max_lr, 1e-4, 1)
     total_steps = int(transform_value(total_steps, 1, 1000))
     power = transform_value(power, 0.5, 3)
-    return Scheduler({'scheduler': 'PolynomialLR', 'max_lr': max_lr, 'total_steps': total_steps, 'power': power})
+    return Scheduler({'lr_scheduler': 'PolynomialLR', 'max_lr': max_lr, 'total_steps': total_steps, 'power': power})
 
-# FIX MODE AND SCALE MODE!!!!
-# FIX This function
-
-def CyclicLR(base_lr: float, max_lr: float, step_size_up: int, step_size_down: int, mode: str, gamma: float, scale_fn, scale_mode: str, cycle_momentum: bool, base_momentum: float, max_momentum: float) -> Scheduler:
-    base_lr = transform_value(base_lr, 1e-5, 1)
-    max_lr = transform_value(max_lr, 1e-5, 1)
-    step_size_up = int(transform_value(step_size_up, 1, 10000))
+def CyclicLR(base_lr: float, max_lr: float, step_size_up: int, step_size_down: int, mode: CyclicLRMode, gamma: float, scale_mode: CyclicLRScaleMode, cycle_momentum: bool, base_momentum: float, max_momentum: float) -> Scheduler:
+    base_lr = transform_value(base_lr, 1e-4, 1)
+    max_lr = transform_value(max_lr, base_lr, 1)
+    step_size_up = int(transform_value(step_size_up, 1000, 10000))
+    step_size_down = int(transform_value(step_size_down, 1000, 10000))
     gamma = transform_value(gamma, 0.5, 1)
     base_momentum = transform_value(base_momentum, 0.5, 1)
     max_momentum = transform_value(max_momentum, 0.5, 1)
-    return Scheduler({'scheduler': 'CyclicLR', 'base_lr': base_lr, 'max_lr': max_lr, 'step_size_up': step_size_up, 'step_size_down': step_size_down, 'mode': mode, 'gamma': gamma, 'scale_fn': scale_fn, 'scale_mode': scale_mode, 'cycle_momentum': cycle_momentum, 'base_momentum': base_momentum, 'max_momentum': max_momentum})
+    return Scheduler({'lr_scheduler': 'CyclicLR', 'base_lr': base_lr, 'max_lr': max_lr, 'step_size_up': step_size_up, 'step_size_down': step_size_down, 'mode': list(CyclicLRMode)[mode].name, 'gamma': gamma, 'scale_mode': list(CyclicLRScaleMode)[scale_mode].name, 'cycle_momentum': cycle_momentum, 'base_momentum': base_momentum, 'max_momentum': max_momentum})
 
 
 # creating primitive set from layers and components
@@ -549,9 +562,21 @@ pset.addPrimitive(Skip_2D,
                   [Tensor3D, SkipSize, SkipMergeType],
                   Tensor3D)
 
-pset.addPrimitive(Detection_Head,
-                  [Tensor3D, Optimizer] + list(itertools.repeat(float, num_loss_components)),
+pset.addPrimitive(FasterRCNN_Head,
+                  [Tensor3D, Optimizer, Scheduler] + list(itertools.repeat(float, num_loss_components)),
                   FinalTensor)
+
+pset.addPrimitive(FCOS_Head,
+                  [Tensor3D, Optimizer, Scheduler] + list(itertools.repeat(float, num_loss_components)),
+                  FinalTensor)
+
+pset.addPrimitive(RetinaNet_Head,
+                  [Tensor3D, Optimizer, Scheduler] + list(itertools.repeat(float, num_loss_components)),
+                  FinalTensor)
+
+# pset.addPrimitive(SSD_Head,
+#                   [Tensor3D, Optimizer, Scheduler] + list(itertools.repeat(float, num_loss_components)),
+#                   FinalTensor)
 
 pset.addPrimitive(Upsample_2D,
                   [Tensor3D, float, UpsampleMode],
@@ -657,6 +682,50 @@ pset.addPrimitive(Rprop,
                   [float, float, float, float, float],
                   Optimizer)
 
+pset.addPrimitive(StepLR,
+                  [int, float],
+                  Scheduler)
+
+pset.addPrimitive(MultiStepLR,
+                  [float],
+                  Scheduler)
+
+pset.addPrimitive(ExponentialLR,
+                  [float],
+                  Scheduler)
+
+pset.addPrimitive(ReduceLROnPlateau,
+                  [float, int, float, int, float, float],
+                  Scheduler)
+
+pset.addPrimitive(CosineAnnealingLR,
+                  [int, float],
+                  Scheduler)
+
+pset.addPrimitive(CosineAnnealingWarmRestarts,
+                  [int, int, float],
+                  Scheduler)
+
+pset.addPrimitive(OneCycleLR,
+                  [float, float, AnnealStrategy, bool, float, float, float, float, bool],
+                  Scheduler)
+
+pset.addPrimitive(ConstantLR,
+                  [float, int],
+                  Scheduler)
+
+pset.addPrimitive(LinearLR,
+                  [float, float, int],
+                  Scheduler)
+
+pset.addPrimitive(PolynomialLR,
+                  [float, int, float],
+                  Scheduler)
+
+pset.addPrimitive(CyclicLR,
+                  [float, float, int, int, CyclicLRMode, float, CyclicLRScaleMode, bool, float, float],
+                  Scheduler)
+
 
 # Basic operators
 def add(a, b):
@@ -730,7 +799,7 @@ def dummyOp(input):
 # helper method to transform values
 def transform_value(value, lower_bound, upper_bound):
     # Apply the exponential decay function
-    transformed = 1 / math.exp(value)
+    transformed = math.exp(-(value+1))
     # Scale the transformed value to the provided bounds
     scaled_value = lower_bound + (upper_bound - lower_bound) * transformed
     return scaled_value
@@ -777,6 +846,9 @@ pset.addPrimitive(dummyOp, [Swin_V2Size], Swin_V2Size)
 pset.addPrimitive(dummyOp, [ViTSize], ViTSize)
 pset.addPrimitive(dummyOp, [Wide_ResNetSize], Wide_ResNetSize)
 pset.addPrimitive(dummyOp, [bool], bool)
+pset.addPrimitive(dummyOp, [AnnealStrategy], AnnealStrategy)
+pset.addPrimitive(dummyOp, [CyclicLRMode], CyclicLRMode)
+pset.addPrimitive(dummyOp, [CyclicLRScaleMode], CyclicLRScaleMode)
 
 # adding ephemeral constants
 pset.addEphemeralConstant("randProbFloat", partial(random.uniform, 0, 1), ProbFloat)
@@ -808,4 +880,9 @@ pset.addEphemeralConstant("randShuffleNet_V2Size", partial(random.randint, 0, le
 pset.addEphemeralConstant("randSwin_V2Size", partial(random.randint, 0, len(Swin_V2Size)-1), Swin_V2Size)
 pset.addEphemeralConstant("randViTSize", partial(random.randint, 0, len(ViTSize)-1), ViTSize)
 pset.addEphemeralConstant("randWide_ResNetSize", partial(random.randint, 0, len(Wide_ResNetSize)-1), Wide_ResNetSize)
-pset.addTerminal(Optimizer({'optimizer': 'SGD', 'lr': 0.1, 'momentum': 0.9, 'weight_decay': 0,'dampening': 0}), Optimizer) # default terminal for optimizer (SGD with default params)
+pset.addEphemeralConstant("randAnnealStrategy", partial(random.randint, 0, len(AnnealStrategy)-1), AnnealStrategy)
+pset.addEphemeralConstant("randCyclicLRMode", partial(random.randint, 0, len(CyclicLRMode)-1), CyclicLRMode)
+pset.addEphemeralConstant("randCyclicLRScaleMode", partial(random.randint, 0, len(CyclicLRScaleMode)-1), CyclicLRScaleMode)
+
+pset.addTerminal(Optimizer({'optimizer': 'SGD', 'lr': 0.1, 'momentum': 0.9, 'weight_decay': 0, 'dampening': 0}), Optimizer) # default terminal for optimizer (SGD with default params)
+pset.addTerminal(Scheduler({'lr_scheduler': 'StepLR', 'step_size': 30, 'gamma': 0.1}), Scheduler) # default terminal for scheduler (StepLR with default params)
