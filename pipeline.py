@@ -65,6 +65,7 @@ class Pipeline:
         self.max_elite_pool = pipeline_config['max_elite_pool']
         self.train_pool_source = pipeline_config['train_pool_source']
         self.trust_pool_source = pipeline_config['trust_pool_source']
+        self.num_classes = pipeline_config['num_classes']
         self.best_epoch_criteria = pipeline_config['best_epoch_criteria']
 
         # Other useful attributes
