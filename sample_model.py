@@ -29,18 +29,16 @@ def get_model_dict(model_type, num_classes, num_loss_components):
             num_classes=num_classes,
             rpn_anchor_generator=anchor_generator,
             box_roi_pool=roi_pooler,
-            box_score_thresh=0.05
         )
     elif model_type == 'FCOS':
         anchor_generator = AnchorGenerator(
-            sizes=((8,), (16,), (32,), (64,), (128,), (256,)),
+            sizes=((8,), (16,), (32,), (64,), (128,), (256,), (512,)),
             aspect_ratios=((1.0,),)
         )
         model = CustomFCOS(
             model,
             num_classes=num_classes,
             anchor_generator=anchor_generator,
-            score_thresh=0.05
         )
     elif model_type == 'RetinaNet':
         anchor_generator = AnchorGenerator(
@@ -51,7 +49,6 @@ def get_model_dict(model_type, num_classes, num_loss_components):
             model,
             num_classes=num_classes,
             anchor_generator=anchor_generator,
-            score_thresh=0.05
         )
 
     else:

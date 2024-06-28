@@ -638,7 +638,7 @@ class Codec:
             )
         if head == 'FCOS_Head':
             anchor_generator = AnchorGenerator(
-                sizes=((8,), (16,), (32,), (64,), (128,), (256,)),
+                sizes=((8,), (16,), (32,), (64,), (128,), (256,), (512,)),
                 aspect_ratios=((1.0,),)
             )
             model = CustomFCOS(
