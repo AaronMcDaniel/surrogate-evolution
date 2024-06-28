@@ -118,4 +118,7 @@ class CustomFCOS(FCOS):
         self.forward = types.MethodType(custom_forward, self)
     
     def eager_outputs(self, losses, detections):
-        return (losses, detections)
+        if self.training:
+            return (losses, detections)
+        else:
+            return detections

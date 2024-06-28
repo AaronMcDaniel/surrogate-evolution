@@ -511,4 +511,7 @@ class CustomFasterRCNN(FasterRCNN):
         self.roi_heads.forward = types.MethodType(custom_forward, self.roi_heads)
 
     def eager_outputs(self, losses, detections):
-        return (losses, detections)
+        if self.training:
+            return (losses, detections)
+        else:
+            return detections
