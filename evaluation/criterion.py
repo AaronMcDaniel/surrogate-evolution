@@ -23,7 +23,7 @@ def compute_weighted_loss(matches, loss_weights, iou_used_to_match="ciou"):
         # if current function was used to make matches, just sum the iou_score in matches
         if loss_type == iou_used_to_match:
             prev_calc_loss = torch.tensor([1.0 - iou_score for truth, (pred, iou_score) in matches.items()], dtype=torch.float32)
-            result_losses[i] = torch.sum(prev_calc_loss).item()
+            result_losses[i] = torch.sum(prev_calc_loss)
         else:
             # calculate loss with specified function
             loss_i = eval(loss_type + "_loss(matches)")

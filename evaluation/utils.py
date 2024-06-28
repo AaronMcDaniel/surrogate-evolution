@@ -27,7 +27,7 @@ def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="v
 
             # take the maximum value of each column
             max_iou, max_j = matrix[:, i].max(0)
-            matches[true_boxes[max_j.item()]] = (pred_boxes[i], max_iou.item())
+            matches[true_boxes[max_j]] = (pred_boxes[i], max_iou)
 
         # print(matches)
 
@@ -65,7 +65,7 @@ def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="v
 
             # ensure max is above or equal to threshold
             if (max_iou >= iou_thresh): 
-                init_matches[i] = (max_j.item(), max_iou.item())
+                init_matches[i] = (max_j, max_iou)
 
         # print(f"Initial matches: {init_matches}")
 
@@ -564,7 +564,6 @@ def convert_boxes_to_x1y1x2y2(boxes):
 def convert_boxes_to_xywh(boxes):
     if boxes.dim() == 1:
         boxes = boxes.unsqueeze(0)
-
     w = boxes[:, 2] - boxes[:, 0]
     h = boxes[:, 3] - boxes[:, 1]
     converted_boxes = torch.cat([boxes[:, :2], w.unsqueeze(1), h.unsqueeze(1)], dim=1)
@@ -579,6 +578,24 @@ def normalize_boxes(boxes):
     boxes_x2 = torch.max(boxes[:, 0], boxes[:, 2])
     boxes_y2 = torch.max(boxes[:, 1], boxes[:, 3])
     return boxes_x1, boxes_y1, boxes_x2, boxes_y2
+
+def process_image(img):
+    # normalize grey-scale between [0, 1]
+    img = (img.float() / 255.0)
+    # permute so format is [C, H, W]
+    img = img.permute(2, 0, 1)
+    return img
+
+# takes in boxes in either format [x1, y1, x2, y2] or [left, top, w, h]
+def norm_box_scale(boxes, img_width=2448, img_height=2048):
+    if boxes.dim() == 1:
+        boxes = boxes.unsqueeze(0)
+    boxes = boxes.float()
+    boxes[:, 0] /= img_width
+    boxes[:, 2] /= img_width
+    boxes[:, 1] /= img_height
+    boxes[:, 3] /= img_height
+    return boxes
 
 # calculates box area based on bottom-left and top-right bbox coordinates
 def calc_box_area(x1, y1, x2, y2):
@@ -631,7 +648,8 @@ def non_max_suppresion(pred_boxes, iou_thresh, case=1, iou_type="ciou"):
 
             # calculate iou between predictions to see if there is overlap
             for j in range(i + 1, pred_boxes.shape[0]):
-                iou_score = eval(iou_type + "(pred_boxes[i, :4], pred_boxes[j, :4]).item()")
+                # took out .item()
+                iou_score = eval(iou_type + "(pred_boxes[i, :4], pred_boxes[j, :4])")
 
                 # if overlap, add index with lower confidence to removal set
                 if iou_score > iou_thresh:
@@ -659,7 +677,7 @@ def non_max_suppresion(pred_boxes, iou_thresh, case=1, iou_type="ciou"):
         while sorted_indices.numel() > 0:
 
             # keep index of score with highest confidence 
-            i = sorted_indices[0].item()
+            i = sorted_indices[0]
             keep.append(i)
 
             # initialize list to hold indices that must be removed
@@ -672,7 +690,7 @@ def non_max_suppresion(pred_boxes, iou_thresh, case=1, iou_type="ciou"):
             for j in sorted_indices:
 
                 # calculate iou between current prediction pair
-                iou_score = eval(iou_type + "(pred_boxes[i, :4], pred_boxes[j, :4]).item()")
+                iou_score = eval(iou_type + "(pred_boxes[i, :4], pred_boxes[j, :4])")
 
                 # if iou exceeds threshold, remove prediction
                 if iou_score >= iou_thresh:
