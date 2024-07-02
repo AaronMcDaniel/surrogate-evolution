@@ -20,7 +20,11 @@ surrogate_enabled = false
 # GA objectives to optimize for and their weights (matter only relative to each other)
 objectives = {MSE = -1, GIoU = 1, MAP = 1}
 # number of epochs to train individuals for
-train_epochs = 40
+train_epochs = 5
+# batch size
+batch_size = 10
+# number of batches in one epoch
+batches_per_epoch = 10
 # strategy for down selecting individuals trusted by the surrogate
 selection_method_trusted = "NSGA2" # Need to define all enums
 # strategy for down selecting individuals untrusted by the surrogate
@@ -36,7 +40,7 @@ train_pool_source = "All"
 # source of genomes used to calculate the trust value of the surrogate(s)
 trust_pool_source = "ElitePopMix"
 # number of target classes in AOT
-num_classes = 5
+num_classes = 7
 # criteria to select best epoch
 best_epoch_criteria = ["GIoU", "max"]
 
