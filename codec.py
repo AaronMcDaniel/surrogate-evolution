@@ -267,7 +267,7 @@ class DynamicNetwork(nn.Module):
 
 # codec class
 class Codec:
-    def __init__(self, genome_encoding_strat, surrogate_encoding_strat, num_classes) -> None:
+    def __init__(self, num_classes, genome_encoding_strat = 'Tree', surrogate_encoding_strat = "Graph2Vec") -> None:
         self.genome_encoding_strat = genome_encoding_strat
         self.surrogate_encoding_strat = surrogate_encoding_strat
         self.num_classes = num_classes
@@ -621,7 +621,7 @@ class Codec:
         model.out_channels = output.shape[1]
         if head == 'FasterRCNN_Head':
             anchor_generator = RCNNAnchorGenerator(
-                sizes=((8, 16, 32, 64, 128, 256),),
+                sizes=((4, 8, 16, 32, 64, 128, 256),),
                 aspect_ratios=((0.5, 1.0, 2.0),)
             )
             roi_pooler = torchvision.ops.MultiScaleRoIAlign(
@@ -634,29 +634,41 @@ class Codec:
                 num_classes=self.num_classes,
                 rpn_anchor_generator=anchor_generator,
                 box_roi_pool=roi_pooler,
-                box_score_thresh=0.05
+                box_score_thresh=0,
+                box_nms_thresh=1, 
+                min_size=1200,
+                max_size=2000,
+                box_detections_per_img=100
             )
         if head == 'FCOS_Head':
             anchor_generator = AnchorGenerator(
-                sizes=((8,), (16,), (32,), (64,), (128,), (256,), (512,)),
+                sizes=((4,), (8,), (16,), (32,), (64,), (128,), (256,), (512,)),
                 aspect_ratios=((1.0,),)
             )
             model = CustomFCOS(
                 model,
                 num_classes=self.num_classes,
                 anchor_generator=anchor_generator,
-                score_thresh=0.05
+                score_thresh=0,
+                nms_thresh=1,
+                min_size=1200,
+                max_size=2000,
+                detections_per_img=100
             )
         if head == 'RetinaNet_Head':
             anchor_generator = AnchorGenerator(
-                sizes=((8, 16, 32, 64, 128, 256),),
+                sizes=((4, 8, 16, 32, 64, 128, 256),),
                 aspect_ratios=((0.5, 1.0, 2.0),)
             )
             model = CustomRetinaNet(
                 model,
                 num_classes=self.num_classes,
                 anchor_generator=anchor_generator,
-                score_thresh=0.05
+                score_thresh=0,
+                nms_thresh=1,
+                min_size=1200,
+                max_size=2000,
+                detections_per_img=100
             )
         if head == 'SSD_Head':
             anchor_generator = DefaultBoxGenerator(
