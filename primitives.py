@@ -414,10 +414,10 @@ def RMSprop(lr: float, momentum: float, alpha: float, centered: bool, weight_dec
 
 def Rprop(lr: float, eta_lower: float, eta_upper: float, step_lower: float, step_upper: float) -> Optimizer:
     lr = transform_value(lr, 1e-4, 1e-1)
-    eta_lower = transform_value(eta_lower, 1e-6, 1e-2)
-    eta_upper = transform_value(eta_upper, 1e-3, 1)
-    step_lower = transform_value(step_lower, 1e-5, 0.1)
-    step_upper = transform_value(step_upper, 1, 100)
+    eta_lower = transform_value(eta_lower, 0.5, 1)
+    eta_upper = transform_value(eta_upper, 1.1, 1.5)
+    step_lower = transform_value(step_lower, 1e-6, 1)
+    step_upper = transform_value(step_upper, 1, 50)
     return Optimizer({'optimizer': 'Rprop', 'lr': lr, 'eta_lower': eta_lower, 'eta_upper': eta_upper, 'step_lower': step_lower, 'step_upper': step_upper})
 
 
