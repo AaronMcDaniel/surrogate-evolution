@@ -57,7 +57,6 @@ class Pipeline:
         self.mutations = pipeline_config['mutations']
         self.surrogate_enabled = pipeline_config['surrogate_enabled']
         self.objectives = pipeline_config['objectives']
-        self.train_epochs = pipeline_config['train_epochs']
         self.selection_method_trusted = pipeline_config['selection_method_trusted']
         self.selection_method_untrusted = pipeline_config['selection_method_untrusted']
         self.selection_method_parents = pipeline_config['selection_method_parents']
@@ -65,7 +64,6 @@ class Pipeline:
         self.max_elite_pool = pipeline_config['max_elite_pool']
         self.train_pool_source = pipeline_config['train_pool_source']
         self.trust_pool_source = pipeline_config['trust_pool_source']
-        self.num_classes = pipeline_config['num_classes']
         self.best_epoch_criteria = pipeline_config['best_epoch_criteria']
 
         # Other useful attributes
