@@ -4,15 +4,15 @@
 # initial population size
 initial_population_size = 100
 # population size
-population_size = 50
+population_size = 25
 # unsustainable population size
 unsustainable_population_size = 500
 # number of parents to be selected to mate
-num_parents = 20
+num_parents = 10
 # types of crossovers and their probabilities
 crossovers = {one_point = 0.5, one_point_leaf_biased = 0.3}
 # types of mutations and their probabilities
-mutations = {node_replacement = 0.1}
+mutations = {node_replacement = 0.2}
 # whether to use surrogate
 surrogate_enabled = false
 # GA objectives to optimize for and their weights (matter only relative to each other)
@@ -26,7 +26,7 @@ selection_method_parents = "NSGA2" # Need to define all enums
 # strategy for selecting elite individuals
 selection_method_elite_pool = "SPEA2" # Need to define all enums
 # max size of elite pool
-max_elite_pool = 100
+max_elite_pool = 50
 # source of genomes to train the surrogate with each generation 
 train_pool_source = "All" 
 # source of genomes used to calculate the trust value of the surrogate(s)
@@ -36,17 +36,17 @@ best_epoch_criteria = ["average_precision", "max"]
 
 [model]
 # number of epochs to train individuals for
-train_epochs = 5
+train_epochs = 15
 # batch size
 batch_size = 2
 # number of batches in one epoch
-batches_per_epoch = 10
+batches_per_epoch = 500
 # number of target classes in AOT
 num_classes = 7
 # iou threshold for determining detection
-iou_thresh = -0.8
+iou_thresh = 0.0
 # confidence threshold for filtering predictions
-conf_thresh = 0.0
+conf_thresh = 0.05
 # priority type of iou calculation
 iou_type = "ciou"
 # number of components weighted together to make the loss for the individual

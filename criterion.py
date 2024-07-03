@@ -9,6 +9,7 @@ project_dir = os.path.abspath(os.path.dirname(__file__))
 sys.path.append(project_dir)
 import utils as u
     
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 # takes in matches for a single image along with tensor of dim [7] representing the weights for each iou function and the iou function used to make matches
 # returns tensor of dim [8], which is [iou_loss, giou_loss, diou_loss, ciou_loss, center_loss, size_loss, obj_loss, weighted_sum_losses]
 def compute_weighted_loss(matches, loss_weights, iou_used_to_match="ciou"):
@@ -62,7 +63,7 @@ def size_loss(matches):
         pred_areas[i] = pa
         true_areas[i] = ta
     try: 
-        loss = MSELoss(pred_areas, true_areas)
+        loss = MSELoss(pred_areas / true_areas, 1)
     except RuntimeError as e:
         loss = 1000000
     return loss
@@ -115,52 +116,53 @@ def center_loss(matches):
     pred_centers = pred_centers[valid_mask]
     true_centers = true_centers[valid_mask]
 
+
     try:
-        loss = MSELoss(pred_centers, true_centers)
+        loss = MSELoss(pred_centers / true_centers, 1)
     except:
         loss = 1000000
     return loss
 
 # takes in matches dict, calculates iou loss between matched pairs, and returns sum
 def iou_loss(matches):
-    loss = 0.0
+    loss = torch.zeros(1, requires_grad=True, device=device)
     for ti, (pi, iou_score) in matches.items():
         new_iou = u.iou(pi, ti)
         loss += (1 - new_iou)
-    if torch.isnan(loss).any(dim=1):
-        loss = 1000000
-    return loss
+    # if torch.isnan(loss).any(dim=1):
+    #     loss = 1000000
+    return loss / len(matches)
 
 # takes in matches dict, calculates giou loss between matched pairs, and returns sum
 def giou_loss(matches):
-    loss = 0.0
+    loss = torch.zeros(1, requires_grad=True, device=device)
     for ti, (pi, iou_score) in matches.items():
         new_iou = u.giou(pi, ti)
         loss += (1 - new_iou)
 
-    if torch.isnan(loss).any(dim=1):
-        loss = 1000000
-    return loss
+    # if torch.isnan(loss).any(dim=1):
+    #     loss = 1000000
+    return loss / len(matches)
 
 # takes in matches dict, calculates diou loss between matched pairs, and returns sum
 def diou_loss(matches):
-    loss = 0.0
+    loss = torch.zeros(1, requires_grad=True, device=device)
     for ti, (pi, iou_score) in matches.items():
         new_iou = u.diou(pi, ti)
         loss += (1 - new_iou)
-    if torch.isnan(loss).any(dim=1):
-        loss = 1000000
-    return loss
+    # if torch.isnan(loss).any(dim=1):
+    #     loss = 1000000
+    return loss / len(matches)
 
 # takes in matches dict, calculates ciou loss between matched pairs, and returns sum
 def ciou_loss(matches):
-    loss = 0.0
+    loss = torch.zeros(1, requires_grad=True, device=device)
     for ti, (pi, iou_score) in matches.items():
         new_iou = u.ciou(pi, ti)
         loss += (1 - new_iou)
-    if torch.isnan(loss).any(dim=1):
-        loss = 1000000
-    return loss
+    # if torch.isnan(loss).any(dim=1):
+    #     loss = 1000000
+    return loss / len(matches)
 
 # old implementation of center loss where matches are made using euclidean distance
 def center_loss_alt(pred_boxes, true_boxes):
