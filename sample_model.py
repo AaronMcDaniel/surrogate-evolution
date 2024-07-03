@@ -16,41 +16,51 @@ def get_model_dict(model_type, num_classes, num_loss_components):
     model = backbone
     if model_type == 'FasterRCNN':
         anchor_generator = RCNNAnchorGenerator(
-            sizes=((8, 16, 32, 64, 128, 256),),
+            sizes=((4, 8, 16, 32, 64, 128, 256),),
             aspect_ratios=((0.5, 1.0, 2.0),)
         )
         roi_pooler = torchvision.ops.MultiScaleRoIAlign(
             featmap_names=['0'],
-            output_size=21,
-            sampling_ratio=4
+            output_size=28,
+            sampling_ratio=2
         )
         model = CustomFasterRCNN(
             model,
             num_classes=num_classes,
             rpn_anchor_generator=anchor_generator,
             box_roi_pool=roi_pooler,
-            score_thresh = 0.2
+            score_thresh = 0.2,
+            min_size = 1200,
+            max_size = 2000,
+            box_detections_per_image = 100,
         )
     elif model_type == 'FCOS':
         anchor_generator = AnchorGenerator(
-            sizes=((8,), (16,), (32,), (64,), (128,), (256,), (512,)),
+            sizes=((4,), (8,), (16,), (32,), (64,), (128,), (256,), (512,)),
             aspect_ratios=((1.0,),)
         )
         model = CustomFCOS(
             model,
             num_classes=num_classes,
             anchor_generator=anchor_generator,
+            score_thresh = 0.2,
+            min_size = 1200,
+            max_size = 2000,
+            detections_per_image = 100
         )
     elif model_type == 'RetinaNet':
         anchor_generator = AnchorGenerator(
-            sizes=((8, 16, 32, 64, 128, 256),),
+            sizes=((4, 8, 16, 32, 64, 128, 256),),
             aspect_ratios=((0.5, 1.0, 2.0),)
         )
         model = CustomRetinaNet(
             model,
             num_classes=num_classes,
             anchor_generator=anchor_generator,
-            score_thresh=0.2
+            score_thresh = 0.2,
+            min_size = 1200,
+            max_size = 2000,
+            detections_per_image = 100
         )
 
     else:
