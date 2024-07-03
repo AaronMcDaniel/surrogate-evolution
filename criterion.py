@@ -62,8 +62,15 @@ def size_loss(matches):
         ta = u.calc_box_area(tx1, ty1, tx2, ty2)
         pred_areas[i] = pa
         true_areas[i] = ta
+
+    # Normalize predicted areas by true areas
+    normalized_pred_areas = pred_areas / true_areas
+
+    # Create a tensor of ones with the same shape as normalized_pred_areas
+    target = torch.ones_like(normalized_pred_areas)
+
     try: 
-        loss = MSELoss(pred_areas / true_areas, 1)
+        loss = MSELoss(normalized_pred_areas, target)
     except RuntimeError as e:
         loss = 1000000
     return loss
@@ -116,9 +123,12 @@ def center_loss(matches):
     pred_centers = pred_centers[valid_mask]
     true_centers = true_centers[valid_mask]
 
+    if pred_centers.shape[0] == 0 or true_centers.shape[0] == 0:
+        print("No valid centers after masking.")
+        return torch.tensor(0.0, dtype=torch.float32, requires_grad=True)
 
     try:
-        loss = MSELoss(pred_centers / true_centers, 1)
+        loss = MSELoss(pred_centers, true_centers)*100
     except:
         loss = 1000000
     return loss

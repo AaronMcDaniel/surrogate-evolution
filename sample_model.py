@@ -29,16 +29,10 @@ def get_model_dict(model_type, num_classes, num_loss_components):
             num_classes=num_classes,
             rpn_anchor_generator=anchor_generator,
             box_roi_pool=roi_pooler,
-<<<<<<< HEAD
             score_thresh = 0.2,
             min_size = 1200,
             max_size = 2000,
             box_detections_per_image = 100,
-=======
-            score_thresh = 0.0,
-            box_nms_thresh=1.0, 
-            box_detections_per_img = 100
->>>>>>> 27a690b8419353ad3f26dfaca6d4f8c6ca3ab9fb
         )
     elif model_type == 'FCOS':
         anchor_generator = AnchorGenerator(
@@ -49,16 +43,10 @@ def get_model_dict(model_type, num_classes, num_loss_components):
             model,
             num_classes=num_classes,
             anchor_generator=anchor_generator,
-<<<<<<< HEAD
             score_thresh = 0.2,
             min_size = 1200,
             max_size = 2000,
             detections_per_image = 100
-=======
-            score_thresh = 0.0,
-            nms_thresh = 1.0,
-            detections_per_img = 100
->>>>>>> 27a690b8419353ad3f26dfaca6d4f8c6ca3ab9fb
         )
     elif model_type == 'RetinaNet':
         anchor_generator = AnchorGenerator(
@@ -69,16 +57,10 @@ def get_model_dict(model_type, num_classes, num_loss_components):
             model,
             num_classes=num_classes,
             anchor_generator=anchor_generator,
-<<<<<<< HEAD
             score_thresh = 0.2,
             min_size = 1200,
             max_size = 2000,
             detections_per_image = 100
-=======
-            score_thresh=0.0,
-            nms_thresh=1.0, 
-            detections_per_img = 100
->>>>>>> 27a690b8419353ad3f26dfaca6d4f8c6ca3ab9fb
         )
 
     else:
