@@ -8,7 +8,7 @@ population_size = 25
 # unsustainable population size
 unsustainable_population_size = 500
 # number of parents to be selected to mate
-num_parents = 10
+num_parents = 25
 # types of crossovers and their probabilities
 crossovers = {one_point = 0.5, one_point_leaf_biased = 0.3}
 # types of mutations and their probabilities
@@ -69,3 +69,7 @@ models = ["MLP", "GRBT", "XGB", "Transformer"]
 trust_calc_strategy = "SPEA2"
 # ratio of population to check intersection on
 trust_calc_ratio = 0.3
+
+[data]
+# time in hours the dataset cache is valid for
+cache_thresh = 1

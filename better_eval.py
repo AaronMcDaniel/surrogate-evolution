@@ -45,9 +45,15 @@ def eval_wrapper(cfg, gen_num, hash, genome, eval: callable):
         print('See error log for more information')
         print("--------------------")
 
-def prepare_data(train_seed, val_seed, batch_size=5):
-    train_dataset = data.AOTDataset('train', seed=train_seed, string=1)
-    val_dataset = data.AOTDataset('val', seed=val_seed, string=1)
+def prepare_data(cfg, train_seed, val_seed, batch_size=5):
+    cache_thresh = cfg['cache_thresh']
+    max_size = None
+    try:
+        max_size = cfg['max_size']
+    except KeyError:
+        pass 
+    train_dataset = data.AOTDataset('train', seed=train_seed, string=1, cache_thresh=cache_thresh, max_size=max_size)
+    val_dataset = data.AOTDataset('val', seed=val_seed, string=1, cache_thresh=cache_thresh, max_size=max_size)
     train_sampler = data.AOTSampler(train_dataset, batch_size, train_seed)
     val_sampler = data.AOTSampler(val_dataset, batch_size, val_seed)
     train_loader = DataLoader(train_dataset, batch_sampler=train_sampler, collate_fn=data.my_collate, num_workers=4)
@@ -250,6 +256,7 @@ def get_optimizer(params, model_dict):
         'ASGD': optim.ASGD,
         'LBFGS': optim.LBFGS,
         'NAdam': optim.NAdam,
+        'RAdam': optim.RAdam,
         'RMSprop': optim.RMSprop,
         'Rprop': optim.Rprop
     }
@@ -289,7 +296,7 @@ def engine(cfg, genome):
     val_seed = cfg['val_seed']
     
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    train_loader, val_loader = prepare_data(train_seed, val_seed, batch_size)
+    train_loader, val_loader = prepare_data(cfg, train_seed, val_seed, batch_size)
 
     codec = Codec(num_classes, genome_encoding_strat=genome_encoding_strat)
     model_dict = codec.decode_genome(genome, num_loss_comp)
@@ -462,7 +469,8 @@ if __name__ == '__main__':
     configs = toml.load("conf.toml")
     model_config = configs["model"]
     codec_config = configs["codec"]
-    all_config = model_config | codec_config
+    data_config = configs["data"]
+    all_config = model_config | codec_config | data_config
 
     # load generated input for current generation
     input_file = open(f'{infile}', 'r')

@@ -21,9 +21,11 @@ CORES = 8
 MEM = '32GB'
 JOB_TIME = '1-00:00'
 SCRIPT = 'better_eval.py'
+ENV_NAME = 'myenv'
 EXCEPTED_NODES = ['ice109', 'ice111', 'ice161', 'ice113', 'ice116', 'ice114', 'ice170', 'ice149', 'ice158', 'ice177', 'ice178', 'ice120']
 GPUS = ["TeslaV100-PCIE-32GB", "TeslaV100S-PCIE-32GB", "NVIDIAA100-SXM4-80GB", "NVIDIAA10080GBPCIe"]
 # ALLOWED_NODES = ['ice108', 'ice107', 'ice110', 'ice143', 'ice144', 'ice145', 'ice151', 'ice162', 'ice163', 'ice164', 'ice165', 'ice175', 'ice176', 'ice179', 'ice183', 'ice185', 'ice191', 'ice192', 'ice193']
+
 
 class Pipeline:
     def __init__(self, output_dir, config_dir, force_wipe = False, clean = False) -> None:
@@ -240,9 +242,9 @@ class Pipeline:
         print(f'Generation {self.gen_count} evaluation done! Genome failures: {fails}')
 
 
-    def select_parents(self): # current population is an attribute so no need for input args
+    def select_parents(self, selection_pool):
         print('Selecting parents...')
-        selected_parents = self.toolbox.select_parents(self.current_deap_pop)
+        selected_parents = self.toolbox.select_parents(selection_pool)
         print('Done!')
         return selected_parents
 
@@ -277,9 +279,12 @@ class Pipeline:
             # make pairs of parents randomly
             parent_pairs = []
             while len(parent_pairs) < len(mating_pool)/2:
-                parent1 = copies.pop(random.randrange(0, len(copies)))
-                parent2 = copies.pop(random.randrange(0, len(copies)))
-                parent_pairs.append([parent1, parent2])
+                if (len(copies) >= 2):
+                    parent1 = copies.pop(random.randrange(0, len(copies)))
+                    parent2 = copies.pop(random.randrange(0, len(copies)))
+                    parent_pairs.append([parent1, parent2])
+                else:
+                    break
             # mate pairs
             for pair in parent_pairs:
                 try: # try except due to errors with particular genomes when crossovering
@@ -401,7 +406,7 @@ module load anaconda3/2023.07
 module load cuda/12.1.1
 
 # Execute the Python script with SLURM_ARRAY_TASK_ID as argument. Script also has optional args -i and -o to specify input file and output directory respectively
-conda run -n tv1 --no-capture-output python -u {SCRIPT} $((SLURM_ARRAY_TASK_ID)) -i {self.output_dir}/eval_inputs/eval_input_gen{gen_num}.csv -o {self.output_dir}
+conda run -n {ENV_NAME} --no-capture-output python -u {SCRIPT} $((SLURM_ARRAY_TASK_ID)) -i {self.output_dir}/eval_inputs/eval_input_gen{gen_num}.csv -o {self.output_dir}
 """
         with open(f'{JOB_NAME}.job', 'w') as fh:
             fh.write(batch_script)

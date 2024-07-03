@@ -27,15 +27,15 @@ while GaPipeline.gen_count <= num_gen:
     if not GaPipeline.attempt_resume:
         GaPipeline.evaluate_gen()
         num_evals += 1
-    selected_parents = GaPipeline.select_parents()
     if not GaPipeline.attempt_resume:
         elites = GaPipeline.update_elite_pool() # elites are selected from existing elite pool and current pop
     else :
         elites = GaPipeline.elite_pool
     if not GaPipeline.attempt_resume:
         GaPipeline.update_hof()
-        GaPipeline.log_info() 
-    unsustainable_pop = GaPipeline.overpopulate(selected_parents + elites) # returns dict {hash: genome}
+        GaPipeline.log_info()
+    selected_parents = GaPipeline.select_parents(elites + GaPipeline.current_deap_pop) 
+    unsustainable_pop = GaPipeline.overpopulate(selected_parents) # returns dict {hash: genome}
     GaPipeline.downselect(unsustainable_pop) # population is replaced by a completely new one
     GaPipeline.step_gen()
 
