@@ -138,3 +138,4 @@ class CustomRetinaNet(RetinaNet):
             return (losses, detections)
         else:
             return detections
+        
