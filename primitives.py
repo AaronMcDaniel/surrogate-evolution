@@ -10,9 +10,8 @@ import toml
 
 # loading config file
 configs = toml.load(os.path.join(os.path.dirname(os.path.realpath(__file__)), "conf.toml"))
-pipeline_config = configs["pipeline"]
-codec_config = configs["codec"]
-num_loss_components = int(codec_config['num_loss_components'])
+model_config = configs["model"]
+num_loss_components = int(model_config['num_loss_components'])
 
 
 # max bounds for layers
@@ -558,9 +557,9 @@ pset.addPrimitive(Dropout_2D,
                   [Tensor3D, ProbFloat],
                   Tensor3D)
 
-pset.addPrimitive(Skip_2D,
-                  [Tensor3D, SkipSize, SkipMergeType],
-                  Tensor3D)
+# pset.addPrimitive(Skip_2D,
+#                   [Tensor3D, SkipSize, SkipMergeType],
+#                   Tensor3D)
 
 pset.addPrimitive(FasterRCNN_Head,
                   [Tensor3D, Optimizer, Scheduler] + list(itertools.repeat(float, num_loss_components)),

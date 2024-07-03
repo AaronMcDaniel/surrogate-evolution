@@ -1,3 +1,5 @@
+import copy
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -14,6 +16,9 @@ import matplotlib.pyplot as plt
 # note: could also be implemented with a balanced BST (from sortedcontainers) instead of heap
 def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="val", iou_type="ciou"):
 
+    if pred_boxes.dim() != 2 or pred_boxes.size(1) < 5:
+        raise ValueError("pred_boxes should be a 2D tensor with at least 5 columns")
+
     # train mode is used for loss calculation and factors in all predictions
     if mode =="train":
         matrix = iou_matrix(pred_boxes[:, :4], true_boxes, iou_type)
@@ -28,8 +33,6 @@ def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="v
             max_iou, max_j = matrix[:, i].max(0)
             matches[true_boxes[max_j]] = (pred_boxes[i], max_iou)
 
-        # print(matches)
-
         return matches
 
     # validation mode filters predictions based on confidence, NMS, iou threshold, ect.
@@ -39,7 +42,7 @@ def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="v
         pred_boxes = pred_boxes[pred_boxes[:, 4] >= conf_thresh]
 
         # apply NMS to the predictions, specify threshold and NMS implementaton 
-        pred_boxes = non_max_suppresion(pred_boxes, iou_thresh, 1, iou_type)
+        pred_boxes = non_max_suppresion(pred_boxes, iou_thresh, 2, iou_type)
         # print(f"Predictions after NMS: {pred_boxes}")
 
         if pred_boxes.size(0) == 0:
@@ -64,7 +67,7 @@ def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="v
 
             # ensure max is above or equal to threshold
             if (max_iou >= iou_thresh): 
-                init_matches[i] = (max_j, max_iou)
+                init_matches[i] = (max_j.item(), max_iou)
 
         # print(f"Initial matches: {init_matches}")
 
@@ -179,19 +182,37 @@ def match_boxes_alt(pred_boxes, true_boxes, iou_thresh, conf_thresh):
 # precision quantifies the accuracy of good predictions made by the model
 # takes in the number of true positives and the number of false negatives
 def precision(tp, fp):
-    return tp / (tp + fp + 1e-9)
+    try:
+        if tp + fp == 0:
+            return 0.0
+        pre = tp / (tp + fp)
+    except ZeroDivisionError as e:
+        pre = 0.0
+    return pre
 
 # recall quantifies the completeness of the objects detected in the image
 # takes in the number of true positives and the number of false negatives
 def recall(tp, fn):
-    return tp / (tp + fn + 1e-9)
+    try:
+        if tp + fn == 0:
+            return 0.0
+        rec = tp / (tp + fn)
+    except ZeroDivisionError as e:
+        rec = 0.0
+    return rec
 
 # f1-score gives balanced measure of model's performance based on precision and recall
 # takes in number of true positives, number of false negatives, and number of false positives
 def f1_score(tp, fn, fp):
     pre= precision(tp, fp)
     rec = recall(tp, fn)
-    return ((2 * pre * rec) / (pre + rec + 1e-9)), pre, rec
+    try: 
+        if pre + rec == 0.0:
+            return 0.0, pre, rec
+        f1 = 2 * (pre * rec) / (pre + rec)
+    except ZeroDivisionError as e:
+        f1 = 0.0
+    return f1, pre, rec
 
 # precision-recall curve shows trade-off between precision and recall at different confidence thresholds
 # takes in list of prediction confidences, their associated confusion_status (true pos or false pos), and number of total true objects
@@ -267,7 +288,9 @@ def AP(precision, recall, case=2):
     
     return AP
 
-def plot_PR_curve(precisions, recalls, ap, save_path='PR_curve.png'):
+def plot_PR_curve(precisions, recalls, ap, save_dir='plots'):
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir,'pr_curve.png')
     plt.figure(figsize=(8, 6))
     plt.plot(recalls, precisions, marker='o', label=f'PR curve (AP = {ap:.2f})')
     plt.xlabel('Recall')
@@ -275,37 +298,7 @@ def plot_PR_curve(precisions, recalls, ap, save_path='PR_curve.png'):
     plt.title('Precision-Recall Curve')
     plt.legend()
     plt.grid(True)
-    if save_path:
-        plt.savefig(save_path)
-    else:
-        plt.show()
-
-
-# # initializes dataframes with columns for each metric and rows for each epoch
-# def create_metrics_df():
-#     return pd.DataFrame({
-#     'epoch': range(1, num_epochs + 1),
-#     'epoch_loss': [None] * num_epochs,
-#     'precision': [None] * num_epochs,
-#     'recall': [None] * num_epochs,
-#     'f1_score': [None] * num_epochs,
-#     'average_precision': [None] * num_epochs,
-#     'true_positives': [None] * num_epochs,
-#     'false_positives': [None] * num_epochs,
-#     'false_negatives': [None] * num_epochs
-# })
-
-# # updates metrics dataframe with metrics for a single epoch
-# def log_epoch_metrics(metrics_df, epoch, epoch_metrics):
-#     metrics_df.loc[metrics_df['epoch'] == epoch, 'epoch_loss'] = epoch_metrics['epoch_loss']
-#     metrics_df.loc[metrics_df['epoch'] == epoch, 'precision'] = epoch_metrics['precision']
-#     metrics_df.loc[metrics_df['epoch'] == epoch, 'recall'] = epoch_metrics['recall']
-#     metrics_df.loc[metrics_df['epoch'] == epoch, 'f1_score'] = epoch_metrics['f1_score']
-#     metrics_df.loc[metrics_df['epoch'] == epoch, 'average_precision'] = epoch_metrics['average_precision']
-#     metrics_df.loc[metrics_df['epoch'] == epoch, 'true_positives'] = epoch_metrics['true_positives']
-#     metrics_df.loc[metrics_df['epoch'] == epoch, 'false_positives'] = epoch_metrics['false_positives']
-#     metrics_df.loc[metrics_df['epoch'] == epoch, 'false_negatives'] = epoch_metrics['false_negatives']
-
+    plt.savefig(save_path)
 
 # takes in pred_boxes -> [left, top, width, height, conf] and true_boxes -> [top, left, width, height]
 def iou(pred_boxes, true_boxes):
@@ -342,8 +335,8 @@ def iou(pred_boxes, true_boxes):
     # calculate the union area
     union_area = pred_area + true_area - inter_area
     
-    # calculate IoU
-    iou = inter_area / union_area
+    # handle division by zero by setting IoU to 0 if union area is 0
+    iou = torch.where(union_area > 0, inter_area / union_area, torch.zeros_like(union_area))
     iou = torch.clamp(iou, min=0.0, max=1.0)
 
     return iou
@@ -383,9 +376,10 @@ def giou(pred_boxes, true_boxes):
     
     # calculate the union area
     union_area = pred_area + true_area - inter_area
-    
-    # calculate IoU
-    iou = inter_area / union_area
+
+    # handle division by zero by setting IoU to 0 if union area is 0
+    iou = torch.where(union_area > 0, inter_area / union_area, torch.zeros_like(union_area))
+    iou = torch.clamp(iou, min=0.0, max=1.0)
     
     # calculate the coordinates of the smallest enclosing box
     enclose_x1 = torch.min(pred_boxes_x1, true_boxes_x1)
@@ -396,12 +390,12 @@ def giou(pred_boxes, true_boxes):
     # calculate the area of the smallest enclosing box
     enclose_area = (enclose_x2 - enclose_x1) * (enclose_y2 - enclose_y1)
     
-    # calculate GIoU
-    giou = iou - (enclose_area - union_area) / enclose_area
+    # calculate GIoU, handle division by zero
+    g = torch.where(enclose_area > 0, ((enclose_area - union_area) / enclose_area), torch.zeros_like(iou))
+    giou = iou - g
     giou = torch.clamp(giou, min=-1.0, max=1.0)
     
     return giou
-
 
 # src: https://arxiv.org/abs/1911.08287v1
 def diou(pred_boxes, true_boxes):
@@ -420,7 +414,6 @@ def diou(pred_boxes, true_boxes):
     pred_boxes_x1, pred_boxes_y1, pred_boxes_x2, pred_boxes_y2 = normalize_boxes(pred_boxes_x1y1x2y2)
     # set true boxes
     true_boxes_x1, true_boxes_y1, true_boxes_x2, true_boxes_y2 = true_boxes_x1y1x2y2[:, 0], true_boxes_x1y1x2y2[:, 1], true_boxes_x1y1x2y2[:, 2], true_boxes_x1y1x2y2[:, 3]
-    # true_boxes_x1, true_boxes_y1, true_boxes_x2, true_boxes_y2 = normalize_boxes(true_boxes)
     
     # calculate predicted box area based on normalized predicted boxes
     pred_area = calc_box_area(pred_boxes_x1, pred_boxes_y1, pred_boxes_x2, pred_boxes_y2)
@@ -440,8 +433,9 @@ def diou(pred_boxes, true_boxes):
     union_area = pred_area + true_area - inter_area
     
     # calculate IoU
-    iou = inter_area / union_area
-    # print(f"IoU: {iou}")
+    # handle division by zero by setting IoU to 0 if union area is 0
+    iou = torch.where(union_area > 0, inter_area / union_area, torch.zeros_like(union_area))
+    iou = torch.clamp(iou, min=0.0, max=1.0)
 
     # calculate the coordinates of the smallest enclosing box
     enclose_x1 = torch.min(pred_boxes_x1, true_boxes_x1)
@@ -451,30 +445,23 @@ def diou(pred_boxes, true_boxes):
     
     # calculate the area of the smallest enclosing box
     enclose_diagonal = torch.clamp((enclose_x2 - enclose_x1), min=0) ** 2 + torch.clamp((enclose_y2 - enclose_y1), min=0) ** 2
-    # enclose_diagonal = (enclose_x2 - enclose_x1) ** 2 + (enclose_y2 - enclose_y1) ** 2
 
     # calculate box centers for predicted and ground-truth
     pred_c1, pred_c2 = calc_box_center(pred_boxes)
-    # [tensor.detach().cpu().numpy() for tensor in calc_box_center(pred_boxes)]
     true_c1, true_c2 = calc_box_center(true_boxes)
-    # print(f"Predicted center: {pred_c1, pred_c2}")
-    # print(f"True center: {true_c1, true_c2}")
+
     # calculate the euclidian distance between the predicted center and the ground-truth center
     center_distance_squared = (pred_c1 - true_c1) ** 2 + (pred_c2 - true_c2) ** 2
     # print(f"d^2: {center_distance_squared}")
 
-    # calculate DIoU as IoU - (d^2) / (C^2)
-    u = center_distance_squared / enclose_diagonal
+    # calculate DIoU as IoU - (d^2) / (C^2), handle zero enclosing diagonal case
+    u = torch.where(enclose_diagonal > 0, center_distance_squared / enclose_diagonal, torch.zeros_like(center_distance_squared))
     diou = iou - u
     diou = torch.clamp(diou, min=-1.0, max=1.0)
-    # print(f"DIoU: {diou}")
-
     return diou
 
 # src: https://arxiv.org/abs/1911.08287v1
 def ciou(pred_boxes, true_boxes):
-    # if 1D tensor, converts shape from [4] to [1, 4]
-    # can now pass in 1D and 2D tensors
     if pred_boxes.dim() == 1:
         pred_boxes = pred_boxes.unsqueeze(0)
     if true_boxes.dim() == 1:
@@ -486,7 +473,7 @@ def ciou(pred_boxes, true_boxes):
     true_box_width = true_boxes[:, 2]
     true_box_height = true_boxes[:, 3]
 
-    # convert boxes from [x, y, w, h] to [x1. y1, x2, y2]
+    # convert boxes from [x, y, w, h] to [x1, y1, x2, y2]
     pred_boxes_x1y1x2y2 = convert_boxes_to_x1y1x2y2(pred_boxes)
     true_boxes_x1y1x2y2 = convert_boxes_to_x1y1x2y2(true_boxes)
 
@@ -514,7 +501,9 @@ def ciou(pred_boxes, true_boxes):
     union_area = pred_area + true_area - inter_area
     
     # calculate IoU
-    iou = inter_area / union_area
+    # handle division by zero by setting IoU to 0 if union area is 0
+    iou = torch.where(union_area > 0, inter_area / union_area, torch.zeros_like(union_area))
+    iou = torch.clamp(iou, min=0.0, max=1.0)
 
     # calculate the coordinates of the smallest enclosing box
     enclose_x1 = torch.min(pred_boxes_x1, true_boxes_x1)
@@ -531,25 +520,21 @@ def ciou(pred_boxes, true_boxes):
 
     # calculate the euclidian distance between the predicted center and the ground-truth center
     center_distance_squared = (pred_c1 - true_c1) ** 2 + (pred_c2 - true_c2) ** 2
-    u = center_distance_squared / enclose_diagonal
-
+    u = torch.where(enclose_diagonal > 0, center_distance_squared / enclose_diagonal, torch.zeros_like(center_distance_squared))
     # v measures the consistency of aspect ratios for bboxes
-    v = (4 / (torch.pi ** 2)) * torch.pow((torch.atan(true_box_width / true_box_height) - torch.atan(pred_box_width / pred_box_height)), 2)
-    # print(f"v {v}")
+    true_wh_ratio = torch.where(true_box_height > 0, (true_box_width / true_box_height), torch.zeros_like(true_box_width))
+    pred_wh_ratio = torch.where(pred_box_height > 0, (pred_box_width / pred_box_height), torch.zeros_like(pred_box_width))
+    v = (4 / (torch.pi ** 2)) * torch.pow((torch.atan(true_wh_ratio) - torch.atan(pred_wh_ratio)), 2)
+
     # alpha is a positive trade-off parameter, must be calculated without tracking gradients
     with torch.no_grad():
-        # Could use S as the scaling factor based on IoU score
-        # Would need to provide an iou_threshold
-        # S = (iou > 0.0).float()
-        # alpha = S * v / (1 - iou + v + 1e-16)
-        alpha = v / (1 - iou + v + 1e-16)
-        # print(f"alpha {alpha}")
+        denom_alpha = 1 - iou + v
+        alpha = torch.where(denom_alpha > 0, (v / denom_alpha), torch.zeros_like(v))
 
     # calculate ciou
     ciou = iou - u - alpha * v
     ciou = torch.clamp(ciou, min=-1.0, max=1.0)
     return ciou
-
 
 # takes in boxes in format [x, y, w, h] and converts to [x1, y1, x2, y2]
 def convert_boxes_to_x1y1x2y2(boxes):
@@ -596,7 +581,7 @@ def norm_box_scale(boxes, img_width=2448, img_height=2048):
     boxes[:, 3] /= img_height
     return boxes
 
-# calculates box area based on bottom-left and top-right bbox coordinates
+# calculates box area based on x1y1x2y2 format
 def calc_box_area(x1, y1, x2, y2):
     return torch.abs(x2 - x1) * torch.abs(y2 - y1)
 
@@ -607,8 +592,22 @@ def calc_box_center(boxes):
     # Will this break it, needs to be a tensor
     c1 = boxes[:, 0] + (boxes[:, 2] / 2.0)
     c2 = boxes[:, 1] + (boxes[:, 3] / 2.0)
+    zero_width_mask = boxes[:, 2] == 0
+    zero_height_mask = boxes[:, 3] == 0
+    c1 = torch.where(zero_width_mask, torch.tensor(float('nan'), device=boxes.device), c1)
+    c2 = torch.where(zero_height_mask, torch.tensor(float('nan'), device=boxes.device), c2)
     return c1, c2
 
+def scale_boxes(boxes, img_width=2448, img_height=2048):
+    boxes = copy.deepcopy(boxes)
+    if boxes.dim() == 1:
+        boxes = boxes.unsqueeze(0)
+    boxes = boxes.float()
+    boxes[:, 0] *= img_width
+    boxes[:, 2] *= img_width
+    boxes[:, 1] *= img_height
+    boxes[:, 3] *= img_height
+    return boxes
 
 # calculates squared euclidean distance between two batches of points
 # pts1 & pts2 = tensor of shape (N, 2) where N is number of points
@@ -630,7 +629,10 @@ def iou_matrix(pred_boxes, true_boxes, iou_type="iou"):
     elif iou_type == "ciou":
         return torch.tensor([[ciou(pred[:4], true) for pred in pred_boxes] for true in true_boxes])
     elif iou_type == "iou":
-        return torch.tensor([[iou(pred[:4], true) for pred in pred_boxes] for true in true_boxes])
+        pred_boxes = convert_boxes_to_x1y1x2y2(pred_boxes[:, :4])
+        true_boxes = convert_boxes_to_x1y1x2y2(true_boxes)
+        return ops.box_iou(true_boxes, pred_boxes)
+        # return torch.tensor([[iou(pred[:4], true) for pred in pred_boxes] for true in true_boxes])
 
 # function applies non-max suppression to a set of predicted bounding boxes
 # takes in an int representing the case and switches implementation based on that
@@ -671,12 +673,11 @@ def non_max_suppresion(pred_boxes, iou_thresh, case=1, iou_type="ciou"):
 
         # initialize list to hold indices of kept predictions
         keep = []
-
         # iterate until sorted list is empty
         while sorted_indices.numel() > 0:
 
             # keep index of score with highest confidence 
-            i = sorted_indices[0]
+            i = sorted_indices[0].item()
             keep.append(i)
 
             # initialize list to hold indices that must be removed
@@ -693,10 +694,13 @@ def non_max_suppresion(pred_boxes, iou_thresh, case=1, iou_type="ciou"):
 
                 # if iou exceeds threshold, remove prediction
                 if iou_score >= iou_thresh:
-                    to_remove.append(j)
+                    to_remove.append(j.item())
             
             # update sorted_indices so that removed indices are not present
-            sorted_indices = torch.tensor([idx for idx in sorted_indices if idx not in to_remove], dtype=torch.long)
+            sorted_indices = torch.tensor([idx.item() for idx in sorted_indices if idx.item() not in to_remove], dtype=torch.long)
+
+        if not all(0 <= idx < pred_boxes.size(0) for idx in keep):
+            raise IndexError("Some indices in 'keep' are out of bounds for pred_boxes")
 
         # return kept list as a tensor containing final predicted boxes
         return pred_boxes[keep] if keep else torch.empty((0, 5))
