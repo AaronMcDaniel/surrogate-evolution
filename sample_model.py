@@ -29,7 +29,9 @@ def get_model_dict(model_type, num_classes, num_loss_components):
             num_classes=num_classes,
             rpn_anchor_generator=anchor_generator,
             box_roi_pool=roi_pooler,
-            score_thresh = 0.2
+            score_thresh = 0.0,
+            box_nms_thresh=1.0, 
+            box_detections_per_img = 100
         )
     elif model_type == 'FCOS':
         anchor_generator = AnchorGenerator(
@@ -40,6 +42,9 @@ def get_model_dict(model_type, num_classes, num_loss_components):
             model,
             num_classes=num_classes,
             anchor_generator=anchor_generator,
+            score_thresh = 0.0,
+            nms_thresh = 1.0,
+            detections_per_img = 100
         )
     elif model_type == 'RetinaNet':
         anchor_generator = AnchorGenerator(
@@ -50,14 +55,17 @@ def get_model_dict(model_type, num_classes, num_loss_components):
             model,
             num_classes=num_classes,
             anchor_generator=anchor_generator,
-            score_thresh=0.2
+            score_thresh=0.0,
+            nms_thresh=1.0, 
+            detections_per_img = 100
         )
 
     else:
         raise ValueError('model_type bust be one of the following: "FasterRCNN", "FCOS", "RetinaNet"')
 
-    weights = torch.rand_like(torch.ones(num_loss_components))
-    weights /= weights.sum()
+    # weights = torch.rand_like(torch.ones(num_loss_components))
+    # weights /= weights.sum()
+    weights = torch.full((num_loss_components, ), 1.0 / num_loss_components)
     optim_dict = {'optimizer': 'SGD', 'optimizer_lr': 0.1, 'optimizer_momentum': 0.9, 'optimizer_weight_decay': 0, 'optimizer_dampening': 0}
     scheduler_dict = {'lr_scheduler': 'StepLR', 'scheduler_step_size': 30, 'scheduler_gamma': 0.1}
     out_dict = optim_dict | scheduler_dict

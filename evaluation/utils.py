@@ -20,7 +20,7 @@ def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="v
         matrix = iou_matrix(pred_boxes[:, :4], true_boxes, iou_type)
         # print(matrix)
         matches = {}
-
+        breakpoint()
         # for train, only care about what the max iou of each column is
         # each prediction has a paired truth, we don't care about duplicates
         for i in range(matrix.shape[1]):
@@ -636,6 +636,13 @@ def iou_matrix(pred_boxes, true_boxes, iou_type="iou"):
 # function applies non-max suppression to a set of predicted bounding boxes
 # takes in an int representing the case and switches implementation based on that
 def non_max_suppresion(pred_boxes, iou_thresh, case=1, iou_type="ciou"):
+    iou_functions = {
+        "ciou": ciou,
+        "diou": diou, 
+        "iou": iou, 
+        "giou": giou
+    }
+    iou_func = iou_functions[iou_type]
     
     # original custom implementation
     if case == 1:
@@ -649,7 +656,8 @@ def non_max_suppresion(pred_boxes, iou_thresh, case=1, iou_type="ciou"):
             # calculate iou between predictions to see if there is overlap
             for j in range(i + 1, pred_boxes.shape[0]):
                 # took out .item()
-                iou_score = eval(iou_type + "(pred_boxes[i, :4], pred_boxes[j, :4])")
+                iou_score = iou_func(pred_boxes[i, :4], pred_boxes[j, :4])
+                # eval(iou_type + "(pred_boxes[i, :4], pred_boxes[j, :4])")
 
                 # if overlap, add index with lower confidence to removal set
                 if iou_score > iou_thresh:
@@ -690,7 +698,8 @@ def non_max_suppresion(pred_boxes, iou_thresh, case=1, iou_type="ciou"):
             for j in sorted_indices:
 
                 # calculate iou between current prediction pair
-                iou_score = eval(iou_type + "(pred_boxes[i, :4], pred_boxes[j, :4])")
+                # iou_score = eval(iou_type + "(pred_boxes[i, :4], pred_boxes[j, :4])")
+                iou_score = iou_func(pred_boxes[i, :4], pred_boxes[j, :4])
 
                 # if iou exceeds threshold, remove prediction
                 if iou_score >= iou_thresh:
