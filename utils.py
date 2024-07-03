@@ -27,14 +27,11 @@ def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="v
 
         # for train, only care about what the max iou of each column is
         # each prediction has a paired truth, we don't care about duplicates
-        try: 
-            for i in range(matrix.shape[1]):
+        for i in range(matrix.shape[1]):
 
-                # take the maximum value of each column
-                max_iou, max_j = matrix[:, i].max(0)
-                matches[true_boxes[max_j]] = (pred_boxes[i], max_iou)
-        except:
-            breakpoint()
+            # take the maximum value of each column
+            max_iou, max_j = matrix[:, i].max(0)
+            matches[true_boxes[max_j]] = (pred_boxes[i], max_iou)
 
         return matches
 
