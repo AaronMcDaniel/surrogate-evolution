@@ -501,7 +501,7 @@ if __name__ == '__main__':
     outdir = args.outdir
 
     # load config attributes
-    configs = toml.load("conf.toml")
+    configs = toml.load(os.path.join(outdir, "conf.toml"))
     model_config = configs["model"]
     codec_config = configs["codec"]
     data_config = configs["data"]
