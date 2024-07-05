@@ -3,4 +3,5 @@ __pycache__/
 test/
 eval_input.csv
 eval.job
+precog_eval.job
 weights/
