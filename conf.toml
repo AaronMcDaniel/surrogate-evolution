@@ -36,7 +36,7 @@ best_epoch_criteria = ["average_precision", "max"]
 
 [model]
 # number of epochs to train individuals for
-train_epochs = 15
+train_epochs = 10
 # batch size
 batch_size = 2
 # number of batches in one epoch
