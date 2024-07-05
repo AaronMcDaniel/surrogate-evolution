@@ -94,9 +94,9 @@ def obj_loss(matches, iou_thresh=0.0):
     true_obj = true_obj.clamp(min=0.0, max=1.0)
 
     try:
-        loss = BCEobj(pred_obj, true_obj)
+        loss = BCEobj(pred_obj, true_obj) * 100
     except RuntimeError as e:
-        loss = torch.tensor(1.0, requires_grad=True, device=pred_obj.device)
+        loss = torch.tensor(1.0, requires_grad=True, device=pred_obj.device) * 100
     return loss
 
 # takes in matches dict and calculates L2 norm (MSE) of actual and predicted bbox centers
