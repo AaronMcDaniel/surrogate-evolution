@@ -613,7 +613,7 @@ class Codec:
     
 
     # function to add appropriate detection head to custom backbone
-    def add_head(self, head, module_list, skip_info): # adds rcnn head for now should be customizable later
+    def add_head(self, head, module_list, skip_info):
         dummy_input = torch.randn(1, 3, 2048, 2448).to(self.device)
         model = DynamicNetwork(module_list, skip_info)
         test_model = model.to(self.device)

@@ -23,6 +23,8 @@ import utils as u
 import criterion as c
 from codec import Codec
 
+
+# wrapper function to log important information
 def eval_wrapper(cfg, gen_num, hash, genome, eval: callable):
     os.system('nvidia-smi')
     hostname = os.uname().nodename
@@ -45,6 +47,8 @@ def eval_wrapper(cfg, gen_num, hash, genome, eval: callable):
         print('See error log for more information')
         print("--------------------")
 
+
+# data loader creation
 def prepare_data(cfg, train_seed, val_seed, batch_size=5):
     cache_thresh = cfg['cache_thresh']
     max_size = None
@@ -60,6 +64,8 @@ def prepare_data(cfg, train_seed, val_seed, batch_size=5):
     val_loader = DataLoader(val_dataset, batch_sampler=val_sampler, collate_fn=data.my_collate, num_workers=4)
     return train_loader, val_loader
 
+
+# converts images from data loader to pytorch acceptable format
 def process_images(images, device):
     # stack images convert to float, and normalize between [0, 1]
     images = torch.stack(images)
@@ -71,6 +77,8 @@ def process_images(images, device):
     images = images.to(device)
     return images
 
+
+# converts tagerts from data loader to pytorch acceptable format
 def process_targets(targets, device):
     for target in targets:
         num_detections = target['num_detections']
@@ -84,6 +92,8 @@ def process_targets(targets, device):
                 target[k] = u.convert_boxes_to_x1y1x2y2(target[k])
     return targets
 
+
+# converts model outputs to format for evaluation
 def process_preds_truths(target, output):
     flight_id = target['flight_id']
     frame_id = target['frame_id']
@@ -95,6 +105,8 @@ def process_preds_truths(target, output):
     pred_boxes = u.cat_scores(pred_boxes, scores)
     return pred_boxes, true_boxes, flight_id, frame_id
 
+
+# helper method to visualize predictions
 def draw_boxes(img, flight_id, frame_id, pred_boxes, true_boxes, outdir='images'):
     # unprocess img 
     img_np = img.permute(1, 2, 0).detach().cpu().numpy() * 255
@@ -120,11 +132,15 @@ def draw_boxes(img, flight_id, frame_id, pred_boxes, true_boxes, outdir='images'
     outpath = os.path.join(outdir, f'img_{flight_id}_{frame_id}.png')
     cv2.imwrite(outpath, img_np)
 
+
+# saves model weights for testing
 def save_model_weights(model, model_type, num_images, save_dir='weights'):
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, f'{model_type}_{num_images}_img.pth')
     torch.save(model.state_dict(), save_path)
 
+
+# loads model weights for testing
 def load_model_weights(model, device, file_path):
     if not os.path.exists(file_path):
         raise ValueError(f'The directory path {file_path} does not exist.')
@@ -132,12 +148,14 @@ def load_model_weights(model, device, file_path):
     model.load_state_dict(state_dict)
     return model
 
+
 def create_metrics_df():
     return pd.DataFrame(columns=['epoch_num', 'train_epoch_loss', 'val_epoch_loss', 
                                 'iou_loss', 'giou_loss', 'diou_loss', 'ciou_loss',
                                 'center_loss', 'size_loss', 'obj_loss', 'precision', 
                                 'recall', 'f1_score', 'average_precision', 
                                 'true_positives', 'false_positives', 'false_negatives'])
+
 
 # saves latest model's weights to disc and checks if current epoch is also the best epoch
 def save_best_last_epochs(model, metrics_df, curr_epoch):
@@ -153,6 +171,7 @@ def save_best_last_epochs(model, metrics_df, curr_epoch):
     if curr_epoch == best_epoch:
         torch.save(model.state_dict(), best_epoch_out)
 
+
 # saves all model metrics and predictions to disc
 def store_data(metrics_df: pd.DataFrame, all_preds: dict):
     metrics_out = f'{outdir}/generation_{gen_num}/{hash}/metrics.csv'
@@ -165,6 +184,7 @@ def store_data(metrics_df: pd.DataFrame, all_preds: dict):
     with open(pickled_preds_out, 'wb') as f:
         # serializes all_preds dictionary and writes to out file
         pickle.dump(all_preds, f)
+
 
 # returns learning rate scheduler based on configuration defined by the genome
 def get_scheduler(optimizer, model_dict, num_epochs, batch_size):
@@ -223,6 +243,7 @@ def get_scheduler(optimizer, model_dict, num_epochs, batch_size):
     scheduler = scheduler_class(**valid_params)
     return scheduler
 
+
 # returns optimizer based on configuration defined by the genome
 def get_optimizer(params, model_dict):
 
@@ -275,14 +296,18 @@ def get_optimizer(params, model_dict):
     optimizer = optimizer_class(**valid_params)
     return optimizer
 
+
 def step_scheduler(scheduler, loss):
     if type(scheduler) == lr_scheduler.ReduceLROnPlateau:
         scheduler.step(loss)
     else:
         scheduler.step()
 
+
+# main training and eval loop
 def engine(cfg, genome):
 
+    # retrieve config attributes
     genome_encoding_strat = cfg['genome_encoding_strat']
     num_classes = cfg['num_classes']
     num_loss_comp = cfg['num_loss_components']
@@ -295,16 +320,20 @@ def engine(cfg, genome):
     train_seed = cfg['train_seed']
     val_seed = cfg['val_seed']
     
+    # set device and load data
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     train_loader, val_loader = prepare_data(cfg, train_seed, val_seed, batch_size)
 
+    # initialize codec and decode genome
     codec = Codec(num_classes, genome_encoding_strat=genome_encoding_strat)
     model_dict = codec.decode_genome(genome, num_loss_comp)
     loss_weights = model_dict['loss_weights']
 
+    # get model
     model = model_dict['model'].to(device)
     params = model.parameters()
 
+    # get optimizer and scheduler
     optimizer = get_optimizer(params, model_dict)
     scheduler = get_scheduler(optimizer, model_dict, num_epochs, batch_size)
     scaler = GradScaler()
@@ -331,6 +360,7 @@ def engine(cfg, genome):
         # save metrics_df, best/last epochs, predictions to disc
         store_data(metrics_df, all_preds)
         save_best_last_epochs(model, metrics_df, epoch)
+
 
 def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, loss_weights, iou_type, max_batch=None):
     model.train()
@@ -367,13 +397,11 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, l
     step_scheduler(scheduler, train_epoch_loss)
     return train_epoch_loss
 
+
 def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds, max_batch=None):
-    os.popen('rm -rf images')
-    os.popen('rm -rf plots')
-    os.popen('rm -rf matches')
     confidences, confusion_status = [], []
-    val_epoch_loss, iou_loss, giou_loss, diou_loss, ciou_loss, center_loss, size_loss, obj_loss = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    num_preds, num_labels, total_tp, total_fp, total_fn = 0, 0, 0, 0, 0
+    val_epoch_loss, iou_loss, giou_loss, diou_loss, ciou_loss, center_loss, size_loss, obj_loss = 0.0
+    num_preds, num_labels, total_tp, total_fp, total_fn = 0
     model.eval()
     if max_batch is not None:
         # Slice the dataloader to only include up to max_batch
@@ -391,6 +419,10 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
                 pred_boxes, true_boxes, flight_id, frame_id = process_preds_truths(targets[j], outputs[j])
                 # NOTE pred boxes are normalized, in xywh format, and have scores, and true boxes are nomalized and in xywh format
                 # draw_boxes(image, flight_id, frame_id, pred_boxes[:, :4], true_boxes, outdir='images')
+
+                # update epoch_preds
+                epoch_preds[(flight_id, frame_id)] = outputs[j]
+
                 matches, fp, fn = u.match_boxes(pred_boxes, true_boxes, iou_thresh, conf_thresh, "val", iou_type)
                 num_tp = len(matches)
                 num_fp = len(fp)
@@ -454,6 +486,7 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
     }
     return epoch_metrics
 
+
 if __name__ == '__main__':
     # parses arguments from sbatch job
     parser = argparse.ArgumentParser()
@@ -481,6 +514,7 @@ if __name__ == '__main__':
     genome = line[2]
     input_file.close()
 
+    # evaluate
     eval_wrapper(all_config, gen_num, hash, genome, engine)
 
 

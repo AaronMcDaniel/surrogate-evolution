@@ -7,7 +7,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-o', '--outputs', type=str, required=True, help='The output directory')
 parser.add_argument('-f', '--force', action='store_true', help='Force overwrite if output directory exists')
 parser.add_argument('-n', '--num_generations', type=int, required=True, help='The number of generations to run the evolution for')
-parser.add_argument('-c', '--clean', action='store_true', help='Cleans output directory of non-pareto-optimal individuals')
+parser.add_argument('-r', '--remove', action='store_true', help='Cleans output directory of non-pareto-optimal individuals')
 parser.add_argument('-conf', '--configuration', type=str, required=True, help='The path to the configuration file')
 
 args = parser.parse_args()
@@ -16,7 +16,7 @@ output_dir = args.outputs
 config_dir = args.configuration
 force_flag = args.force
 num_gen = args.num_generations
-clean = args.clean
+clean = args.remove
 
 num_evals = 0
 
