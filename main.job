@@ -4,8 +4,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16GB
 #SBATCH --time=4-00:00
-#SBATCH --output="$/gv1/projects/GRIP_Precog_Opt/evolution_logs/evolution.%A.%a.log"
-#SBATCH --error="$/gv1/projects/GRIP_Precog_Opt/evolution_logs/evolution_error.%A.%a.log"
+#SBATCH --output="/gv1/projects/GRIP_Precog_Opt/evolution_logs/evolution.%A.%a.log"
+#SBATCH --error="/gv1/projects/GRIP_Precog_Opt/evolution_logs/evolution_error.%A.%a.log"
 
 # Parse command line arguments
 output_dir=""
