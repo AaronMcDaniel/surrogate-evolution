@@ -21,7 +21,7 @@ clean = args.remove
 num_evals = 0
 
 GaPipeline = Pipeline(output_dir, config_dir, force_flag, clean)
-GaPipeline.initialize()
+GaPipeline.initialize(seed_file='seeds.txt')
 while GaPipeline.gen_count <= num_gen:
     print(f'---------- Generation {GaPipeline.gen_count} ----------')
     if not GaPipeline.attempt_resume:

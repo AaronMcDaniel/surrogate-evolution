@@ -15,7 +15,7 @@ from deap import creator, gp, base, tools
 import primitives
 
 # job file params
-JOB_NAME = 'eval'
+JOB_NAME = 'eval2'
 NODES = 1
 CORES = 8
 MEM = '32GB'
@@ -154,10 +154,19 @@ class Pipeline:
     def init_pop(self, seed_file = None):
         print('Initializing population...')
         # TODO: add seed file support
+        seeded_individuals = []
+        if seed_file is not None:
+            shutil.copy(seed_file, self.output_dir)
+            with open(seed_file, 'r') as seed_file:
+                genomes = seed_file.readlines()
+                genomes = [x[:-1] if '\n' in x else x for x in genomes]
+                for genome in genomes:
+                    individual = creator.Individual(gp.PrimitiveTree.from_string(genome, self.pset))
+                    seeded_individuals.append(individual)
         self.current_population = {}
-        pop = self.toolbox.population(n=self.initial_population_size)
-        self.current_deap_pop = pop
-        for genome in pop:
+        pop = self.toolbox.population(n=self.initial_population_size-len(seeded_individuals))
+        self.current_deap_pop = pop + seeded_individuals
+        for genome in self.current_deap_pop:
             genome_string = str(genome)
             hash = self.__get_hash(genome_string)
             self.current_population[hash] = {'genome': genome_string, 'metrics': None}
