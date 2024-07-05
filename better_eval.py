@@ -150,7 +150,7 @@ def load_model_weights(model, device, file_path):
 
 
 def create_metrics_df():
-    return pd.DataFrame(columns=['epoch_num', 'train_epoch_loss', 'val_epoch_loss', 
+    return pd.DataFrame(columns=['epoch_num', 'train_epoch_loss', 'uw_val_epoch_loss', 'val_epoch_loss', 
                                 'iou_loss', 'giou_loss', 'diou_loss', 'ciou_loss',
                                 'center_loss', 'size_loss', 'obj_loss', 'precision', 
                                 'recall', 'f1_score', 'average_precision', 
@@ -167,7 +167,7 @@ def save_best_last_epochs(model, metrics_df, curr_epoch):
     torch.save(model.state_dict(), last_epoch_out)
     
     # retrieve best epoch as epoch with lowest validation loss
-    best_epoch = metrics_df['val_epoch_loss'].idxmin() + 1
+    best_epoch = metrics_df['val_epoch_loss'].idxmin() + 1 # NOTE best epoch won't get saved if val loss is nan
     if curr_epoch == best_epoch:
         torch.save(model.state_dict(), best_epoch_out)
 
@@ -400,8 +400,8 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, l
 
 def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds, max_batch=None):
     confidences, confusion_status = [], []
-    val_epoch_loss, iou_loss, giou_loss, diou_loss, ciou_loss, center_loss, size_loss, obj_loss = 0.0
-    num_preds, num_labels, total_tp, total_fp, total_fn = 0
+    val_epoch_loss, iou_loss, giou_loss, diou_loss, ciou_loss, center_loss, size_loss, obj_loss = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    num_preds, num_labels, total_tp, total_fp, total_fn = 0, 0, 0, 0, 0
     model.eval()
     if max_batch is not None:
         # Slice the dataloader to only include up to max_batch
@@ -461,6 +461,7 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
     center_loss/= (num_preds + 1e-9)
     size_loss /= (num_preds + 1e-9)
     obj_loss /= (num_preds + 1e-9)
+    uw_val_epoch_loss = iou_loss + giou_loss + diou_loss + ciou_loss + center_loss + size_loss + obj_loss
     epoch_f1, epoch_pre, epoch_rec = u.f1_score(total_tp, total_fn, total_fp)
     pre_curve, rec_curve = u.precision_recall_curve(confidences, confusion_status, num_labels)
     epoch_avg_pre = u.AP(pre_curve, rec_curve)
@@ -468,6 +469,7 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
     u.plot_PR_curve(pre_curve, rec_curve, epoch_avg_pre, plot_outdir)
 
     epoch_metrics = {
+        'uw_val_epoch_loss': uw_val_epoch_loss.item(),
         'val_epoch_loss': val_epoch_loss.item(),
         'iou_loss':iou_loss.item(),
         'giou_loss': giou_loss.item(),
