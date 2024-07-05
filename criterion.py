@@ -72,7 +72,7 @@ def size_loss(matches):
     try: 
         loss = MSELoss(normalized_pred_areas, target)
     except RuntimeError as e:
-        loss = 1000000
+        loss = torch.tensor(float('nan'), dtype=torch.float32, device=device, requires_grad=True)
     return loss
 
 # objectness loss function used to regress model predicted confidence and iou with BCE loss
@@ -102,8 +102,6 @@ def obj_loss(matches, iou_thresh=0.0):
 # takes in matches dict and calculates L2 norm (MSE) of actual and predicted bbox centers
 def center_loss(matches):
     MSELoss = nn.MSELoss()
-    # pred_centers = torch.zeros((len(matches), 2), dtype=torch.float32)
-    # true_centers = torch.zeros((len(matches), 2), dtype=torch.float32)
     pred_centers = []
     true_centers = []
 
@@ -116,6 +114,10 @@ def center_loss(matches):
         pred_centers.append(pred_center)
         true_centers.append(true_center)
 
+    if not pred_centers or not true_centers:
+        # Return a large default loss value or zero tensor to handle this case
+        return torch.tensor(float('nan'), dtype=torch.float32, device=device, requires_grad=True)
+
     pred_centers = torch.stack(pred_centers)
     true_centers = torch.stack(true_centers)
 
@@ -123,14 +125,12 @@ def center_loss(matches):
     pred_centers = pred_centers[valid_mask]
     true_centers = true_centers[valid_mask]
 
-    if pred_centers.shape[0] == 0 or true_centers.shape[0] == 0:
-        print("No valid centers after masking.")
-        return torch.tensor(0.0, dtype=torch.float32, requires_grad=True)
-
     try:
-        loss = MSELoss(pred_centers, true_centers)*100
-    except:
-        loss = 1000000
+        loss = MSELoss(pred_centers, true_centers) * 100
+    except Exception as e:
+        print(f"Error calculating MSELoss: {e}")
+        loss = torch.tensor(float('nan'), dtype=torch.float32, device=device, requires_grad=True)
+    
     return loss
 
 # takes in matches dict, calculates iou loss between matched pairs, and returns sum
