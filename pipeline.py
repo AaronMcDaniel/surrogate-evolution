@@ -15,7 +15,7 @@ from deap import creator, gp, base, tools
 import primitives
 
 # job file params
-JOB_NAME = 'eval2'
+JOB_NAME = 'eval'
 NODES = 1
 CORES = 8
 MEM = '32GB'
@@ -153,7 +153,6 @@ class Pipeline:
 
     def init_pop(self, seed_file = None):
         print('Initializing population...')
-        # TODO: add seed file support
         seeded_individuals = []
         if seed_file is not None:
             shutil.copy(seed_file, self.output_dir)
