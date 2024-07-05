@@ -15,7 +15,7 @@ from deap import creator, gp, base, tools
 import primitives
 
 # job file params
-JOB_NAME = 'eval'
+JOB_NAME = 'precog_eval'
 NODES = 1
 CORES = 8
 MEM = '32GB'
