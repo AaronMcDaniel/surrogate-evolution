@@ -78,7 +78,9 @@ class Pipeline:
         self.current_population = {} # dict of genomes associated with their metrics with hash as key
         self.current_deap_pop = [] # list of deap individuals representing the current population; no other info
         self.elite_pool = [] # list of deap individuals in the elite pool
+        self.elite_pool_history = {} # dict keeping track of elite pool through generations
         self.hall_of_fame = tools.ParetoFront() # hall of fame as a ParetoFront object
+        self.hof_history = {} # dict keeping track of hall of fame through generations
         self.surrogate = None # Surrogate class to be defined
         self.pset = primitives.pset # primitive set
         self.gen_count = 1
@@ -262,6 +264,7 @@ class Pipeline:
     def update_elite_pool(self): # updates the elite pool and returns selected elites from the current population
         print('Updating elite pool...')
         self.elite_pool = self.toolbox.select_elitists(self.current_deap_pop + self.elite_pool)
+        self.elite_pool_history[self.gen_count] = self.elite_pool
         print('Done!')
         return self.elite_pool
     
@@ -269,6 +272,7 @@ class Pipeline:
     def update_hof(self): # updates ParetoFront object
         print('Updating Hall of Fame...')
         self.hall_of_fame.update(self.current_deap_pop)
+        self.hof_history[self.gen_count] = self.hall_of_fame
         print('Done!')
         if self.clean:
             print('Cleaning up non-pareto-optimal indivuduals...')
@@ -371,6 +375,11 @@ class Pipeline:
             pickle.dump(self.elite_pool, f)
         with open(os.path.join(checkpoint_path,'hof.pkl'), 'wb') as f:
             pickle.dump(self.hall_of_fame, f)
+        # store elite pool and hof history as pickle files
+        with open(os.path.join(self.output_dir,'elites_history.pkl'), 'wb') as f:
+            pickle.dump(self.elite_pool_history, f)
+        with open(os.path.join(self.output_dir,'hof_history.pkl'), 'wb') as f:
+            pickle.dump(self.hof_history, f)
         # store holy grail
         holy_grail_expanded = self.holy_grail.join(pd.json_normalize(self.holy_grail['metrics'])).drop('metrics', axis='columns')
         holy_grail_expanded.to_csv(f'{self.output_dir}/out.csv', index=False)
