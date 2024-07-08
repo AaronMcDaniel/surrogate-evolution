@@ -1,8 +1,10 @@
+from collections import deque
 import copy
 import csv
 import hashlib
 import pickle
 import random
+import re
 import shutil
 import subprocess
 import time
@@ -160,7 +162,7 @@ class Pipeline:
                 genomes = seed_file.readlines()
                 genomes = [x[:-1] if '\n' in x else x for x in genomes]
                 for genome in genomes:
-                    individual = creator.Individual(gp.PrimitiveTree.from_string(genome, self.pset))
+                    individual = creator.Individual(CustomPrimitiveTree.from_string(genome, self.pset))
                     seeded_individuals.append(individual)
         self.current_population = {}
         pop = self.toolbox.population(n=self.initial_population_size-len(seeded_individuals))
@@ -418,3 +420,37 @@ conda run -n {ENV_NAME} --no-capture-output python -u {SCRIPT} $((SLURM_ARRAY_TA
 """
         with open(f'{JOB_NAME}.job', 'w') as fh:
             fh.write(batch_script)
+    
+
+class CustomPrimitiveTree(gp.PrimitiveTree):
+    @classmethod
+    def from_string(cls, string, pset):
+        tokens = re.split("[ \t\n\r\f\v(),]", string)
+        expr = []
+        ret_types = deque()
+        for token in tokens:
+            if token == '':
+                continue
+            if len(ret_types) != 0:
+                type_ = ret_types.popleft()
+            else:
+                type_ = None
+
+            if token in pset.mapping:
+                primitive = pset.mapping[token]
+
+                expr.append(primitive)
+                if isinstance(primitive, gp.Primitive):
+                    ret_types.extendleft(reversed(primitive.args))
+            else:
+                try:
+                    token = eval(token)
+                except NameError:
+                    raise TypeError("Unable to evaluate terminal: {}.".format(token))
+
+                if type_ is None:
+                    type_ = type(token)
+
+                expr.append(gp.Terminal(token, False, type_))
+        return cls(expr)
+        
