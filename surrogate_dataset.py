@@ -21,18 +21,21 @@ parser.add_argument('-i', '--infile', required=False, default='/gv1/projects/GRI
 parser.add_argument('-w', '--working', required=False, default='/gv1/projects/GRIP_Precog_Opt/outputs')
 parser.add_argument('-o', '--outdir', required=False, default='surrogate_dataset')
 parser.add_argument('-m', '--metrics', required=False, default='uw_val_epoch_loss,iou_loss,giou_loss,diou_loss,ciou_loss,center_loss,size_loss,obj_loss,precision,recall,f1_score,average_precision')
+parser.add_argument('-x', '--exclude', required=False, default='')
 args = parser.parse_args()
 infile = args.infile
 working_dir = args.working
 outdir = args.outdir
-configs = toml.load(os.path.join(working_dir, "conf.toml"))
-model_config = configs["model"]
-codec_config = configs["codec"]
-data_config = configs["data"]
-cfg = model_config | codec_config | data_config
-num_epochs = cfg['train_epochs']
 metric_headings = args.metrics
 metric_headings = metric_headings.split(',')
+excluded_gens = args.exclude
+excluded_gens = [int(gen) for gen in excluded_gens.split(',')]
+
+
+configs = toml.load(os.path.join(working_dir, "conf.toml"))
+model_config = configs["model"]
+num_epochs = model_config['train_epochs']
+
 
 MAX_METRICS = ['precision', 'recall', 'f1_score', 'average_precision']
 out_data = pd.DataFrame(columns=['genome', 'epoch_num']+metric_headings)
@@ -45,6 +48,9 @@ for line in data:
     genome_hash = line['hash']
     gen = line['gen']
     genome = line['genome']
+
+    if gen in excluded_gens:
+        continue
 
     metrics = pd.read_csv(os.path.join(working_dir, f'generation_{gen}', genome_hash, 'metrics.csv'))
     metrics = metrics.to_dict('records')
