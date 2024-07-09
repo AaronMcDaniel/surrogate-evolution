@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--infile', required=False, default='/gv1/projects/GRIP_Precog_Opt/outputs/out.csv')
 parser.add_argument('-w', '--working', required=False, default='/gv1/projects/GRIP_Precog_Opt/outputs')
 parser.add_argument('-o', '--outdir', required=False, default='surrogate_dataset')
-parser.add_argument('-m', '--metrics', required=False, default='train_epoch_loss,uw_val_epoch_loss,iou_loss,giou_loss,diou_loss,ciou_loss,center_loss,size_loss,obj_loss,precision,recall,f1_score,average_precision')
+parser.add_argument('-m', '--metrics', required=False, default='uw_val_epoch_loss,iou_loss,giou_loss,diou_loss,ciou_loss,center_loss,size_loss,obj_loss,precision,recall,f1_score,average_precision')
 args = parser.parse_args()
 infile = args.infile
 working_dir = args.working
