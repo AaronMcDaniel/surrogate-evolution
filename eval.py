@@ -101,52 +101,10 @@ def process_preds_truths(target, output):
     pred_boxes = u.norm_box_scale(output['boxes'])
     pred_boxes = u.convert_boxes_to_xywh(pred_boxes)
     true_boxes = u.convert_boxes_to_xywh(true_boxes)
+    pred_boxes = u.clean_zero_dim(pred_boxes)
     scores = output['scores']
     pred_boxes = u.cat_scores(pred_boxes, scores)
     return pred_boxes, true_boxes, flight_id, frame_id
-
-
-# helper method to visualize predictions
-def draw_boxes(img, flight_id, frame_id, pred_boxes, true_boxes, outdir='images'):
-    # unprocess img 
-    img_np = img.permute(1, 2, 0).detach().cpu().numpy() * 255
-    img_np = img_np.astype(np.uint8)
-    # convert rgb to bgr for cv2
-    img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
-    # scale boxes back up to pixel values
-    # NOTE scale_boxes makes a deep copy of the boxes so they are not modified in place
-    scaled_pred_boxes = u.scale_boxes(pred_boxes)
-    # convert to x1y1x2y2 format and convert to numpy arr
-    scaled_pred_boxes = u.convert_boxes_to_x1y1x2y2(scaled_pred_boxes)
-    scaled_pred_boxes = scaled_pred_boxes[:4].detach().cpu().numpy()
-    scaled_true_boxes = u.scale_boxes(true_boxes)
-    scaled_true_boxes = u.convert_boxes_to_x1y1x2y2(scaled_true_boxes)
-    scaled_true_boxes = scaled_true_boxes[:4].detach().cpu().numpy()
-    for box in scaled_pred_boxes:
-        x1, y1, x2, y2 = box
-        cv2.rectangle(img_np, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
-    for box in scaled_true_boxes:
-        x1, y1, x2, y2 = box
-        cv2.rectangle(img_np, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-    os.makedirs(outdir, exist_ok=True)
-    outpath = os.path.join(outdir, f'img_{flight_id}_{frame_id}.png')
-    cv2.imwrite(outpath, img_np)
-
-
-# saves model weights for testing
-def save_model_weights(model, model_type, num_images, save_dir='weights'):
-    os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, f'{model_type}_{num_images}_img.pth')
-    torch.save(model.state_dict(), save_path)
-
-
-# loads model weights for testing
-def load_model_weights(model, device, file_path):
-    if not os.path.exists(file_path):
-        raise ValueError(f'The directory path {file_path} does not exist.')
-    state_dict = torch.load(file_path, map_location=device)
-    model.load_state_dict(state_dict)
-    return model
 
 
 def create_metrics_df():
@@ -418,7 +376,6 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
             for j, image in enumerate(images):
                 pred_boxes, true_boxes, flight_id, frame_id = process_preds_truths(targets[j], outputs[j])
                 # NOTE pred boxes are normalized, in xywh format, and have scores, and true boxes are nomalized and in xywh format
-                # draw_boxes(image, flight_id, frame_id, pred_boxes[:, :4], true_boxes, outdir='images')
 
                 # update epoch_preds
                 epoch_preds[(flight_id, frame_id)] = outputs[j]
@@ -433,7 +390,8 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
                 num_preds += len(pred_boxes)
                 num_labels += len(true_boxes)
                 loss_matches = u.match_boxes(pred_boxes, true_boxes, 0.0, 0.0, "train", iou_type)
-                loss_tensor = c.compute_weighted_loss(loss_matches, loss_weights, iou_type)
+                loss_tensor = c.compute_weighted_loss(loss_matches, pred_boxes, true_boxes, loss_weights, iou_type)
+                
                 val_image_loss = loss_tensor[7]
                 val_batch_loss += val_image_loss
                 val_epoch_loss += val_image_loss
@@ -444,6 +402,7 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
                 center_loss += loss_tensor[4]
                 size_loss += loss_tensor[5]
                 obj_loss += loss_tensor[6]
+
                 for _, (true_pos, _) in matches.items():
                     confidences.append(true_pos[4].item())
                     confusion_status.append(True)
