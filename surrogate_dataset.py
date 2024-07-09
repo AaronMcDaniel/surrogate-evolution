@@ -13,6 +13,7 @@ import math
 import os
 
 import pandas as pd
+import toml
 
 
 parser = argparse.ArgumentParser()
@@ -24,6 +25,12 @@ args = parser.parse_args()
 infile = args.infile
 working_dir = args.working
 outdir = args.outdir
+configs = toml.load(os.path.join(working_dir, "conf.toml"))
+model_config = configs["model"]
+codec_config = configs["codec"]
+data_config = configs["data"]
+cfg = model_config | codec_config | data_config
+num_epochs = cfg['train_epochs']
 metric_headings = args.metrics
 metric_headings = metric_headings.split(',')
 
@@ -32,6 +39,7 @@ out_data = pd.DataFrame(columns=['genome', 'epoch_num']+metric_headings)
 
 data = pd.read_csv(infile)
 data = data.to_dict('records')
+
 
 for line in data:
     genome_hash = line['hash']
@@ -44,9 +52,18 @@ for line in data:
     for metric_row in metrics:
         to_add = {}
         to_add['genome'] = genome
-        if 'epoch_num' not in metric_row:
 
-            continue # TODO handle genome failures here
+        if 'epoch_num' not in metric_row:
+            for i in range(num_epochs):
+                to_add['epoch_num'] = i + 1
+                for heading in metric_headings:
+                    if heading in MAX_METRICS:
+                        to_add[heading] = -1000000
+                    else:
+                        to_add[heading] = 1000000
+                out_data.loc[len(out_data)] = to_add
+            continue
+
         to_add['epoch_num'] = metric_row['epoch_num']
         for heading in metric_headings:
             if math.isnan(metric_row[heading]):
