@@ -1,8 +1,10 @@
+from collections import deque
 import copy
 import csv
 import hashlib
 import pickle
 import random
+import re
 import shutil
 import subprocess
 import time
@@ -76,7 +78,9 @@ class Pipeline:
         self.current_population = {} # dict of genomes associated with their metrics with hash as key
         self.current_deap_pop = [] # list of deap individuals representing the current population; no other info
         self.elite_pool = [] # list of deap individuals in the elite pool
+        self.elite_pool_history = {} # dict keeping track of elite pool through generations
         self.hall_of_fame = tools.ParetoFront() # hall of fame as a ParetoFront object
+        self.hof_history = {} # dict keeping track of hall of fame through generations
         self.surrogate = None # Surrogate class to be defined
         self.pset = primitives.pset # primitive set
         self.gen_count = 1
@@ -160,7 +164,7 @@ class Pipeline:
                 genomes = seed_file.readlines()
                 genomes = [x[:-1] if '\n' in x else x for x in genomes]
                 for genome in genomes:
-                    individual = creator.Individual(gp.PrimitiveTree.from_string(genome, self.pset))
+                    individual = creator.Individual(CustomPrimitiveTree.from_string(genome, self.pset))
                     seeded_individuals.append(individual)
         self.current_population = {}
         pop = self.toolbox.population(n=self.initial_population_size-len(seeded_individuals))
@@ -260,6 +264,7 @@ class Pipeline:
     def update_elite_pool(self): # updates the elite pool and returns selected elites from the current population
         print('Updating elite pool...')
         self.elite_pool = self.toolbox.select_elitists(self.current_deap_pop + self.elite_pool)
+        self.elite_pool_history[self.gen_count] = self.elite_pool
         print('Done!')
         return self.elite_pool
     
@@ -267,6 +272,7 @@ class Pipeline:
     def update_hof(self): # updates ParetoFront object
         print('Updating Hall of Fame...')
         self.hall_of_fame.update(self.current_deap_pop)
+        self.hof_history[self.gen_count] = self.hall_of_fame
         print('Done!')
         if self.clean:
             print('Cleaning up non-pareto-optimal indivuduals...')
@@ -369,6 +375,11 @@ class Pipeline:
             pickle.dump(self.elite_pool, f)
         with open(os.path.join(checkpoint_path,'hof.pkl'), 'wb') as f:
             pickle.dump(self.hall_of_fame, f)
+        # store elite pool and hof history as pickle files
+        with open(os.path.join(self.output_dir,'elites_history.pkl'), 'wb') as f:
+            pickle.dump(self.elite_pool_history, f)
+        with open(os.path.join(self.output_dir,'hof_history.pkl'), 'wb') as f:
+            pickle.dump(self.hof_history, f)
         # store holy grail
         holy_grail_expanded = self.holy_grail.join(pd.json_normalize(self.holy_grail['metrics'])).drop('metrics', axis='columns')
         holy_grail_expanded.to_csv(f'{self.output_dir}/out.csv', index=False)
@@ -418,3 +429,37 @@ conda run -n {ENV_NAME} --no-capture-output python -u {SCRIPT} $((SLURM_ARRAY_TA
 """
         with open(f'{JOB_NAME}.job', 'w') as fh:
             fh.write(batch_script)
+    
+
+class CustomPrimitiveTree(gp.PrimitiveTree):
+    @classmethod
+    def from_string(cls, string, pset):
+        tokens = re.split("[ \t\n\r\f\v(),]", string)
+        expr = []
+        ret_types = deque()
+        for token in tokens:
+            if token == '':
+                continue
+            if len(ret_types) != 0:
+                type_ = ret_types.popleft()
+            else:
+                type_ = None
+
+            if token in pset.mapping:
+                primitive = pset.mapping[token]
+
+                expr.append(primitive)
+                if isinstance(primitive, gp.Primitive):
+                    ret_types.extendleft(reversed(primitive.args))
+            else:
+                try:
+                    token = eval(token)
+                except NameError:
+                    raise TypeError("Unable to evaluate terminal: {}.".format(token))
+
+                if type_ is None:
+                    type_ = type(token)
+
+                expr.append(gp.Terminal(token, False, type_))
+        return cls(expr)
+        
