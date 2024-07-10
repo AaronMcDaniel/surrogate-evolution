@@ -1,5 +1,7 @@
 import torch.nn as nn
+import torch
 import matplotlib.pyplot as plt
+import torchvision.ops as ops
 
 # mlp surrogate model
 class MLP(nn.Module):
@@ -59,5 +61,21 @@ def plot_model_weights(model):
             plt.title(f'Weight Distribution for {name}')
             plt.xlabel('Weight values')
             plt.ylabel('Frequency')
-            plt.savefig(f'surrogate_weight_dist/{name}_weight_distribution.png')
+            plt.savefig(f'{name}_weight_distribution.png')
 
+model = MLP()
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+model.to(device)
+data = torch.randn((16, 976), dtype=torch.float32, device=device)
+label = torch.randn((16, 12), dtype=torch.float32, device=device)
+model.train()
+output = model(data)
+train_criterion = nn.MSELoss()
+loss = train_criterion(output, label)
+print(loss)
+val_criterion = nn.MSELoss(reduction='none')
+# (16, 12) matrix of 12 mse losses for each image in batch of 16
+loss_matrix = val_criterion(output, label)
+# meaned losses per metric
+loss_means = torch.mean(loss_matrix, dim=0)
+print(loss_means)
