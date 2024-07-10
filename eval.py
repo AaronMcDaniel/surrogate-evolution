@@ -411,6 +411,7 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
                     confusion_status.append(False)
 
             data_iter.set_postfix(loss=val_batch_loss)
+            torch.cuda.empty_cache()
 
     val_epoch_loss /= (num_preds +  1e-9)
     iou_loss /= (num_preds  + 1e-9)
