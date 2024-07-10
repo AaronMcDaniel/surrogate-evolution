@@ -64,7 +64,11 @@ surrogate_encoding_strat = "Graph2Vec"
 
 [surrogate]
 # surrogate models to be used
-models = ["MLP", "GRBT", "XGB", "Transformer"]
+models = ["MLP"]
+# number of epochs to train the surrogates for
+surrogate_train_epochs = 30
+# batch size used in surrogate evaluation
+surrogate_batch_size = 16
 # method of calculating the trust of a surrogate
 trust_calc_strategy = "SPEA2"
 # ratio of population to check intersection on
