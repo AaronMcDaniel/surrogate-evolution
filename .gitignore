@@ -5,3 +5,4 @@ eval_input.csv
 eval.job
 precog_eval.job
 weights/
+surrogate_dataset/
