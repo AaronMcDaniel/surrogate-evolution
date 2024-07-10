@@ -15,6 +15,7 @@ import random
 
 import pandas as pd
 import toml
+import torch
 
 
 parser = argparse.ArgumentParser()
@@ -32,7 +33,10 @@ outdir = args.outdir
 metric_headings = args.metrics
 metric_headings = metric_headings.split(',')
 excluded_gens = args.exclude
-excluded_gens = [int(gen) for gen in excluded_gens.split(',')]
+if excluded_gens == '':
+    excluded_gens = []
+else:
+    excluded_gens = [int(gen) for gen in excluded_gens.split(',')]
 val_ratio = args.valratio
 seed = args.seed
 
@@ -76,9 +80,9 @@ for line in data:
                 to_add['epoch_num'] = i + 1
                 for heading in metric_headings:
                     if heading in MAX_METRICS:
-                        to_add[heading] = -1000000
+                        to_add[heading] = torch.tensor(-1000000, dtype=torch.float32)
                     else:
-                        to_add[heading] = 1000000
+                        to_add[heading] = torch.tensor(1000000.0, dtype=torch.float32)
                 out_data.loc[len(out_data)] = to_add
                 genome_info.append(to_add)
             continue
@@ -87,11 +91,11 @@ for line in data:
         for heading in metric_headings:
             if math.isnan(metric_row[heading]):
                 if heading in MAX_METRICS:
-                    to_add[heading] = -1000000
+                    to_add[heading] = torch.tensor(-1000000, dtype=torch.float32)
                 else:
-                    to_add[heading] = 1000000
+                    to_add[heading] = torch.tensor(1000000.0, dtype=torch.float32)
             else:
-                to_add[heading] = metric_row[heading]
+                to_add[heading] = torch.tensor(metric_row[heading], dtype=torch.float32)
         out_data.loc[len(out_data)] = to_add
         genome_info.append(to_add)
     
