@@ -1,4 +1,5 @@
 import itertools
+import re
 import sys
 import argparse
 import csv
@@ -13,396 +14,112 @@ from tqdm import tqdm
 import torch
 import cv2
 import os
-import model_summary as summary
-import inspect
-import torch.nn as nn
-import torch.optim as optim
-from torch.optim import lr_scheduler
-from torch.cuda.amp import autocast, GradScaler
 import utils as u
 import criterion as c
-from codec import Codec
+from eval import process_images, process_targets, process_preds_truths, create_metrics_df
 
 
-# wrapper function to log important information
-def eval_wrapper(cfg, gen_num, hash, genome, eval: callable):
-    os.system('nvidia-smi')
-    hostname = os.uname().nodename
-    print()
-    print("====================")
-    print(f"Running on node: {hostname.split(".")[0]}")
-    print("--------------------")
-    print(f"Gen: {gen_num} Genome hash: {hash}")
-    print("====================")
-    print()
-    summary.tree_genome_summary(genome, cfg['num_loss_components'])
-    print()
-    try:
-        eval(cfg, genome)
-    except Exception as e:
-        print("==========ERROR==========")
-        traceback.print_exc()
-        print(e)
-        print()
-        print('See error log for more information')
-        print("--------------------")
-
-
-# data loader creation
-def prepare_data(cfg, train_seed, val_seed, batch_size=5):
+def prepare_data(cfg, val_seed, batch_size=5):
     cache_thresh = cfg['cache_thresh']
     max_size = None
     try:
         max_size = cfg['max_size']
     except KeyError:
         pass 
-    train_dataset = data.AOTDataset('train', seed=train_seed, string=1, cache_thresh=cache_thresh, max_size=max_size)
     val_dataset = data.AOTDataset('val', seed=val_seed, string=1, cache_thresh=cache_thresh, max_size=max_size)
-    train_sampler = data.AOTSampler(train_dataset, batch_size, train_seed)
     val_sampler = data.AOTSampler(val_dataset, batch_size, val_seed)
-    train_loader = DataLoader(train_dataset, batch_sampler=train_sampler, collate_fn=data.my_collate, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_sampler=val_sampler, collate_fn=data.my_collate, num_workers=4)
-    return train_loader, val_loader
-
-
-# converts images from data loader to pytorch acceptable format
-def process_images(images, device):
-    # stack images convert to float, and normalize between [0, 1]
-    images = torch.stack(images)
-    # permute to (B, C, H, W),
-    images = images.permute(0, 3, 1, 2).float()
-    # normalize between [0, 1]
-    images = images / 255.0
-    # move to device
-    images = images.to(device)
-    return images
-
-
-# converts tagerts from data loader to pytorch acceptable format
-def process_targets(targets, device):
-    for target in targets:
-        num_detections = target['num_detections']
-        for k, v in target.items():
-            # move to device if tensor
-            if isinstance(v, torch.Tensor):
-                target[k] = v.to(device)
-            if k == 'boxes':
-                # slice off empty boxes and convert to [x1, y1, x2, y2]
-                target[k] = target[k][:num_detections, :]
-                target[k] = u.convert_boxes_to_x1y1x2y2(target[k])
-    return targets
-
-
-# converts model outputs to format for evaluation
-def process_preds_truths(target, output):
-    flight_id = target['flight_id']
-    frame_id = target['frame_id']
-    true_boxes = u.norm_box_scale(target['boxes'])
-    pred_boxes = u.norm_box_scale(output['boxes'])
-    pred_boxes = u.convert_boxes_to_xywh(pred_boxes)
-    true_boxes = u.convert_boxes_to_xywh(true_boxes)
-    scores = output['scores']
-    pred_boxes = u.cat_scores(pred_boxes, scores)
-    return pred_boxes, true_boxes, flight_id, frame_id
-
-
-# helper method to visualize predictions
-def draw_boxes(img, flight_id, frame_id, pred_boxes, true_boxes, outdir='images'):
-    # unprocess img 
-    img_np = img.permute(1, 2, 0).detach().cpu().numpy() * 255
-    img_np = img_np.astype(np.uint8)
-    # convert rgb to bgr for cv2
-    img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
-    # scale boxes back up to pixel values
-    # NOTE scale_boxes makes a deep copy of the boxes so they are not modified in place
-    scaled_pred_boxes = u.scale_boxes(pred_boxes)
-    # convert to x1y1x2y2 format and convert to numpy arr
-    scaled_pred_boxes = u.convert_boxes_to_x1y1x2y2(scaled_pred_boxes)
-    scaled_pred_boxes = scaled_pred_boxes[:4].detach().cpu().numpy()
-    scaled_true_boxes = u.scale_boxes(true_boxes)
-    scaled_true_boxes = u.convert_boxes_to_x1y1x2y2(scaled_true_boxes)
-    scaled_true_boxes = scaled_true_boxes[:4].detach().cpu().numpy()
-    for box in scaled_pred_boxes:
-        x1, y1, x2, y2 = box
-        cv2.rectangle(img_np, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
-    for box in scaled_true_boxes:
-        x1, y1, x2, y2 = box
-        cv2.rectangle(img_np, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-    os.makedirs(outdir, exist_ok=True)
-    outpath = os.path.join(outdir, f'img_{flight_id}_{frame_id}.png')
-    cv2.imwrite(outpath, img_np)
-
-
-# saves model weights for testing
-def save_model_weights(model, model_type, num_images, save_dir='weights'):
-    os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, f'{model_type}_{num_images}_img.pth')
-    torch.save(model.state_dict(), save_path)
-
-
-# loads model weights for testing
-def load_model_weights(model, device, file_path):
-    if not os.path.exists(file_path):
-        raise ValueError(f'The directory path {file_path} does not exist.')
-    state_dict = torch.load(file_path, map_location=device)
-    model.load_state_dict(state_dict)
-    return model
-
-
-def create_metrics_df():
-    return pd.DataFrame(columns=['epoch_num', 'train_epoch_loss', 'uw_val_epoch_loss', 'val_epoch_loss', 
-                                'iou_loss', 'giou_loss', 'diou_loss', 'ciou_loss',
-                                'center_loss', 'size_loss', 'obj_loss', 'precision', 
-                                'recall', 'f1_score', 'average_precision', 
-                                'true_positives', 'false_positives', 'false_negatives'])
-
-
-# saves latest model's weights to disc and checks if current epoch is also the best epoch
-def save_best_last_epochs(model, metrics_df, curr_epoch):
-    last_epoch_out = f'{outdir}/generation_{gen_num}/{hash}/last_epoch.pth'
-    best_epoch_out = f'{outdir}/generation_{gen_num}/{hash}/best_epoch.pth'
-
-    os.makedirs(os.path.dirname(last_epoch_out), exist_ok=True)
-    
-    torch.save(model.state_dict(), last_epoch_out)
-    
-    # retrieve best epoch as epoch with lowest validation loss
-    best_epoch = metrics_df['val_epoch_loss'].idxmin() + 1 # NOTE best epoch won't get saved if val loss is nan
-    if curr_epoch == best_epoch:
-        torch.save(model.state_dict(), best_epoch_out)
+    return val_loader
 
 
 # saves all model metrics and predictions to disc
-def store_data(metrics_df: pd.DataFrame, all_preds: dict):
-    metrics_out = f'{outdir}/generation_{gen_num}/{hash}/metrics.csv'
-    pickled_preds_out = f'{outdir}/generation_{gen_num}/{hash}/predictions.pkl'
+def store_data(metrics_df: pd.DataFrame, dir):
+    metrics_out = f'{dir}/metrics.csv'
     os.makedirs(os.path.dirname(metrics_out), exist_ok=True)
 
     metrics_df.to_csv(metrics_out, index=False)
-    
-    # pickle the all_preds dictionary
-    with open(pickled_preds_out, 'wb') as f:
-        # serializes all_preds dictionary and writes to out file
-        pickle.dump(all_preds, f)
 
+# main re-eval loop
+def engine(cfg, outdir, excluded_gens):
 
-# returns learning rate scheduler based on configuration defined by the genome
-def get_scheduler(optimizer, model_dict, num_epochs, batch_size):
-
-    # set default values for various potential scheduler params
-    default_params = {
-        'StepLR': {'step_size': 30, 'gamma': 0.1, 'last_epoch': -1},
-        'MultiStepLR': {'milestones': [30, 80], 'gamma': 0.1, 'last_epoch': -1},
-        'ExponentialLR': {'gamma': 0.1, 'last_epoch': -1},
-        'ReduceLROnPlateau': {'mode': 'min', 'factor': 0.1, 'patience': 10, 'threshold': 0.0001, 'cooldown': 0, 'min_lr': 0, 'eps': 1e-08},
-        'CosineAnnealingLR': {'T_max': 50, 'eta_min': 0, 'last_epoch': -1},
-        'CosineAnnealingWarmRestarts': {'T_0': 10, 'T_mult': 2, 'eta_min': 0, 'last_epoch': -1},
-        'OneCycleLR': {'max_lr': 0.1, 'total_steps': None, 'epochs': num_epochs, 'steps_per_epoch': batch_size, 'pct_start': 0.3, 'anneal_strategy': 'cos', 'cycle_momentum': True, 'base_momentum': 0.85, 'max_momentum': 0.95, 'div_factor': 25.0, 'final_div_factor': 1e4, 'three_phase': False, 'last_epoch': -1, 'verbose': False},
-        'ConstantLR': {'factor': 1.0, 'total_iters': 5},
-        'MultiplicativeLR': {'lr_lambda': lambda epoch: 0.95, 'last_epoch': -1},
-        'LambdaLR': {'lr_lambda': lambda epoch: 1, 'last_epoch': -1},
-        'LinearLR': {'start_factor': 0.1, 'end_factor': 1.0, 'total_iters': 5, 'last_epoch': -1},
-        'PolynomialLR': {'max_lr': 0.1, 'total_steps': 10, 'power': 1.0, 'last_epoch': -1},
-        'ChainedScheduler': {'schedulers': [], 'last_epoch': -1},
-        'CyclicLR': {'base_lr': 0.001, 'max_lr': 0.1, 'step_size_up': 2000, 'step_size_down': None, 'mode': 'triangular', 'gamma': 1.0, 'scale_fn': None, 'scale_mode': 'cycle', 'cycle_momentum': True, 'base_momentum': 0.8, 'max_momentum': 0.9, 'last_epoch': -1},
-        'SequentialLR': {'schedulers': [], 'milestones': []},
-    }
-
-    # get scheduler type, StepLR is default
-    scheduler_type = model_dict.get('lr_scheduler', 'StepLR')
-    # map scheduler types to their respective classes and retrieve the class
-    scheduler_class_map = {
-        'StepLR': lr_scheduler.StepLR,
-        'MultiStepLR': lr_scheduler.MultiStepLR,
-        'ExponentialLR': lr_scheduler.ExponentialLR,
-        'ReduceLROnPlateau': lr_scheduler.ReduceLROnPlateau,
-        'CosineAnnealingLR': lr_scheduler.CosineAnnealingLR,
-        'CosineAnnealingWarmRestarts': lr_scheduler.CosineAnnealingWarmRestarts,
-        'OneCycleLR': lr_scheduler.OneCycleLR,
-        'ConstantLR': lr_scheduler.ConstantLR,
-        'MultiplicativeLR': lr_scheduler.MultiplicativeLR,
-        'LambdaLR': lr_scheduler.LambdaLR,
-        'LinearLR': lr_scheduler.LinearLR,
-        'PolynomialLR': lr_scheduler.PolynomialLR,
-        'ChainedScheduler': lr_scheduler.ChainedScheduler,
-        'CyclicLR': lr_scheduler.CyclicLR,
-        'SequentialLR': lr_scheduler.SequentialLR
-    }
-    scheduler_class = scheduler_class_map.get(scheduler_type)
-    scheduler_defaults = default_params.get(scheduler_type)
-
-    # update default_params with values from model_dict if they exist
-    scheduler_params = {k: model_dict.get(f'scheduler_{k}', v) for k, v in scheduler_defaults.items()}
-
-    # get scheduler signature and filter the parameters that are valid for the scheduler
-    sig = inspect.signature(scheduler_class)
-    valid_params = {k: v for k, v in scheduler_params.items() if k in sig.parameters}
-    valid_params['optimizer'] = optimizer
-
-    # instantiate scheduler with correct parameters
-    scheduler = scheduler_class(**valid_params)
-    return scheduler
-
-
-# returns optimizer based on configuration defined by the genome
-def get_optimizer(params, model_dict):
-
-    # set default values for various potential optimizer parameters
-    default_params = {
-        'SGD': {'lr': 0.1, 'momentum': 0.9, 'weight_decay': 0, 'dampening': 0, 'nesterov': False},
-        'Adadelta': {'lr': 1.0, 'rho': 0.9, 'eps': 1e-6, 'weight_decay': 0},
-        'Adagrad': {'lr': 0.01, 'lr_decay': 0, 'weight_decay': 0, 'eps': 1e-10},
-        'Adam': {'lr': 0.001, 'betas': (0.9, 0.999), 'eps': 1e-8, 'weight_decay': 0, 'amsgrad': False},
-        'AdamW': {'lr': 0.001, 'betas': (0.9, 0.999), 'eps': 1e-8, 'weight_decay': 0.01, 'amsgrad': False},
-        'SparseAdam': {'lr': 0.001, 'betas': (0.9, 0.999), 'eps': 1e-8},
-        'Adamax': {'lr': 0.002, 'betas': (0.9, 0.999), 'eps': 1e-8, 'weight_decay': 0},
-        'ASGD': {'lr': 0.01, 'lambd': 1e-4, 'alpha': 0.75, 't0': 1e6, 'weight_decay': 0},
-        'LBFGS': {'lr': 1.0, 'max_iter': 20, 'max_eval': None, 'tolerance_grad': 1e-5, 'tolerance_change': 1e-9, 'history_size': 100, 'line_search_fn': None},
-        'NAdam': {'lr': 0.002, 'betas': (0.9, 0.999), 'eps': 1e-8, 'weight_decay': 0, 'momentum_decay': 0.004},
-        'RAdam': {'lr': 0.001, 'betas': (0.9, 0.999), 'eps': 1e-8, 'weight_decay': 0},
-        'RMSprop': {'lr': 0.01, 'alpha': 0.99, 'eps': 1e-8, 'weight_decay': 0, 'momentum': 0, 'centered': False},
-        'Rprop': {'lr': 0.01, 'etas': (0.5, 1.2), 'step_sizes': (1e-6, 50)},
-    }
-
-    # retrive optimizer type from model_dict and using class mapping to obtain actual optimizer class
-    optimizer_type = model_dict.get('optimizer', 'SGD')
-    optimizer_class_map = {
-        'SGD': optim.SGD,
-        'Adadelta': optim.Adadelta,
-        'Adam': optim.Adam,
-        'AdamW': optim.AdamW,
-        'SparseAdam': optim.SparseAdam,
-        'Adamax': optim.Adamax,
-        'Adagrad': optim.Adagrad,
-        'ASGD': optim.ASGD,
-        'LBFGS': optim.LBFGS,
-        'NAdam': optim.NAdam,
-        'RAdam': optim.RAdam,
-        'RMSprop': optim.RMSprop,
-        'Rprop': optim.Rprop
-    }
-    optimizer_class = optimizer_class_map.get(optimizer_type)
-    optimizer_defaults = default_params.get(optimizer_type, {})
-
-    # retrieve any non-default optimizer params from model_dict
-    optimizer_params = {k: model_dict.get(f'optimizer_{k}', v) for k, v in optimizer_defaults.items()}
-
-    # filters passed in parameters based on optimizer signature
-    sig = inspect.signature(optimizer_class)
-    valid_params = {k: v for k, v in optimizer_params.items() if k in sig.parameters}
-    valid_params['params'] = params
-
-    # instantiate the optimizer with the valid parameters
-    optimizer = optimizer_class(**valid_params)
-    return optimizer
-
-
-def step_scheduler(scheduler, loss):
-    if type(scheduler) == lr_scheduler.ReduceLROnPlateau:
-        scheduler.step(loss)
-    else:
-        scheduler.step()
-
-
-# main training and eval loop
-def engine(cfg, genome):
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     # retrieve config attributes
-    genome_encoding_strat = cfg['genome_encoding_strat']
-    num_classes = cfg['num_classes']
     num_loss_comp = cfg['num_loss_components']
     batch_size = cfg['batch_size']
     batches_per_epoch = cfg['batches_per_epoch']
-    num_epochs = cfg['train_epochs']
     iou_thresh = cfg['iou_thresh']
     conf_thresh = cfg['conf_thresh']
     iou_type = cfg['iou_type']
-    train_seed = cfg['train_seed']
     val_seed = cfg['val_seed']
-    
-    # set device and load data
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    train_loader, val_loader = prepare_data(cfg, train_seed, val_seed, batch_size)
+    best_epoch_criteria = cfg['best_epoch_criteria']
 
-    # initialize codec and decode genome
-    codec = Codec(num_classes, genome_encoding_strat=genome_encoding_strat)
-    model_dict = codec.decode_genome(genome, num_loss_comp)
-    loss_weights = model_dict['loss_weights']
+    # load existing holy grail
+    holy_grail = pd.read_csv(os.path.join(outdir, 'out.csv'))
 
-    # get model
-    model = model_dict['model'].to(device)
-    params = model.parameters()
+    # get generation folder
+    pattern = re.compile(r'generation_\d+$')
+    generation_folders = [os.path.join(outdir, item) for item in os.listdir(outdir)
+                          if os.path.isdir(os.path.join(outdir, item)) and pattern.match(item)]
+    generation_folders.sort(key=lambda x: int(os.path.basename(x).split('_')[-1]))
 
-    # get optimizer and scheduler
-    optimizer = get_optimizer(params, model_dict)
-    scheduler = get_scheduler(optimizer, model_dict, num_epochs, batch_size)
-    scaler = GradScaler()
+    # loop through each generation
+    for folder in generation_folders:
+        gen_num = int(os.path.basename(folder).split('_')[-1])
+        if gen_num in excluded_gens:
+            continue
 
-    # all_preds = list of epoch_preds = { (flight_id, frame_id) -> output dict = { 'boxes': [box1, box2, ...], 'scores': ... }}, index is epoch_num - 1
-    all_preds = []
-    metrics_df = create_metrics_df()
+        print(f'Re-evaluating Generation {gen_num}...')
 
-    for epoch in range(1, num_epochs + 1):
-       
-        # epoch_preds = { (flight_id, frame_id) -> output dictionary { 'boxes': [box1, box2, ...], 'scores': ... }}
-        epoch_preds = {}
+        genome_folders = [os.path.join(folder, subfolder) for subfolder in os.listdir(folder)
+                      if os.path.isdir(os.path.join(folder, subfolder))]
+        
+        # loop through each genome in the generation
+        for genome_folder in genome_folders:
+            genome_hash = os.path.basename(genome_folder)
+            predictions_path = os.path.join(genome_folder, 'predictions.pkl')
+            if not os.path.isfile(predictions_path):
+                continue # don't do anything if individual actually failed
+            
+            print(f'Evaluating individual {os.path.basename(genome_folder)}...')
 
-        train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, loss_weights, iou_type, max_batch=batches_per_epoch)
-        epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds, max_batch=batches_per_epoch)
+            # get predictions
+            pred_file = open(predictions_path, 'rb')
+            predictions = pickle.load(pred_file)
+            pred_file.close()
 
-        # update metrics_df and all_preds with current epoch's data
-        epoch_metrics['epoch_num'] = epoch
-        epoch_metrics['train_epoch_loss'] = train_epoch_loss
-        epoch_metrics_df = pd.DataFrame([epoch_metrics])
-        metrics_df = pd.concat([metrics_df, epoch_metrics_df], ignore_index=True)
-        all_preds.append(epoch_preds)
+            metrics_df = create_metrics_df()
 
-        # save metrics_df, best/last epochs, predictions to disc
-        store_data(metrics_df, all_preds)
-        save_best_last_epochs(model, metrics_df, epoch)
+            val_loader = prepare_data(cfg, val_seed, batch_size)
+            loss_weights = torch.full((num_loss_comp, ), 1.0 / num_loss_comp)
 
+            # iterate through val dataset to get targets
+            for epoch in range(len(predictions)):
+                epoch_metrics = val_one_epoch(predictions, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch, genome_folder, max_batch=batches_per_epoch)
+                epoch_metrics['epoch_num'] = epoch + 1
+                epoch_metrics['train_epoch_loss'] = 0
+                epoch_metrics_df = pd.DataFrame([epoch_metrics])
+                metrics_df = pd.concat([metrics_df, epoch_metrics_df], ignore_index=True)
+                # save metrics_df back to disc
+                store_data(metrics_df, genome_folder)
 
-def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, loss_weights, iou_type, max_batch=None):
-    model.train()
-    train_epoch_loss = 0.0
+            # get the recalulated best epoch to replace with in the holy grail
+            if (best_epoch_criteria[1].lower() == 'min'):
+                best_epoch = metrics_df[metrics_df[best_epoch_criteria[0]] == metrics_df[best_epoch_criteria[0]].min()]
+            else :
+                best_epoch = metrics_df[metrics_df[best_epoch_criteria[0]] == metrics_df[best_epoch_criteria[0]].max()]
 
-    if max_batch is not None:
-        # Slice the dataloader to only include up to max_batch
-        train_loader = itertools.islice(train_loader, max_batch)
-    data_iter = tqdm(train_loader, desc="Training", total=max_batch)
-
-    for i, (images, targets) in enumerate(data_iter):
-
-        # process images and targets
-        images = process_images(images, device)
-        targets = process_targets(targets, device)
-
-        # forwards with mixed precision
-        with autocast():
-            loss_dict, outputs = model(images, targets)
-            losses = sum(loss for loss in loss_dict.values())
-
-        # backwards
-        optimizer.zero_grad()
-        scaler.scale(losses).backward()
-        scaler.step(optimizer)
-        scaler.update()
-        data_iter.set_postfix(loss=losses.item())
-        torch.cuda.empty_cache()
-
-        # update accumulating loss
-        train_epoch_loss += losses.item()
-
-    train_epoch_loss = train_epoch_loss / max_batch if max_batch is not None else len(train_loader)
-    step_scheduler(scheduler, train_epoch_loss)
-    return train_epoch_loss
+            columns_to_replace = [col for col in best_epoch.columns if col != 'epoch_num' and col in holy_grail.columns]
+            holy_grail.loc[holy_grail['hash'] == genome_hash, columns_to_replace] = best_epoch[columns_to_replace].values[0]
+            holy_grail.to_csv(os.path.join(outdir, 'out.csv'), index=False)
+                
+        print('========================================')
 
 
-def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds, max_batch=None):
+def val_one_epoch(predictions, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_num, folder, max_batch=None):
     confidences, confusion_status = [], []
     val_epoch_loss, iou_loss, giou_loss, diou_loss, ciou_loss, center_loss, size_loss, obj_loss = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     num_preds, num_labels, total_tp, total_fp, total_fn = 0, 0, 0, 0, 0
-    model.eval()
     if max_batch is not None:
         # Slice the dataloader to only include up to max_batch
         val_loader = itertools.islice(val_loader, max_batch)
@@ -411,17 +128,12 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
         for i, (images, targets) in enumerate(data_iter):
             images = process_images(images, device)
             targets = process_targets(targets, device)
-            with autocast():
-                outputs = model(images, targets)
+            outputs = predictions[epoch_num]
 
-            val_batch_loss = torch.zeros(1, dtype=torch.float32)
+            val_batch_loss = torch.zeros(1, dtype=torch.float32, device=device)
             for j, image in enumerate(images):
-                pred_boxes, true_boxes, flight_id, frame_id = process_preds_truths(targets[j], outputs[j])
+                pred_boxes, true_boxes, flight_id, frame_id = process_preds_truths(targets[j], outputs[(targets[j]['flight_id'], targets[j]['frame_id'])])
                 # NOTE pred boxes are normalized, in xywh format, and have scores, and true boxes are nomalized and in xywh format
-                # draw_boxes(image, flight_id, frame_id, pred_boxes[:, :4], true_boxes, outdir='images')
-
-                # update epoch_preds
-                epoch_preds[(flight_id, frame_id)] = outputs[j]
 
                 matches, fp, fn = u.match_boxes(pred_boxes, true_boxes, iou_thresh, conf_thresh, "val", iou_type)
                 num_tp = len(matches)
@@ -433,7 +145,8 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
                 num_preds += len(pred_boxes)
                 num_labels += len(true_boxes)
                 loss_matches = u.match_boxes(pred_boxes, true_boxes, 0.0, 0.0, "train", iou_type)
-                loss_tensor = c.compute_weighted_loss(loss_matches, loss_weights, iou_type)
+                loss_tensor = c.compute_weighted_loss(loss_matches, pred_boxes, true_boxes, loss_weights, iou_type)
+                
                 val_image_loss = loss_tensor[7]
                 val_batch_loss += val_image_loss
                 val_epoch_loss += val_image_loss
@@ -444,6 +157,7 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
                 center_loss += loss_tensor[4]
                 size_loss += loss_tensor[5]
                 obj_loss += loss_tensor[6]
+
                 for _, (true_pos, _) in matches.items():
                     confidences.append(true_pos[4].item())
                     confusion_status.append(True)
@@ -465,8 +179,7 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
     epoch_f1, epoch_pre, epoch_rec = u.f1_score(total_tp, total_fn, total_fp)
     pre_curve, rec_curve = u.precision_recall_curve(confidences, confusion_status, num_labels)
     epoch_avg_pre = u.AP(pre_curve, rec_curve)
-    plot_outdir = f'{outdir}/generation_{gen_num}/{hash}'
-    u.plot_PR_curve(pre_curve, rec_curve, epoch_avg_pre, plot_outdir)
+    u.plot_PR_curve(pre_curve, rec_curve, epoch_avg_pre, folder)
 
     epoch_metrics = {
         'uw_val_epoch_loss': uw_val_epoch_loss.item(),
@@ -490,34 +203,25 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
 
 
 if __name__ == '__main__':
-    # parses arguments from sbatch job
+    # parses arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("index", type=int)
-    parser.add_argument('-i', '--infile', required=False, default='/gv1/projects/GRIP_Precog_Opt/precog-opt-grip/eval_input.csv')
     parser.add_argument('-o', '--outdir', required=False, default='/gv1/projects/GRIP_Precog_Opt/outputs')
+    parser.add_argument('-x', '--exclude', required=False, default = '')
     args = parser.parse_args()
-    index = args.index
-    infile = args.infile
     outdir = args.outdir
+    excluded_gens = args.exclude
+    excluded_gens = [int(gen) for gen in excluded_gens.split(',')]
 
     # load config attributes
     configs = toml.load(os.path.join(outdir, "conf.toml"))
+    pipeline_config = configs["pipeline"]
     model_config = configs["model"]
     codec_config = configs["codec"]
     data_config = configs["data"]
-    all_config = model_config | codec_config | data_config
-
-    # load generated input for current generation
-    input_file = open(f'{infile}', 'r')
-    file = list(csv.reader(input_file))
-    line = file[int(index)+1]
-    gen_num = line[0]
-    hash = line[1]
-    genome = line[2]
-    input_file.close()
+    all_config = pipeline_config | model_config | codec_config | data_config
 
     # evaluate
-    eval_wrapper(all_config, gen_num, hash, genome, engine)
+    engine(all_config, outdir, excluded_gens)
 
 
 
