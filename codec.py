@@ -295,7 +295,6 @@ class Codec:
             if str(primitive)[:2] != 'to' and str(primitive) not in ['IN0', 'add', 'mul', 'dummyOp', 'protectedDiv', 'protectedSub']and type(func) not in [gp.Terminal, type]:
                 filtered_prims.append(primitive)
                 filtered_funcs.append(func)
-        #print(filtered_prims, len(filtered_prims))
         counts = {}
         enum_dict = {}
         for prim, func in zip(filtered_prims, filtered_funcs):
@@ -392,7 +391,8 @@ class Codec:
             final_encoding = np.zeros(len(flattened_encoding) + 1)
             final_encoding[0] = epoch_num
             final_encoding[1:] = flattened_encoding
-            return torch.tensor(final_encoding.flatten())
+            # return torch.tensor(final_encoding.flatten())
+            return final_encoding.flatten()
     
     def construct_optimizer(self, layer_info, num_layer_types):
         layer_vals = list(layer_info.values())
