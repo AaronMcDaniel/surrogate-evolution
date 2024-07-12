@@ -5,3 +5,6 @@ eval_input.csv
 eval.job
 precog_eval.job
 weights/
+codec_backup.py
+find_max_params.py
+codec_tester.py
