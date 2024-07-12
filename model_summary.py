@@ -87,7 +87,7 @@ def tree_genome_summary(genome, num_loss_components):
             stack.pop()
             function = stack.pop()
             try:
-                stack.append(str(eval(f'primitives.{function}({','.join(arguments)})')))
+                stack.append(str(eval(f'primitives.{function}({",".join(arguments)})')))
             except: # this is where we add the layers
                 layer_info = [function]+[__parse_arg(x) for x in arguments]
                 layer_list.append(layer_info)
@@ -106,14 +106,14 @@ def tree_genome_summary(genome, num_loss_components):
             tensor[:len(weight_tensor)] = weight_tensor
             optimizer_dict = eval(layer_args[0])
             scheduler_dict = eval(layer_args[1])
-            print(f'optimizer: {optimizer_dict['optimizer']}')
+            print(f'optimizer: {optimizer_dict["optimizer"]}')
             for k, v in optimizer_dict.items():
                 if k not in ['optimizer', 'eta_lower', 'eta_upper', 'step_lower', 'step_upper']:
                     print(f'optimizer_{k}: {v}')
             if optimizer_dict['optimizer'] == 'Rprop':
-                print(f'optimizer_etas: {(optimizer_dict['eta_lower'], optimizer_dict['eta_upper'])}')
-                print(f'optimizer_step_sizes: {(optimizer_dict['step_lower'], optimizer_dict['step_upper'])}')
-            print(f'lr_scheduler: {scheduler_dict['lr_scheduler']}')
+                print(f'optimizer_etas: {(optimizer_dict["eta_lower"], optimizer_dict["eta_upper"])}')
+                print(f'optimizer_step_sizes: {(optimizer_dict["step_lower"], optimizer_dict["step_upper"])}')
+            print(f'lr_scheduler: {scheduler_dict["lr_scheduler"]}')
             for k, v in scheduler_dict.items():
                 if k != 'lr_scheduler':
                     print(f'scheduler_{k}: {v}')
