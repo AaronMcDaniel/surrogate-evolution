@@ -20,8 +20,10 @@ def compute_weighted_loss(matches, pred_boxes, true_boxes, loss_weights, iou_use
     loss_types = ["iou", "giou", "diou", "ciou", "center", "size", "obj"]
     loss_weights = loss_weights.to(torch.float32).to(device)
     result_losses = []
-
-    if num_preds > 0 and num_truths == 0:
+    if num_preds == 0: # edge case this isn't supposed to happen but is happening for some fcos models where num_pred is 0
+        result_losses = [1, 1, 1, 1, 1, 1, 1]
+        result_losses = [torch.tensor(loss, requires_grad=True, device=device, dtype=torch.float32) for loss in result_losses]
+    elif num_preds > 0 and num_truths == 0:
         confs = pred_boxes[:, 4]
         no_truths = True
         result_losses.append(iou_loss(matches, no_truths=no_truths, num_preds=num_preds))
@@ -46,7 +48,7 @@ def compute_weighted_loss(matches, pred_boxes, true_boxes, loss_weights, iou_use
 
     result_losses = torch.stack(result_losses)
 
-    # place weigthed-sum of iou loss functions in the last index of the result tensor
+    # place weighted-sum of iou loss functions in the last index of the result tensor
     weighted_sum_losses = torch.dot(loss_weights, result_losses[:7])
     result_losses = torch.cat((result_losses, weighted_sum_losses.unsqueeze(0)))
 
@@ -84,9 +86,8 @@ def size_loss(matches, no_truths=False):
     target = torch.ones_like(normalized_pred_areas)
 
     try: 
-        return MSELoss(normalized_pred_areas, target)
+        return MSELoss(normalized_pred_areas, target) * 0.1
     except RuntimeError as e:
-        breakpoint()
         return torch.tensor(1000000.0, requires_grad=True, device=device, dtype=torch.float32)
 
 
@@ -121,7 +122,6 @@ def obj_loss(matches, iou_thresh=0.0, no_truths=False, confs=None):
     try:
         loss = BCEobj(pred_obj, true_obj) * 100
     except RuntimeError as e:
-        breakpoint()
         loss = torch.tensor(1.0, dtype=torch.float32, requires_grad=True, device=device) * 100
     return loss
 
@@ -158,9 +158,9 @@ def center_loss(matches, no_truths=False):
     true_centers = true_centers[valid_mask]
 
     try:
-        return MSELoss(pred_centers, true_centers) * 100
+        return MSELoss(pred_centers, true_centers) * 10
     except Exception as e:
-        breakpoint()
+        
         return torch.tensor(1000000.0, dtype=torch.float32, requires_grad=True, device=device)
     
 
@@ -184,7 +184,6 @@ def iou_loss(matches, no_truths=False, num_preds=None):
 
     # check if any element in loss is NaN
     if torch.isnan(losses).any():
-        breakpoint()
         return torch.tensor(1000000.0, dtype=torch.float32, requires_grad=True, device=device)
     else:
         return torch.sum(losses)
@@ -210,7 +209,6 @@ def giou_loss(matches, no_truths=False, num_preds=None):
 
     # check if any element in loss is NaN
     if torch.isnan(losses).any():
-        breakpoint()
         return torch.tensor(1000000.0, dtype=torch.float32, requires_grad=True, device=device)
     else:
         return torch.sum(losses)
@@ -236,7 +234,6 @@ def diou_loss(matches, no_truths=False, num_preds=None):
 
     # check if any element in loss is NaN
     if torch.isnan(losses).any():
-        breakpoint()
         return torch.tensor(1000000.0, dtype=torch.float32, requires_grad=True, device=device)
     else:
         return torch.sum(losses)
@@ -262,7 +259,6 @@ def ciou_loss(matches, no_truths=False, num_preds=None):
 
     # check if any element in loss is NaN
     if torch.isnan(losses).any():
-        breakpoint()
         return torch.tensor(1000000.0, dtype=torch.float32, requires_grad=True, device=device)
     else:
         return torch.sum(losses)

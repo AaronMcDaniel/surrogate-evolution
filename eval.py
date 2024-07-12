@@ -372,7 +372,7 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
             with autocast():
                 outputs = model(images, targets)
 
-            val_batch_loss = torch.zeros(1, dtype=torch.float32)
+            val_batch_loss = torch.zeros(1, dtype=torch.float32, device=device)
             for j, image in enumerate(images):
                 pred_boxes, true_boxes, flight_id, frame_id = process_preds_truths(targets[j], outputs[j])
                 # NOTE pred boxes are normalized, in xywh format, and have scores, and true boxes are nomalized and in xywh format
@@ -411,6 +411,7 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
                     confusion_status.append(False)
 
             data_iter.set_postfix(loss=val_batch_loss)
+            torch.cuda.empty_cache()
 
     val_epoch_loss /= (num_preds +  1e-9)
     iou_loss /= (num_preds  + 1e-9)
