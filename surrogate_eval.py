@@ -20,7 +20,7 @@ def prepare_data(batch_size):
     train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/train_dataset.pkl')
     val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/val_dataset.pkl')
     train_dataset = sd.SurrogateDataset(train_df, mode='train')
-    val_dataset = sd.SurrogateDataset(val_df, mode='val', scaler=train_dataset.scaler)
+    val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=True)
     return train_loader, val_loader
