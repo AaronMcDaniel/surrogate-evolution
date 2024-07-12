@@ -5,6 +5,8 @@ import random
 import numpy as np
 import pandas as pd
 import toml
+from codec import Codec
+import pickle
 import torch
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler
@@ -53,6 +55,7 @@ def build_dataset(
         metrics='uw_val_epoch_loss,iou_loss,giou_loss,diou_loss,ciou_loss,center_loss,size_loss,obj_loss,precision,recall,f1_score,average_precision', 
         exclude='', val_ratio=0.3, seed=0
     ):
+    codec = Codec(7)
     metric_headings = metrics.split(',')
     excluded_gens = exclude
     if excluded_gens == '':
@@ -90,13 +93,15 @@ def build_dataset(
 
         for metric_row in metrics:
             to_add = {}
-            to_add['genome'] = genome
 
             if 'epoch_num' not in metric_row:
                 for i in range(num_epochs):
                     to_add = {}
-                    to_add['genome'] = genome
-                    to_add['epoch_num'] = i + 1
+                    try:
+                        tensor = codec.encode_surrogate(genome, i + 1)
+                    except:
+                        break
+                    to_add['genome'] = tensor
                     for heading in metric_headings:
                         if heading in MAX_METRICS:
                             to_add[heading] = -1000000.0
@@ -106,7 +111,8 @@ def build_dataset(
                     genome_info.append(to_add)
                 continue
 
-            to_add['epoch_num'] = metric_row['epoch_num']
+            tensor = codec.encode_surrogate(genome, metric_row['epoch_num'])
+            to_add['genome'] = tensor
             for heading in metric_headings:
                 if math.isnan(metric_row[heading]):
                     if heading in MAX_METRICS:
@@ -133,13 +139,13 @@ def build_dataset(
     train_set = pd.DataFrame(train_genomes)
     val_set = pd.DataFrame(val_genomes)
 
-    complete_output_filename = os.path.join(outdir, 'complete_dataset.csv')
-    train_output_filename = os.path.join(outdir, 'train_dataset.csv')
-    val_output_filename = os.path.join(outdir, 'val_dataset.csv')
+    complete_output_filename = os.path.join(outdir, 'complete_dataset.pkl')
+    train_output_filename = os.path.join(outdir, 'train_dataset.pkl')
+    val_output_filename = os.path.join(outdir, 'val_dataset.pkl')
     os.makedirs(os.path.dirname(complete_output_filename), exist_ok=True)
-    out_data.to_csv(complete_output_filename, index=False)
-    train_set.to_csv(train_output_filename, index=False)
-    val_set.to_csv(val_output_filename, index=False)
+    out_data.to_pickle(complete_output_filename)
+    train_set.to_pickle(train_output_filename)
+    val_set.to_pickle(val_output_filename)
 
     return train_set, val_set
 
