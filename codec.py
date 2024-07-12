@@ -11,6 +11,10 @@ from torchvision.models.detection.rpn import AnchorGenerator as RCNNAnchorGenera
 from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.models.detection.anchor_utils import DefaultBoxGenerator
 import torchvision.transforms as transforms
+import numpy as np
+import inspect
+import enum
+from deap import gp
 
 import primitives
 
@@ -267,10 +271,12 @@ class DynamicNetwork(nn.Module):
 
 # codec class
 class Codec:
-    def __init__(self, num_classes, genome_encoding_strat = 'Tree', surrogate_encoding_strat = "Graph2Vec") -> None:
+    def __init__(self, num_classes, genome_encoding_strat = 'Tree', surrogate_encoding_strat = "String2Vec") -> None:
         self.genome_encoding_strat = genome_encoding_strat
         self.surrogate_encoding_strat = surrogate_encoding_strat
         self.num_classes = num_classes
+        self.max_param, self.param_mapping, self.enum_dict = self.pset_info()
+        self.max_layers = 15
         self.device = (
             "cuda"
             if torch.cuda.is_available()
@@ -280,6 +286,230 @@ class Codec:
         )
         print(f"Codec using {self.device} device")
 
+
+    def pset_info(self):
+        pset = primitives.pset
+        filtered_prims = []
+        filtered_funcs = []
+        for primitive, func in pset.mapping.items():
+            if str(primitive)[:2] != 'to' and str(primitive) not in ['IN0', 'add', 'mul', 'dummyOp', 'protectedDiv', 'protectedSub']and type(func) not in [gp.Terminal, type]:
+                filtered_prims.append(primitive)
+                filtered_funcs.append(func)
+        #print(filtered_prims, len(filtered_prims))
+        counts = {}
+        enum_dict = {}
+        for prim, func in zip(filtered_prims, filtered_funcs):
+            count = 0
+            tensor_exists = False
+            enum_dict[prim] = {}
+            for i, (key, val) in enumerate(eval(f'inspect.signature(primitives.{prim}).parameters.items()')):
+                if key not in ['tensor']:
+                    count += 1
+                else:
+                    tensor_exists = True
+                if type(val.annotation) is enum.EnumType:
+                    # enum_dict[prim] = {}
+                    count += len(eval(f'primitives.{val.annotation.__name__}')) - 1
+                    if tensor_exists:
+                        enum_dict[prim][val.annotation.__name__] = i - 1
+                    else:
+                        enum_dict[prim][val.annotation.__name__] = i
+
+            counts[prim] = count
+        # print(counts)
+        # print(max(counts, key=counts.get))
+        max_num  = counts[max(counts, key=counts.get)]
+
+        mapping = {}
+        for i, prim in enumerate(filtered_prims):
+            mapping[prim] = i
+        return max_num, mapping, enum_dict
+
+    def encode_surrogate(self, genome, epoch_num):
+        #print(genome)
+        #print()
+        #module_list = nn.ModuleList()
+        if (self.surrogate_encoding_strat.lower() == 'string2vec'):
+            # parse tree decoding into layer list
+            expr = re.split(r'([(),])',genome)
+            remove = [',', '']
+            expr = [x for x in expr if x not in remove]
+            stack = []
+            idx = 0
+            #info = {}
+            all_layers = []
+            
+            max_layers = 15
+            num_layer_types = 54
+
+
+            for element in expr:
+                #print('ELEMENT:', element)
+                if element != ')':
+                    #print('ADDED TO STACK')
+                    stack.append(element)
+                else:
+                    arguments = []
+                    while stack[-1] != '(':
+                        arguments.insert(0, stack.pop())
+                        #print('ARGUMENTS:', arguments)
+                    stack.pop()
+                    function = stack.pop()
+                    #print('FUNCTION:', function)
+                    try:
+                        stack.append(str(eval(f'primitives.{function}({",".join(arguments)})')))
+                        #print('STACK:', stack)
+                    except: # this is where we add the layers
+                        layer_info = [function]+[self.__parse_arg(x) for x in arguments]
+                        #layer_vec = self.construct_vec(layer_info, )
+                        all_layers.insert(0, layer_info)
+                        #print('LAYER INFO:', layer_info)
+                        #info = self.add_to_module_list(module_list, idx, layer_info, num_loss_components)
+                        idx += 1
+            
+            #print(all_layers)
+            #for layer in all_layers:
+                #layer_vec = self.construct_vec
+            #EVAL HEAD
+            #print(all_layers[-1][1])
+            del all_layers[-1][1]
+            optimizer_layer, scheduler_layer, head_layer = self.construct_head(all_layers[0], num_layer_types)
+            #print(all_layers[-1])
+            
+            del all_layers[0]
+    
+            encoded_genome = np.zeros((self.max_param + num_layer_types, self.max_layers))
+            encoded_genome[0:len(optimizer_layer),0] = optimizer_layer
+            encoded_genome[0:len(scheduler_layer),1] = scheduler_layer
+            encoded_genome[0:len(head_layer),2] = head_layer
+            for i, layer_info in enumerate(all_layers):
+                layer = self.construct_vec(layer_info, num_layer_types)
+                encoded_genome[0:len(layer),i + 2] = layer
+            
+            np.set_printoptions(threshold=encoded_genome.size)
+            #print(encoded_genome, encoded_genome.shape)
+            flattened_encoding = encoded_genome.flatten()
+            final_encoding = np.zeros(len(flattened_encoding) + 1)
+            final_encoding[0] = epoch_num
+            final_encoding[1:] = flattened_encoding
+            return torch.tensor(final_encoding.flatten())
+    
+    def construct_optimizer(self, layer_info, num_layer_types):
+        layer_vals = list(layer_info.values())
+        name = layer_vals[0]
+        layer_type = -1
+        params = layer_vals[1:]
+
+        layer_type = self.param_mapping[name]
+        layer = np.zeros(num_layer_types + len(params))
+        layer[layer_type] = 1
+
+        for i, param in enumerate(params):
+            layer[num_layer_types + i] = param
+        
+        return layer
+    
+    def construct_scheduler(self, layer_info, num_layer_types):
+        #name = layer_info['lr_scheduler']
+
+        layer_vals = list(layer_info.values())
+        name = layer_vals[0]
+        layer_type = -1
+        params = layer_vals[1:]
+        enum_dict ={}
+        match name:
+            case 'OneCycleLR':
+                params[self.enum_dict[name]['AnnealStrategy']] = primitives.AnnealStrategy[params[self.enum_dict[name]['AnnealStrategy']]].value
+           
+            case 'CyclicLR':
+                params[self.enum_dict[name]['CyclicLRMode']] = primitives.CyclicLRMode[params[self.enum_dict[name]['CyclicLRMode']]].value
+                params[self.enum_dict[name]['CyclicLRScaleMode']] = primitives.CyclicLRScaleMode[params[self.enum_dict[name]['CyclicLRScaleMode']]].value
+                
+        params = self.inject_onehot2(params, self.enum_dict[name])
+        layer_type = self.param_mapping[name]
+        layer = np.zeros(num_layer_types + len(params))
+        layer[layer_type] = 1
+
+        for i, param in enumerate(params):
+            layer[num_layer_types + i] = param
+        
+        return layer
+
+    def construct_head(self, layer_info, num_layer_types):
+        #print(layer_info)
+        name = layer_info[0]
+        params = layer_info[3:]
+
+        layer_type = self.param_mapping[name]
+        optimizer = eval(layer_info[1])
+        optimizer_layer = self.construct_optimizer(optimizer, num_layer_types)
+        scheduler = eval(layer_info[2])
+        scheduler_layer = self.construct_scheduler(scheduler, num_layer_types)
+
+        layer = np.zeros(num_layer_types + len(params))
+        layer[layer_type] = 1
+
+        for i, param in enumerate(params):
+            layer[num_layer_types + i] = param
+
+        return optimizer_layer, scheduler_layer, layer
+
+
+    def inject_onehot2(self, params, enum_dict):
+        #print(params)
+        mapping = {'PaddingMode': 4, 'UpsampleMode': 5, 'SkipMergeType': 2, 'ConvNeXtSize': 4, 'DenseNetSize': 4, 'EfficientNet_V2Size':3, 'MobileNet_V3Size': 2, 'RegNetSize': 7, 'ResNeXtSize': 2, 'ResNetSize': 3, 'ShuffleNet_V2Size': 4, 'Swin_V2Size': 3, 'ViTSize': 3, 'Wide_ResNetSize':2, 'Weights': 3, 'BoolWeight': 2, 'AnnealStrategy': 2, 'CyclicLRMode': 3, 'CyclicLRScaleMode': 2}
+        #list of indices of enums
+        vals = list(enum_dict.values())
+        keys = list(enum_dict.keys())
+        #print(vals)
+        if len(vals) > 0:
+            parts = []
+            start = vals[0]
+            parts.extend(params[:start])
+            inject = np.zeros(mapping[keys[0]])
+            inject[int(params[start])] = 1
+            parts.extend(list(inject))
+            for i in range(1, len(vals)):
+                end = vals[i]
+                parts.extend(params[start+1:end])
+                inject = np.zeros(mapping[keys[i]])
+                #print(type(params[end]))
+                inject[int(params[end])] = 1
+                parts.extend(list(inject))
+                start = end
+            parts.extend(params[start+1:])
+            #print('PARTS', parts)
+        else:
+            return params
+
+        return parts
+
+
+    def construct_vec(self, layer_info, num_layer_types):
+        name = layer_info[0]
+        layer_type = -1
+        params = layer_info[1:]
+        for i, param in enumerate(params):
+            if isinstance(param, str):
+                if param.strip() == 'True' or param.strip() == 'False':
+                    #print(type(param))
+                    params[i] = eval(param)
+                #print(type(param))
+        #print(params)
+        current_param = 0
+        #params = list(map(float, params))
+        enum_dict = {}
+
+        layer_type = self.param_mapping[name]
+        params = self.inject_onehot2(params, self.enum_dict[name])
+        #print('num', layer_type)
+        layer = np.zeros(num_layer_types + len(params))
+        layer[layer_type] = 1
+
+        for i, param in enumerate(params):
+            layer[num_layer_types + i] = param
+        
+        return layer
 
     def decode_genome(self, genome, num_loss_components):
         module_list = nn.ModuleList()
@@ -301,7 +531,7 @@ class Codec:
                     stack.pop()
                     function = stack.pop()
                     try:
-                        stack.append(str(eval(f'primitives.{function}({','.join(arguments)})')))
+                        stack.append(str(eval(f'primitives.{function}({",".join(arguments)})')))
                     except: # this is where we add the layers
                         layer_info = [function]+[self.__parse_arg(x) for x in arguments]
                         info = self.add_to_module_list(module_list, idx, layer_info, num_loss_components)
@@ -520,7 +750,7 @@ class Codec:
             padding=(layer_args[5], layer_args[6])
             if min(layer_args[1], layer_args[2]) < 2*max(layer_args[5], layer_args[6]): # make sure that kernel size is less than twice the padding
                 padding = (0,0)
-            module_list.append(eval(f'nn.{layer_name.split('_')[0]}')(
+            module_list.append(eval(f'nn.{layer_name.split("_")[0]}')(
                     out_channels=layer_args[0], 
                     kernel_size=(layer_args[1], layer_args[2]),
                     stride=(layer_args[3], layer_args[4]),
@@ -567,12 +797,12 @@ class Codec:
                 ))
         
         elif layer_name in ['AdaptiveMaxPool2d', 'AdaptiveAvgPool2d']:
-            module_list.append(eval(f'nn.{layer_name.split('_')[0]}')(
+            module_list.append(eval(f'nn.{layer_name.split("_")[0]}')(
                     output_size=(layer_args[0], layer_args[1]),
                 ))
         
         elif layer_name in ['Upsample_1D', 'Upsample_2D']:
-            module_list.append(eval(f'nn.{layer_name.split('_')[0]}')(
+            module_list.append(eval(f'nn.{layer_name.split("_")[0]}')(
                     scale_factor=layer_args[0],
                     mode=(list(primitives.UpsampleMode)[layer_args[1]]).name
                 ))
@@ -609,7 +839,7 @@ class Codec:
             return (layer_name, out_dict)
             
         else: # this is for layers that can have arguments simply unpacked
-            module_list.append(eval(f'nn.{layer_name.split('_')[0]}')(*layer_args))
+            module_list.append(eval(f'nn.{layer_name.split("_")[0]}')(*layer_args))
     
 
     # function to add appropriate detection head to custom backbone
