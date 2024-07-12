@@ -46,7 +46,7 @@ num_classes = 7
 # iou threshold for determining detection
 iou_thresh = 0.0
 # confidence threshold for filtering predictions
-conf_thresh = 0.05
+conf_thresh = 0.2
 # priority type of iou calculation
 iou_type = "ciou"
 # number of components weighted together to make the loss for the individual

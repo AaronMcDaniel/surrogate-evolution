@@ -4,8 +4,9 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
 #SBATCH -G 1
+#SBATCH -C "QuadroP4000|QuadroRTX4000|TeslaK40c|TeslaK40m|TeslaK20Xm|GeForceGTX1080Ti"
 #SBATCH -x ice109,ice111,ice161,ice113,ice116,ice114,ice170,ice149,ice158,ice177,ice178,ice120
-#SBATCH --time=10-00:00
+#SBATCH --time=04:00:00
 #SBATCH --output="/gv1/projects/GRIP_Precog_Opt/evolution_logs/re_evals/eval.%A.%a.log"
 #SBATCH --error="/gv1/projects/GRIP_Precog_Opt/evolution_logs/re_evals/eval_error.%A.%a.log"
 
