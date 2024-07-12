@@ -15,8 +15,10 @@ import random
 
 import pandas as pd
 import toml
+import codec
+import pickle
 
-
+codec = codec.Codec(7)
 parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--infile', required=False, default='/gv1/projects/GRIP_Precog_Opt/outputs/out.csv')
 parser.add_argument('-w', '--working', required=False, default='/gv1/projects/GRIP_Precog_Opt/outputs')
@@ -67,13 +69,22 @@ for line in data:
 
     for metric_row in metrics:
         to_add = {}
-        to_add['genome'] = genome
+        # tensor = codec.encode_surrogate(genome, metric_row['epoch_num'])
+        # to_add['genome'] = tensor #genome #change to tensor
 
         if 'epoch_num' not in metric_row:
             for i in range(num_epochs):
                 to_add = {}
-                to_add['genome'] = genome
-                to_add['epoch_num'] = i + 1
+                
+                # print(genome)
+                # print(genome_hash)
+                # print()
+                try:
+                    tensor = codec.encode_surrogate(genome, i + 1)
+                except:
+                    break
+                to_add['genome'] = tensor #genome #change to tensor
+                #to_add['epoch_num'] = i + 1 #DELETE THIS LINE BUT USE i+1 as epoch_num for encode_surrogate
                 for heading in metric_headings:
                     if heading in MAX_METRICS:
                         to_add[heading] = -1000000
@@ -83,7 +94,14 @@ for line in data:
                 genome_info.append(to_add)
             continue
 
-        to_add['epoch_num'] = metric_row['epoch_num']
+        #print(genome)
+        #print(genome_hash)
+        #print()
+        tensor = codec.encode_surrogate(genome, metric_row['epoch_num'])
+        #print(type(tensor))
+        to_add['genome'] = tensor #genome #change to tensor
+        
+        #to_add['epoch_num'] = metric_row['epoch_num'] #DELETE THIS LINE BUT USE i+1 as epoch_num for encode_surrogate
         for heading in metric_headings:
             if math.isnan(metric_row[heading]):
                 if heading in MAX_METRICS:
@@ -111,10 +129,10 @@ local_random.shuffle(val_genomes)
 train_set = pd.DataFrame(train_genomes)
 val_set = pd.DataFrame(val_genomes)
 
-complete_output_filename = os.path.join(outdir, 'complete_dataset.csv')
-train_output_filename = os.path.join(outdir, 'train_dataset.csv')
-val_output_filename = os.path.join(outdir, 'val_dataset.csv')
+complete_output_filename = os.path.join(outdir, 'complete_dataset.pkl')
+train_output_filename = os.path.join(outdir, 'train_dataset.pkl')
+val_output_filename = os.path.join(outdir, 'val_dataset.pkl')
 os.makedirs(os.path.dirname(complete_output_filename), exist_ok=True)
-out_data.to_csv(complete_output_filename, index=False)
-train_set.to_csv(train_output_filename, index=False)
-val_set.to_csv(val_output_filename, index=False)
+out_data.to_pickle(complete_output_filename)
+train_set.to_pickle(train_output_filename)
+val_set.to_pickle(val_output_filename)
