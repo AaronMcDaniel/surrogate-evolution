@@ -24,6 +24,7 @@ MAX_DILATION_SIZE = 10
 MAX_GROUP_SIZE = 1
 MAX_SKIP_SIZE = 5
 MAX_PNORM_SIZE = 3
+MAX_FLOAT_SIZE = 100
 
 
 # placeholder classes to act as types for DEAP's strongly typed primitive set
@@ -86,6 +87,11 @@ class ProbFloat(float):
     pass
 
 class GenericInt(int): # exists so that anything with GenericInt isn't treated as a superclass of other int-inheriting types
+    def __init__(self, num) -> None:
+        super().__init__()
+    pass
+
+class BoundedFloat(float):
     def __init__(self, num) -> None:
         super().__init__()
     pass
@@ -248,10 +254,10 @@ def AdaptiveAvgPool2d(tensor: Tensor3D, output_size0: OutputSize, output_size1: 
 def ReLU_2D(tensor: Tensor3D):
     return Tensor3D()
 
-def LeakyReLU_2D(tensor: Tensor3D, negative_slope: float):
+def LeakyReLU_2D(tensor: Tensor3D, negative_slope: BoundedFloat):
     return Tensor3D()
 
-def RReLU_2D(tensor: Tensor3D, lower: float, upper: float):
+def RReLU_2D(tensor: Tensor3D, lower: BoundedFloat, upper: BoundedFloat):
     return Tensor3D()
 
 def LogSigmoid_2D(tensor: Tensor3D):
@@ -263,7 +269,7 @@ def Sigmoid_2D(tensor: Tensor3D):
 def Tanh_2D(tensor: Tensor3D):
     return Tensor3D()
 
-def Threshold_2D(tensor: Tensor3D, threshold: float, value: float):
+def Threshold_2D(tensor: Tensor3D, threshold: BoundedFloat, value: BoundedFloat):
     return Tensor3D()
 
 
@@ -271,7 +277,7 @@ def Threshold_2D(tensor: Tensor3D, threshold: float, value: float):
 
 
 # Normalization and Dropout layers
-def LazyBatchNorm2d(tensor: Tensor3D, eps: float, momentum: float):
+def LazyBatchNorm2d(tensor: Tensor3D, eps: BoundedFloat, momentum: BoundedFloat):
     return Tensor3D()
 
 def Dropout_2D(tensor: Tensor3D, p: ProbFloat):
@@ -282,7 +288,7 @@ def Dropout_2D(tensor: Tensor3D, p: ProbFloat):
 
 
 # Vision layers
-def Upsample_2D(tensor: Tensor3D, scaling_factor: float, mode: UpsampleMode):
+def Upsample_2D(tensor: Tensor3D, scaling_factor: BoundedFloat, mode: UpsampleMode):
     return Tensor3D()
 
 
@@ -530,7 +536,7 @@ pset.addPrimitive(ReLU_2D,
                   Tensor3D)
 
 pset.addPrimitive(LeakyReLU_2D,
-                  [Tensor3D, float],
+                  [Tensor3D, BoundedFloat],
                   Tensor3D)
 
 pset.addPrimitive(LogSigmoid_2D,
@@ -546,11 +552,11 @@ pset.addPrimitive(Tanh_2D,
                   Tensor3D)
 
 pset.addPrimitive(Threshold_2D,
-                  [Tensor3D, float, float],
+                  [Tensor3D, BoundedFloat, BoundedFloat],
                   Tensor3D)
 
 pset.addPrimitive(LazyBatchNorm2d,
-                  [Tensor3D, float, float],
+                  [Tensor3D, BoundedFloat, BoundedFloat],
                   Tensor3D)
 
 pset.addPrimitive(Dropout_2D,
@@ -562,15 +568,15 @@ pset.addPrimitive(Dropout_2D,
 #                   Tensor3D)
 
 pset.addPrimitive(FasterRCNN_Head,
-                  [Tensor3D, Optimizer, Scheduler] + list(itertools.repeat(float, num_loss_components)),
+                  [Tensor3D, Optimizer, Scheduler] + list(itertools.repeat(ProbFloat, num_loss_components)),
                   FinalTensor)
 
 pset.addPrimitive(FCOS_Head,
-                  [Tensor3D, Optimizer, Scheduler] + list(itertools.repeat(float, num_loss_components)),
+                  [Tensor3D, Optimizer, Scheduler] + list(itertools.repeat(ProbFloat, num_loss_components)),
                   FinalTensor)
 
 pset.addPrimitive(RetinaNet_Head,
-                  [Tensor3D, Optimizer, Scheduler] + list(itertools.repeat(float, num_loss_components)),
+                  [Tensor3D, Optimizer, Scheduler] + list(itertools.repeat(ProbFloat, num_loss_components)),
                   FinalTensor)
 
 # pset.addPrimitive(SSD_Head,
@@ -578,7 +584,7 @@ pset.addPrimitive(RetinaNet_Head,
 #                   FinalTensor)
 
 pset.addPrimitive(Upsample_2D,
-                  [Tensor3D, float, UpsampleMode],
+                  [Tensor3D, BoundedFloat, UpsampleMode],
                   Tensor3D)
 
 pset.addPrimitive(ConvNeXt,
@@ -791,6 +797,9 @@ def toPNorm(a):
 def toProbFloat(a):
     return a%1
 
+def toBoundedFloat(a):
+    return a%MAX_FLOAT_SIZE
+
 def dummyOp(input):
     return input
 
@@ -828,6 +837,7 @@ pset.addPrimitive(toGroup, [GenericInt], GroupSize)
 pset.addPrimitive(toSkip, [GenericInt], SkipSize)
 pset.addPrimitive(toPNorm, [float], PNorm)
 pset.addPrimitive(toProbFloat, [float], ProbFloat)
+pset.addPrimitive(toBoundedFloat, [float], BoundedFloat)
 pset.addPrimitive(dummyOp, [PaddingMode], PaddingMode)
 pset.addPrimitive(dummyOp, [UpsampleMode], UpsampleMode)
 pset.addPrimitive(dummyOp, [SkipMergeType], SkipMergeType)
@@ -851,7 +861,8 @@ pset.addPrimitive(dummyOp, [CyclicLRScaleMode], CyclicLRScaleMode)
 
 # adding ephemeral constants
 pset.addEphemeralConstant("randProbFloat", partial(random.uniform, 0, 1), ProbFloat)
-pset.addEphemeralConstant("randFloat", partial(random.uniform, 0, 100), float)
+pset.addEphemeralConstant("randBoundedFloat", partial(random.uniform, 0, MAX_FLOAT_SIZE), BoundedFloat)
+pset.addEphemeralConstant("randFloat", partial(random.uniform, 0, MAX_FLOAT_SIZE), float)
 pset.addEphemeralConstant("randInt", partial(random.randint, 0, 100), GenericInt)
 pset.addEphemeralConstant("randBool", genRandBool, bool)
 pset.addEphemeralConstant("randChannel", partial(random.randint, 1, MAX_CHANNEL_SIZE), ChannelSize)
