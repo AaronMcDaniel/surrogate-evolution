@@ -12,7 +12,7 @@ class MLP(nn.Module):
             activation_layer=nn.ReLU, 
             norm_layer=nn.BatchNorm1d, 
             bias=True, inplace=None, 
-            dropout=0.0
+            dropout=0.3
     ):
         super(MLP, self).__init__()
         self.activation_layer = activation_layer
@@ -53,6 +53,7 @@ class MLP(nn.Module):
                 nn.init.xavier_normal_(module.weight)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
+
 
 def plot_model_weights(model):
     for name, param in model.named_parameters():

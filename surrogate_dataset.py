@@ -14,26 +14,25 @@ from sklearn.preprocessing import StandardScaler
 
 class SurrogateDataset(Dataset):
     # init using df
-    def __init__(self, df, mode, scaler=StandardScaler()):
+    def __init__(self, df, mode, metrics_scaler=StandardScaler(), genomes_scaler = StandardScaler()):
         self.df = df
-        self.scaler = scaler
+        self.genomes_scaler = genomes_scaler
+        self.metrics_scaler = metrics_scaler
         self.mode = mode
 
         # features/genomes in the first two cols of df
         # TODO concatenate the epoch number at the front of the genome encoding
-        self.genomes = df.iloc[:, :2].values
+        self.genomes = np.stack(df.iloc[:, 0].values)
         # labels/metrics in the last 12 cols of df
         self.metrics = df.iloc[:, -12:].values
 
         # standardize genome/metrics data dist if train mode
         if mode == 'train':
-            self.metrics = scaler.fit_transform(self.metrics)
-            # TODO uncomment this line when encodings are finished
-            # self.genomes = scaler.fit_transform(self.genomes)
+            self.metrics = self.metrics_scaler.fit_transform(self.metrics)
+            self.genomes = self.genomes_scaler.fit_transform(self.genomes)
         if mode == 'val':
-            self.metrics = scaler.transform(self.metrics)
-            # TODO uncomment this line when encodings are finished
-            # self.genomes = scaler.transform(self.genoems)
+            self.metrics = self.metrics_scaler.transform(self.metrics)
+            self.genomes = self.genomes_scaler.transform(self.genomes)
 
     # returns num samples in dataset
     def __len__(self):
@@ -42,8 +41,7 @@ class SurrogateDataset(Dataset):
     # retrieve genome, metrics at specific index
     def __getitem__(self, i):
         # NOTE this will not work until genomes are encoded
-        # genomes = torch.tensor(self.genomes[i], dtype=torch.float32)
-        genome = torch.rand(976, dtype=torch.float32)
+        genome = torch.tensor(self.genomes[i], dtype=torch.float32)
         metrics = torch.tensor(self.metrics[i], dtype=torch.float32)
         return genome, metrics
 
@@ -55,7 +53,7 @@ def build_dataset(
         metrics='uw_val_epoch_loss,iou_loss,giou_loss,diou_loss,ciou_loss,center_loss,size_loss,obj_loss,precision,recall,f1_score,average_precision', 
         exclude='', val_ratio=0.3, seed=0
     ):
-    codec = Codec(7)
+    codec = Codec(num_classes=7)
     metric_headings = metrics.split(',')
     excluded_gens = exclude
     if excluded_gens == '':
