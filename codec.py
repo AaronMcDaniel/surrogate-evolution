@@ -448,10 +448,12 @@ class Codec:
 
         layer = np.zeros(num_layer_types + len(params))
         layer[layer_type] = 1
-
+        #print('loss:', params)
+        #print((params[0] - min(params)) / (max(params) - min(params)))
         for i, param in enumerate(params):
-            layer[num_layer_types + i] = param
-
+            layer[num_layer_types + i] = (param - min(params)) / (max(params) - min(params))
+            #print((param - min(params)) / (max(params) - min(params)))
+        #print(layer)
         return optimizer_layer, scheduler_layer, layer
 
 
