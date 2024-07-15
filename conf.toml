@@ -60,7 +60,7 @@ val_seed = 0
 # method of encoding NN as a genome
 genome_encoding_strat = "Tree" # Need to define 
 # method of encoding NN for the surrogate
-surrogate_encoding_strat = "Graph2Vec"
+surrogate_encoding_strat = "String2Vec"
 
 [surrogate]
 # surrogate models to be used
