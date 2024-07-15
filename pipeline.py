@@ -280,7 +280,8 @@ class Pipeline:
             to_remove = self.holy_grail[~self.holy_grail['hash'].isin(hof_hashes)]
             to_remove = to_remove[['gen', 'hash']].values.tolist()
             for gen, hash in to_remove:
-                os.popen(f'rm -rf {self.output_dir}/generation_{gen}/{hash}/')
+                os.popen(f'rm {self.output_dir}/generation_{gen}/{hash}/best_epoch.pth')
+                os.popen(f'rm {self.output_dir}/generation_{gen}/{hash}/last_epoch.pth')
             print('Done!')
 
 
