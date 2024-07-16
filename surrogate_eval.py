@@ -29,21 +29,26 @@ def prepare_data(batch_size):
 def get_model(model_str):
     if model_str == "MLP":
         # NOTE mlp hyperparameters will be optimized with grid search in the future
-        return sm.MLP()
+        # return sm.MLP(dropout=0.4, hidden_sizes=[2048, 1024, 512, 12])
+        return sm.MLP(dropout=0.0)
     # TODO implement other surrogate models
 
 
 def get_optimizer(model_str, params):
     if model_str == "MLP":
         # NOTE use sparse adam for actual surrogate encoding
-        # return optim.SparseAdam(params, lr=0.001)
-        return optim.Adam(params, lr=0.001)
+        # return optim.RMSprop(params, lr=0.001)
+        # baseline is Adam
+        return optim.RMSprop(params, lr=0.01)
     # TODO implement other surrogate optimizers
 
 
 def get_scheduler(model_str, optimizer, num_epochs, batch_size):
     if model_str == "MLP":
-        return lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1)
+        # return lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1)
+        # return lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+        # return lr_scheduler.MultiStepLR(optimizer, milestones=[10, 20], gamma=0.1)
+        return lr_scheduler.CosineAnnealingLR(optimizer,T_max=10)
     # TODO implement other surrogate schedulers
 
 
