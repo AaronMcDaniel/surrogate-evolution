@@ -1,12 +1,11 @@
 __pycache__/
 .ipynb_checkpoints/
 test/
-eval_input.csv
-eval.job
-precog_eval.job
 weights/
+pretrained_weights/
 surrogate_dataset/
 codec_backup.py
 codec_tester.py
 find_max_params.py
+precog_eval.job
 
