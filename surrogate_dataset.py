@@ -10,6 +10,7 @@ import pickle
 import torch
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler
+import pickle
 
 
 class SurrogateDataset(Dataset):
@@ -22,7 +23,7 @@ class SurrogateDataset(Dataset):
 
         # features/genomes in the first two cols of df
         # TODO concatenate the epoch number at the front of the genome encoding
-        self.genomes = np.stack(df.iloc[:, 0].values)
+        self.genomes = np.stack(df['genome'].values)
         # labels/metrics in the last 12 cols of df
         self.metrics = df.iloc[:, -12:].values
 
@@ -33,6 +34,9 @@ class SurrogateDataset(Dataset):
         if mode == 'val':
             self.metrics = self.metrics_scaler.transform(self.metrics)
             self.genomes = self.genomes_scaler.transform(self.genomes)
+
+        if np.isnan(self.genomes).any() or np.isnan(self.metrics).any():
+            breakpoint()
 
     # returns num samples in dataset
     def __len__(self):
@@ -68,12 +72,14 @@ def build_dataset(
     num_epochs = model_config['train_epochs']
 
     MAX_METRICS = ['precision', 'recall', 'f1_score', 'average_precision']
-    out_data = pd.DataFrame(columns=['genome', 'epoch_num'] + metric_headings)
+    out_data = pd.DataFrame(columns=['hash', 'genome', 'epoch_num'] + metric_headings)
 
     data = pd.read_csv(infile)
     data = data.to_dict('records')
 
     all_genome_info = []
+
+    threshold = 100000
 
     for line in data:
         genome_hash = line['hash']
@@ -99,7 +105,10 @@ def build_dataset(
                         tensor = codec.encode_surrogate(genome, i + 1)
                     except:
                         break
+                    if np.any(tensor > threshold):
+                        break
                     to_add['genome'] = tensor
+                    to_add['hash'] = genome_hash
                     for heading in metric_headings:
                         if heading in MAX_METRICS:
                             to_add[heading] = -1000000.0
@@ -110,7 +119,11 @@ def build_dataset(
                 continue
 
             tensor = codec.encode_surrogate(genome, metric_row['epoch_num'])
+            if np.any(tensor > threshold):
+                break
+            to_add['hash'] = genome_hash
             to_add['genome'] = tensor
+            
             for heading in metric_headings:
                 if math.isnan(metric_row[heading]):
                     if heading in MAX_METRICS:
@@ -147,4 +160,15 @@ def build_dataset(
 
     return train_set, val_set
 
-# build_dataset(infile='/gv1/projects/GRIP_Precog_Opt/test_evolution/out.csv', working_dir='/gv1/projects/GRIP_Precog_Opt/test_evolution')
+
+def find_bad_individuals(df, bad_thresh=100000):
+    genomes = np.stack(df['genome'].values)
+    hashes = df['hash']
+    genomes = torch.from_numpy(genomes)
+    bad_mask = genomes > bad_thresh
+    bad_indices = torch.where(bad_mask.any(dim=1))[0].numpy()
+    bad_individuals = hashes[bad_indices]
+    return bad_individuals
+
+
+# build_dataset(infile='/gv1/projects/GRIP_Precog_Opt/baseline_evolution/out.csv', working_dir='/gv1/projects/GRIP_Precog_Opt/baseline_evolution')

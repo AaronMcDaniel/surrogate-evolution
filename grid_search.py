@@ -13,17 +13,18 @@ from sklearn.pipeline import Pipeline, make_pipeline
 from skorch import NeuralNetRegressor
 from sklearn.compose import TransformedTargetRegressor
 from hypopt import GridSearch
+import itertools
 
 def fine_tune(model_str='MLP', n_jobs=-1, cv=5):
-    df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/complete_dataset.pkl')
-    X= np.stack(df.iloc[:, 0].values).astype(np.float32)
-    Y = df.iloc[:, -12:].values.astype(np.float32)
+    df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset_baseline/complete_dataset.pkl')
+    genomes = np.stack(df['genome'].values).astype(np.float32)
+    metrics = df.iloc[:, -12:].values.astype(np.float32)
+    genomes_scaler = StandardScaler()
+    metrics_scaler = StandardScaler()
+    genomes = genomes_scaler.fit_transform(genomes)
+    metrics = metrics_scaler.fit_transform(metrics)
 
     if model_str == 'MLP':
-        X_scaler = StandardScaler()
-        Y_scaler = StandardScaler()
-        X = X_scaler.fit_transform(X)
-        Y = Y_scaler.fit_transform(Y)
 
         model = NeuralNetRegressor(
             module=sm.MLP,
@@ -36,8 +37,6 @@ def fine_tune(model_str='MLP', n_jobs=-1, cv=5):
         )
 
         param_grid = {
-            'max_epochs': [10, 20, 30],
-            'batch_size': [8, 16, 32, 64],
             'module__dropout': [0.0, 0.2, 0.4, 0.6],
             'module__hidden_sizes': [[512, 256, 12], [1024, 512, 12], [2048, 1024, 512, 12]],
             'optimizer': [optim.SGD, optim.Adam, optim.RMSprop, optim.Adagrad],
@@ -49,18 +48,24 @@ def fine_tune(model_str='MLP', n_jobs=-1, cv=5):
                 [LRScheduler(policy=lr.ReduceLROnPlateau, mode='min', factor=0.1, patience=5)]
             ]
         }
-
+        # param_names = param_grid.keys()
+        # param_values = param_grid.values()
+        # combinations = list(itertools.product(*param_values))
+        # combinations_dicts = [dict(zip(param_names, combination)) for combination in combinations]
+        # for combo in combinations_dicts:
+        #     print(combo)
+        
         grid = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=n_jobs, cv=cv)
-        result = grid.fit(X, Y)
+        result = grid.fit(genomes, metrics)
 
-    result_dict = {
-        'best_params': result.best_params_,
-        'best_score': result.best_score_,
-        'best_model': result.best_estimator_
-    }
-    with open(f'{model_str}_fine_tuned.pkl', 'wb') as f:
-        pickle.dump(result_dict, f)
+    with open(f'{model_str}_all_combos.pkl', 'wb') as f:
+        pickle.dump(result.best_estimator_, f)
+        pickle.dump(result.cv_results_, f)
 
-    return result_dict
+    with open(f'{model_str}_best_combo.txt', 'w') as f:
+        f.write(f'Best Parameters: {result.best_params_}\n')
+        f.write(f'Best Score: {result.best_score_}')
 
-print(fine_tune())
+    return None
+
+fine_tune()
