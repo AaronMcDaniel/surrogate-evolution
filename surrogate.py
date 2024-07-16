@@ -1,9 +1,14 @@
+import copy
+import hashlib
+from codec import Codec
 from deap import creator, gp, base, tools
 import numpy as np
 import pandas as pd
 from pipeline import CustomPrimitiveTree
 import primitives
+import surrogate_models as sm
 import toml
+import torch
 
 
 def ensure_deap_classes(objectives, codec_config):
@@ -29,33 +34,92 @@ class Surrogate():
         surrogate_config = configs["surrogate"]
         pipeline_config = configs["pipeline"]
         codec_config = configs["codec"]
+        model_config = configs["model"]
         self.models = surrogate_config["models"]
         self.trust_calc_strategy = surrogate_config["trust_calc_strategy"]
         self.trust_calc_ratio = surrogate_config["trust_calc_ratio"]
         self.objectives = pipeline_config["objectives"]
+        self.genome_epochs = model_config["train_epochs"]
+        self.best_epoch_criteria = pipeline_config["best_epoch_criteria"]
         
         self.pset = primitives.pset
-        self.trusts = [0 for _ in self.models]
+        self.trust = 0
+        self.codec = Codec(num_classes=model_config["num_classes"], genome_encoding_strat=codec_config["genome_encoding_strat"], surrogate_encoding_strat=codec_config["surrogate_encoding_strat"])
+        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+        
+        self.METRICS = ["uw_val_epoch_loss", "iou_loss", "giou_loss", "diou_loss", "ciou_loss", "center_loss", "size_loss", "obj_loss", "precision", "recall", "f1_score", "average_precision"]
         
         ensure_deap_classes(self.objectives, codec_config)
+        self.toolbox = base.Toolbox()
         
     
     # The calc_pool is a list of deap individuals with calculated fitnesses. The model infers the metrics and 
     # we see the intersection in selections
     def calc_trust(self, model_name, calc_pool):
-        if model_name.lower() not in self.models:
+        if model_name not in self.models:
             raise ValueError(f'{model_name} provided is not in list of surrogate models')
         
         # create copy of calc_pool
-        
-        # convert deap individuals to string and call codec.encode_surrogate
+        surrogate_pool = copy.deepcopy(calc_pool)
         
         # get inferences on copy of calc_pool and assign fitness to copy
+        inferences = self.get_surrogate_inferences(model_name, surrogate_pool, list(self.objectives.keys()))
+        for i, individual in enumerate(surrogate_pool):
+            individual.fitness.values = inferences[i]
         
         # run trust-calc strategy to select trust_calc_ratio-based number of individuals for both calc_pool and its copy
+        # TODO: add other cases of trust_calc_strategy
+        match self.trust_calc_strategy.lower():
+            case 'spea2':
+                self.toolbox.register("select", tools.selSPEA2, k = int(len(calc_pool)*self.trust_calc_ratio))
+        
+        selected = [self.__get_hash(str(g)) for g in self.toolbox.select(calc_pool)]
+        surrogate_selected = [self.__get_hash(str(g)) for g in self.toolbox.select(surrogate_pool)]
         
         # check intersection of selected individuals and return
-        pass
+        selected = set(selected)
+        surrogate_selected = set(surrogate_selected)
+        intersection = selected.intersection(surrogate_selected)
+        trust = len(intersection)/(len(selected)+len(surrogate_selected))
+        return trust
+    
+    
+    # Get surrogate inferences on a list of deap individuals
+    def get_surrogate_inferences(self, model_name, inference_pool, objectives):
+        encoded_genomes = []
+        for genome in inference_pool:
+            for i in range(self.genome_epochs):
+                encoded_genomes.append(self.codec.encode_surrogate(str(genome), i+1)) # error handling needs to be done in case encoding breaks (punish)
+        
+        model = sm.get_model(model_name).to(self.device)
+        # load weights here
+        model.eval()
+        all_inferences = []
+        for genome in encoded_genomes:
+            genome = torch.tensor(genome, dtype=torch.float32, device=self.device).unsqueeze(0)
+            with torch.no_grad():
+                inference = model(genome)
+                all_inferences.append(tuple(inference.squeeze().tolist()[self.METRICS.index(obj)] for obj in objectives))
+
+        # Select the best inference for each genome
+        final_inferences = []
+        criteria_metric = self.best_epoch_criteria[0]
+        criteria_type = self.best_epoch_criteria[1]
+        criteria_index = objectives.index(criteria_metric)
+
+        for i in range(0, len(all_inferences), self.genome_epochs):
+            epoch_inferences = all_inferences[i:i + self.genome_epochs]
+
+            if criteria_type == 'min':
+                best_inference = min(epoch_inferences, key=lambda x: x[criteria_index])
+            elif criteria_type == 'max':
+                best_inference = max(epoch_inferences, key=lambda x: x[criteria_index])
+            else:
+                raise ValueError(f"Invalid criteria type: {criteria_type}")
+
+            final_inferences.append(best_inference)
+
+        return final_inferences
     
     
     # This function converts string representations of genomes from a file like out.csv into deap individuals
@@ -97,6 +161,7 @@ class Surrogate():
         return individuals
     
     
-    def get_best_model(self):
-        return self.models[max(enumerate(self.trusts), key=lambda x: x[1])[0]]
+    def __get_hash(self, s):
+        return hashlib.shake_256(s.encode()).hexdigest(5)
+
      
