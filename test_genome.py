@@ -142,11 +142,14 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
     return epoch_loss
 
 
-def custom_train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, custom_loss, max_batch=None):
+def custom_train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, custom_loss, loss_weights, iou_type, max_batch=None):
     model.train()
     train_epoch_loss = 0.0
     num_preds = 0
-    data_iter = tqdm(train_loader, desc="Training")
+    if max_batch is not None:
+        # Slice the dataloader to only include up to max_batch
+        train_loader = itertools.islice(train_loader, max_batch)
+    data_iter = tqdm(train_loader, desc="Training", total=max_batch)
 
     for i, (images, targets) in enumerate(data_iter):
 
@@ -158,44 +161,33 @@ def custom_train_one_epoch(model, device, train_loader, optimizer, scheduler, sc
         with autocast():
             loss_dict, outputs = model(images, targets)
             if custom_loss:
-                losses = torch.zeros(1, requires_grad=True, device=device)
+                losses = torch.zeros(1, requires_grad=True, device=device, dtype=torch.float32)
             else:
                 losses = sum(loss for loss in loss_dict.values())
 
-        for j, image in enumerate(images):
-            num_preds += len(outputs[j]['boxes'])
             if custom_loss:
-                true_boxes = u.norm_box_scale(targets[j]['boxes'])
-                pred_boxes = u.norm_box_scale(outputs[j]['boxes'])
-                pred_boxes = u.convert_boxes_to_xywh(pred_boxes)
-                true_boxes = u.convert_boxes_to_xywh(true_boxes)
-                # NOTE pred_boxes and true_boxes are currently normalized between [0, 1] and in xywh format
-                scores = outputs[j]['scores']
-                pred_boxes = u.cat_scores(pred_boxes, scores) 
-                loss_matches = u.match_boxes(pred_boxes, true_boxes, 0.0, 0.0, "train", "ciou")
-                size_loss = c.size_loss(loss_matches)
-                center_loss = c.center_loss(loss_matches)
-                total_loss = size_loss * 0.6 + center_loss * 0.4
-                # loss_tensor = c.compute_weighted_loss(loss_matches, loss_weights, iou_type)
-                losses = losses + total_loss
+                for j, image in enumerate(images):
+                    pred_boxes, true_boxes, flight_id, frame_id = e.process_preds_truths(targets[j], outputs[j])
+                    
+                    loss_matches = u.match_boxes(pred_boxes, true_boxes, 0.0, 0.0, "train", iou_type=iou_type)
+                    loss_tensor = c.compute_weighted_loss(loss_matches, pred_boxes, true_boxes, loss_weights, iou_type)
+                    image_loss = loss_tensor[7]
+                    losses = losses + image_loss
 
         # backwards
         optimizer.zero_grad()
         scaler.scale(losses).backward()
         scaler.step(optimizer)
         scaler.update()
-        data_iter.set_postfix(loss=losses)
+        data_iter.set_postfix(loss=losses.item())
         torch.cuda.empty_cache()
 
         # update accumulators
         train_epoch_loss += losses.item()
 
-        # break train loop at max batch
-        if max_batch is not None and i == max_batch:
-            save_model_weights(model, 'RetinaNet_Loss_Testing', 5)
-            break
-    
-    scheduler.step()
+    save_model_weights(model, model_type='genome', num_images=5000)
+    train_epoch_loss = train_epoch_loss / max_batch if max_batch is not None else len(train_loader)
+    e.step_scheduler(scheduler, train_epoch_loss)
     # average running loss by number of images to calculate epoch loss
     train_epoch_loss /= (num_preds + 1e-9)
     return train_epoch_loss
@@ -256,6 +248,7 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
                     confusion_status.append(False)
 
             data_iter.set_postfix(loss=val_batch_loss)
+            torch.cuda.empty_cache()
 
     val_epoch_loss /= (num_preds +  1e-9)
     iou_loss /= (num_preds  + 1e-9)
@@ -293,23 +286,22 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
 
         
 if __name__ == '__main__':
-    iou_thresh = 0.2
-    conf_thresh = 0.00
+    iou_thresh = 0.0
+    conf_thresh = 0.2
     iou_type = "ciou"
     train_seed = 0
     val_seed = 0
-    batch_size = 2
+    batch_size = 1
     num_epochs = 1
-    max_batch = 50
-    # 7e72fab514 gen 1 fcos
-    # 872f4fe399 gen 3 fcnn
-    # aba67a1112 gen 6 rn
-    hash_path = '/gv1/projects/GRIP_Precog_Opt/test_evolution/generation_1/7e72fab514'
+    max_batch = 5000
+
+    hash_path = '/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/generation_1/c8ce86e998'
     split_list = hash_path.split('/')
     hash = split_list[-1]
     input_path = '/'.join(split_list[:-2]) + '/eval_inputs/' + f'eval_input_gen{split_list[-2].split("_")[-1]}.csv'
     input_df = pd.read_csv(input_path)
     genome_str = input_df.loc[input_df['hash'] == hash].to_dict('records')[0]['genome']
+
     codec = Codec(7)
     model_dict = codec.decode_genome(genome_str, 7)
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -318,6 +310,7 @@ if __name__ == '__main__':
     optimizer = e.get_optimizer(params, model_dict)
     scheduler = e.get_scheduler(optimizer, model_dict, num_epochs, batch_size)
     scaler = GradScaler()
+
     loss_weights = model_dict['loss_weights']
     configs = toml.load("conf.toml")
     model_config = configs["model"]
@@ -325,12 +318,14 @@ if __name__ == '__main__':
     data_config = configs["data"]
     all_config = model_config | codec_config | data_config
     train_loader, val_loader = e.prepare_data(all_config, train_seed, val_seed, batch_size)
-    model = load_model_weights(model, device, os.path.join(hash_path, 'last_epoch.pth'))
-    no_det_flight_id, no_det_frame_id = 'part29571e04420464a708d96b2723899829d', 390
-    val_dataset = data.AOTDataset('val', seed=val_seed, string=1, max_size=None)
-    inference_on_img(model, device, no_det_flight_id, no_det_frame_id, val_dataset, loss_weights)
-    # epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, max_batch)
-    # print("Evaluation finished!")
-    # print(f"Metrics: {epoch_metrics}")
+    # model = load_model_weights(model, device, os.path.join(hash_path, 'last_epoch.pth'))
+    model = load_model_weights(model, device, '/home/tthakur9/precog-opt-grip/weights/genome_100_img.pth')
+
+    train_epoch_loss = custom_train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler,
+                                              custom_loss=True, loss_weights=loss_weights, iou_type=iou_type, max_batch=max_batch)
+    print(f"Custom train loss: {train_epoch_loss}")
+    epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, max_batch=2)
+    print("Evaluation finished!")
+    print(f"Metrics: {epoch_metrics}")
 
     
