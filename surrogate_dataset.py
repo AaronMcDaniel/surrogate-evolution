@@ -21,6 +21,13 @@ class SurrogateDataset(Dataset):
         self.metrics_scaler = metrics_scaler
         self.mode = mode
 
+        # clamping metrics larger than a 1000 for scaling
+        cols_to_clamp = self.df.columns.difference(['hash', 'genome'])
+        self.df[cols_to_clamp] = self.df[cols_to_clamp].map(lambda x: np.clip(x, -1000, 1000) if isinstance(x, (int, float)) else x)
+        
+        # clamping genome values to a max of 10000 for scaling
+        self.df['genome'] = self.df['genome'].apply(lambda x: np.clip(x, None, 10000))
+
         # features/genomes in the first two cols of df
         # TODO concatenate the epoch number at the front of the genome encoding
         self.genomes = np.stack(df['genome'].values)
@@ -30,7 +37,7 @@ class SurrogateDataset(Dataset):
         metrics_subset = [-12 + i for i in metrics_subset]
 
         self.metrics = df.iloc[:, metrics_subset].values
-
+        
         # standardize genome/metrics data dist if train mode
         if mode == 'train':
             self.metrics = self.metrics_scaler.fit_transform(self.metrics)
@@ -38,7 +45,7 @@ class SurrogateDataset(Dataset):
         if mode == 'val':
             self.metrics = self.metrics_scaler.transform(self.metrics)
             self.genomes = self.genomes_scaler.transform(self.genomes)
-
+            
         if np.isnan(self.genomes).any() or np.isnan(self.metrics).any():
             breakpoint()
 
