@@ -1,131 +1,93 @@
-import argparse
-import os
+import inspect
 import toml
+from tqdm import tqdm
+import surrogate_dataset as sd
+import pandas as pd
 import torch
 import torch.optim as optim
-from torch.optim import lr_scheduler
-from tqdm import tqdm
+import torch.nn as nn
+from torch.utils.data import DataLoader
+from functools import partial
+import eval as e
 import surrogate_models as sm
 from torch.cuda.amp import autocast, GradScaler
-import pandas as pd
-import torch.nn as nn
-import itertools
-import eval as e
-from torch.utils.data import DataLoader
-import surrogate_dataset as sd
-import pickle
 
 
-def prepare_data(batch_size, metrics_subset):
-    train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/train_dataset.pkl')
-    val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/val_dataset.pkl')
-    train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=metrics_subset)
-    val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=metrics_subset, metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
+def prepare_data(model_dict, batch_size, train_df, val_df):
+    train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=model_dict['metrics_subset'])
+    val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=model_dict['metrics_subset'], metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=True)
-    return train_loader, val_loader
+    return train_loader, val_loader, train_dataset.genomes_scaler, train_dataset.metrics_scaler
 
 
-def get_model(model_str, output_size=12):
-    if model_str == "MLP":
-        # NOTE mlp hyperparameters will be optimized with grid search in the future
-        # return sm.MLP(dropout=0.4, hidden_sizes=[2048, 1024, 512, 12])
-        input_size = 1021
-        dropout = 0.0
-        hidden_sizes = [512, 256]
-        return sm.MLP(input_size=input_size, output_size=output_size, dropout=dropout, hidden_sizes=hidden_sizes)
-    # TODO implement other surrogate models
+def build_configuration(model_dict, device):
+        # build model
+        model = model_dict['model']
+        output_size = len(model_dict['metrics_subset'])
+        sig = inspect.signature(model.__init__)
+        filtered_params = {k: v for k, v in model_dict.items() if k in sig.parameters}
+        model = model(output_size=output_size, **filtered_params)
+        model.to(device)
+
+        # build optimizer
+        params = model.parameters()
+        lr = model_dict['lr']
+        optimizer_func = partial(model_dict['optimizer'])
+        optimizer = optimizer_func(params=params, lr=lr)
+
+        # build scheduler and scaler
+        scheduler_func = model_dict['scheduler']
+        if scheduler_func == optim.lr_scheduler.StepLR:
+            scheduler = scheduler_func(optimizer=optimizer, step_size=10, gamma=0.1)
+        elif scheduler_func == optim.lr_scheduler.MultiStepLR:
+            scheduler = scheduler_func(optimizer=optimizer, milestones=[10, 20], gamma=0.1)
+        elif scheduler_func == optim.lr_scheduler.CosineAnnealingLR:
+            scheduler = scheduler_func(optimizer=optimizer, T_max=10)
+        elif scheduler_func == optim.lr_scheduler.ReduceLROnPlateau:
+            scheduler = scheduler_func(optimizer=optimizer, mode='min', factor=0.1, patience=5)
+        else:
+            scheduler = scheduler_func(optimizer=optimizer)
+        scaler = GradScaler()
+        return model, optimizer, scheduler, scaler
 
 
-def get_optimizer(model_str, params):
-    if model_str == "MLP":
-        # NOTE use sparse adam for actual surrogate encoding
-        # return optim.RMSprop(params, lr=0.001)
-        # baseline is Adam
-        # return optim.RMSprop(params, lr=0.01)
-        return optim.Adam(params, 0.0001)
-    # TODO implement other surrogate optimizers
-
-
-def get_scheduler(model_str, optimizer, num_epochs, batch_size):
-    if model_str == "MLP":
-        # return lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1)
-        return lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
-        # return lr_scheduler.MultiStepLR(optimizer, milestones=[10, 20], gamma=0.1)
-        # return lr_scheduler.CosineAnnealingLR(optimizer,T_max=10)
-    # TODO implement other surrogate schedulers
-
-
-def create_metrics_df():
+def create_metrics_df(cfg):
     return pd.DataFrame(columns=[
         'epoch_num',
         'train_loss',
         'val_loss',
-        'mse_uw_val_loss', 
-        'mse_iou_loss', 
-        'mse_giou_loss', 
-        'mse_diou_loss', 
-        'mse_ciou_loss', 
-        'mse_center_loss', 
-        'mse_size_loss', 
-        'mse_obj_loss', 
-        'mse_precision',
-        'mse_recall', 
-        'mse_f1_score',
-        'mse_average_precision'
-    ])
+    ] + cfg['surrogate_metrics'])
 
 
-def store_data(model_str, metrics_df):
-    metrics_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/surrogate_metrics.csv'
-    os.makedirs(os.path.dirname(metrics_out), exist_ok=True)
-    metrics_df.to_csv(metrics_out, index=False)
+def engine(cfg, model_dict, train_df, val_df):
 
-
-def save_model_weights(model_str, model):
-    weights_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/weights.pth'
-    os.makedirs(os.path.dirname(weights_out), exist_ok=True)
-    torch.save(model.state_dict(), weights_out)
-
-    
-def engine(cfg, metrics_subset=None):
-
-    models = cfg['models']
+    # pull surrogate train/eval config attributes
     num_epochs = cfg['surrogate_train_epochs']
     batch_size = cfg['surrogate_batch_size']
-    train_loader, val_loader = prepare_data(batch_size, metrics_subset=metrics_subset)
+
+    # define subset of metrics to train on and prepare data accordingly
+    metrics_subset = model_dict['metrics_subset']
+    train_loader, val_loader, genome_scaler, metrics_scaler = prepare_data(model_dict, batch_size, train_df, val_df)
+
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    if metrics_subset is None:
-        metrics_subset = list(range(12))
+    model, optimizer, scheduler, scaler = build_configuration(model_dict=model_dict, device=device)
 
-    # perform training and validation for each surrogate model
-    for model_str in models:
-
-        # get surrogate model and specific optimizer, scheduler
-        output_size = len(metrics_subset)
-        model = get_model(model_str, output_size=output_size).to(device)
-        params = model.parameters()
-        optimizer = get_optimizer(model_str, params)
-        scheduler = get_scheduler(model_str, optimizer, num_epochs, batch_size)
-        scaler = GradScaler()
-
-        # NOTE metrics df for each surrogate must be stored in different directories
-        metrics_df = create_metrics_df()
-        for epoch in range(1, num_epochs + 1):
-
+    # create metrics_df
+    metrics_df = create_metrics_df(cfg)
+    for epoch in range(1, num_epochs + 1):
             # train and validate for one epoch
             train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler)
-            epoch_metrics = val_one_epoch(model, device, val_loader, metrics_subset=metrics_subset)
+            epoch_metrics = val_one_epoch(cfg, model, device, val_loader, metrics_subset=metrics_subset)
 
             # update metrics df
             epoch_metrics['epoch_num'] = epoch
             epoch_metrics['train_loss'] = train_epoch_loss
             epoch_metrics_df = pd.DataFrame([epoch_metrics])
             metrics_df = pd.concat([metrics_df, epoch_metrics_df], ignore_index=True)
-
-        store_data(model_str, metrics_df)
-        save_model_weights(model_str, model)
-
+    
+    return metrics_df, genome_scaler, metrics_scaler
+            
 
 def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
     model.train()
@@ -169,7 +131,7 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
     return surrogate_train_loss
 
 
-def val_one_epoch(model, device, val_loader, metrics_subset):
+def val_one_epoch(cfg, model, device, val_loader, metrics_subset):
     model.eval()
 
     # actual surrogate validation loss
@@ -179,11 +141,7 @@ def val_one_epoch(model, device, val_loader, metrics_subset):
     # no mean taken for losses in validation 
     criterion = nn.MSELoss(reduction='none')
     
-    metric_names = [
-        'mse_uw_val_loss', 'mse_iou_loss', 'mse_giou_loss', 'mse_diou_loss', 
-        'mse_ciou_loss', 'mse_center_loss', 'mse_size_loss', 'mse_obj_loss', 
-        'mse_precision', 'mse_recall', 'mse_f1_score', 'mse_average_precision'
-    ]
+    metric_names = cfg['surrogate_metrics']
     selected_metric_names = [metric_names[i] for i in metrics_subset]
 
     data_iter = tqdm(val_loader, 'Evaluating')
@@ -222,18 +180,6 @@ def val_one_epoch(model, device, val_loader, metrics_subset):
 
     epoch_metrics = {
         'val_loss': surrogate_val_loss
-        # 'mse_uw_val_loss': mse_metrics_meaned[0].item(), 
-        # 'mse_iou_loss': mse_metrics_meaned[1].item(), 
-        # 'mse_giou_loss': mse_metrics_meaned[2].item(), 
-        # 'mse_diou_loss': mse_metrics_meaned[3].item(), 
-        # 'mse_ciou_loss': mse_metrics_meaned[4].item(), 
-        # 'mse_center_loss': mse_metrics_meaned[5].item(), 
-        # 'mse_size_loss': mse_metrics_meaned[6].item(), 
-        # 'mse_obj_loss': mse_metrics_meaned[7].item(), 
-        # 'mse_precision': mse_metrics_meaned[8].item(),
-        # 'mse_recall': mse_metrics_meaned[9].item(), 
-        # 'mse_f1_score': mse_metrics_meaned[10].item(),
-        # 'mse_average_precision': mse_metrics_meaned[11].item()
     }
 
     epoch_metrics.update({
@@ -242,15 +188,19 @@ def val_one_epoch(model, device, val_loader, metrics_subset):
 
     return epoch_metrics
 
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    # NOTE default config path should change later on
-    parser.add_argument('-c', '--config_path', required=False, default='/home/tthakur9/precog-opt-grip/conf.toml')
-    args = parser.parse_args()
-    config_path = args.config_path
-    configs = toml.load(config_path)
-    surrogate_config = configs['surrogate']
-    metrics_subset = None
-    engine(surrogate_config, metrics_subset=metrics_subset)
-
+configs = toml.load('conf.toml')
+surrogate_config = configs['surrogate']
+model_dict = {
+                'name': 'best_overall',
+                'dropout': 0.0,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.RMSprop,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'metrics_subset': [0, 4, 11], 
+                'validation_subset': [0, 4, 11],
+                'model': sm.MLP
+            }
+train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')
+val_df = pd.read_pickle('surrogate_dataset/val_dataset.pkl')
+print(engine(surrogate_config, model_dict, train_df, val_df))

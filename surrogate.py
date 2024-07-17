@@ -9,6 +9,7 @@ import primitives
 import surrogate_models as sm
 import toml
 import torch
+import torch.optim as optim
 
 
 def ensure_deap_classes(objectives, codec_config):
@@ -35,7 +36,52 @@ class Surrogate():
         pipeline_config = configs["pipeline"]
         codec_config = configs["codec"]
         model_config = configs["model"]
-        self.models = surrogate_config["models"]
+        self.models = [
+            {
+                'name': 'best_overall',
+                'dropout': 0.0,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.RMSprop,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'metrics_subset': [0, 4, 11], 
+                'validation_subset': [0, 4, 11],
+                'model': sm.MLP
+            },
+            {
+                'name': 'best_mse_uw_val_loss',
+                'dropout': 0.6,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.Adam,
+                'lr': 0.1,
+                'scheduler': optim.lr_scheduler.CosineAnnealingLR,
+                'metrics_subset': [0, 4, 11],
+                'validation_subset': [0],
+                'model': sm.MLP
+            },
+            {
+                'name': 'best_mse_ciou_loss',
+                'dropout': 0.6,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.Adam,
+                'lr': 0.1,
+                'scheduler': optim.lr_scheduler.StepLR,
+                'metrics_subset': [0, 4, 11],
+                'validation_subset': [4],
+                'model': sm.MLP
+            },
+            {
+                'name': 'best_mse_average_precision',
+                'dropout': 0.6,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.RMSprop,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.CosineAnnealingLR,
+                'metrics_subset': [11],
+                'validation_subset': [11],
+                'model': sm.MLP
+            }            
+        ]
         self.trust_calc_strategy = surrogate_config["trust_calc_strategy"]
         self.trust_calc_ratio = surrogate_config["trust_calc_ratio"]
         self.objectives = pipeline_config["objectives"]
@@ -47,7 +93,7 @@ class Surrogate():
         self.codec = Codec(num_classes=model_config["num_classes"], genome_encoding_strat=codec_config["genome_encoding_strat"], surrogate_encoding_strat=codec_config["surrogate_encoding_strat"])
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         
-        self.METRICS = ["uw_val_epoch_loss", "iou_loss", "giou_loss", "diou_loss", "ciou_loss", "center_loss", "size_loss", "obj_loss", "precision", "recall", "f1_score", "average_precision"]
+        self.METRICS = surrogate_config["surrogate_metrics"]
         
         ensure_deap_classes(self.objectives, codec_config)
         self.toolbox = base.Toolbox()
@@ -55,17 +101,18 @@ class Surrogate():
     
     # The calc_pool is a list of deap individuals with calculated fitnesses. The model infers the metrics and 
     # we see the intersection in selections
-    def calc_trust(self, model_name, calc_pool):
-        if model_name not in self.models:
-            raise ValueError(f'{model_name} provided is not in list of surrogate models')
-        
+    def calc_trust(self, model_idx, calc_pool):        
         # create copy of calc_pool
         surrogate_pool = copy.deepcopy(calc_pool)
         
         # get inferences on copy of calc_pool and assign fitness to copy
-        inferences = self.get_surrogate_inferences(model_name, surrogate_pool, list(self.objectives.keys()))
+        inferences = self.get_surrogate_inferences(model_idx, surrogate_pool, list(self.objectives.keys()))
         for i, individual in enumerate(surrogate_pool):
             individual.fitness.values = inferences[i]
+        
+        '''TESTING'''
+        for i in range(len(calc_pool)):
+            print(calc_pool[i].fitness.values, surrogate_pool[i].fitness.values)
         
         # run trust-calc strategy to select trust_calc_ratio-based number of individuals for both calc_pool and its copy
         # TODO: add other cases of trust_calc_strategy
@@ -80,26 +127,27 @@ class Surrogate():
         selected = set(selected)
         surrogate_selected = set(surrogate_selected)
         intersection = selected.intersection(surrogate_selected)
+        print(intersection)
         trust = len(intersection)/(len(selected)+len(surrogate_selected))
         return trust
     
     
     # Get surrogate inferences on a list of deap individuals
-    def get_surrogate_inferences(self, model_name, inference_pool, objectives):
+    def get_surrogate_inferences(self, model_idx, inference_pool, objectives):
         encoded_genomes = []
         for genome in inference_pool:
             for i in range(self.genome_epochs):
                 encoded_genomes.append(self.codec.encode_surrogate(str(genome), i+1)) # error handling needs to be done in case encoding breaks (punish)
         
-        model = sm.get_model(model_name).to(self.device)
-        # load weights here
+        model = self.models[model_idx].to(self.device)
+        model.load_state_dict(torch.load('test/weights/weights.pth', map_location=self.device)) # weights dir is hardcoded rn
         model.eval()
         all_inferences = []
         for genome in encoded_genomes:
             genome = torch.tensor(genome, dtype=torch.float32, device=self.device).unsqueeze(0)
             with torch.no_grad():
                 inference = model(genome)
-                all_inferences.append(tuple(inference.squeeze().tolist()[self.METRICS.index(obj)] for obj in objectives))
+                all_inferences.append(tuple(inference.squeeze().tolist()))
 
         # Select the best inference for each genome
         final_inferences = []
@@ -164,4 +212,8 @@ class Surrogate():
     def __get_hash(self, s):
         return hashlib.shake_256(s.encode()).hexdigest(5)
 
+
+surrogate = Surrogate('conf.toml')
+individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/baseline_evolution/out.csv")
+print(surrogate.calc_trust(0, individuals))
      
