@@ -16,21 +16,24 @@ import surrogate_dataset as sd
 import pickle
 
 
-def prepare_data(batch_size):
+def prepare_data(batch_size, metrics_subset):
     train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/train_dataset.pkl')
     val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/val_dataset.pkl')
-    train_dataset = sd.SurrogateDataset(train_df, mode='train')
-    val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
+    train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=metrics_subset)
+    val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=metrics_subset, metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=True)
     return train_loader, val_loader
 
 
-def get_model(model_str):
+def get_model(model_str, output_size=12):
     if model_str == "MLP":
         # NOTE mlp hyperparameters will be optimized with grid search in the future
         # return sm.MLP(dropout=0.4, hidden_sizes=[2048, 1024, 512, 12])
-        return sm.MLP(dropout=0.0)
+        input_size = 1021
+        dropout = 0.0
+        hidden_sizes = [512, 256]
+        return sm.MLP(input_size=input_size, output_size=output_size, dropout=dropout, hidden_sizes=hidden_sizes)
     # TODO implement other surrogate models
 
 
@@ -39,16 +42,17 @@ def get_optimizer(model_str, params):
         # NOTE use sparse adam for actual surrogate encoding
         # return optim.RMSprop(params, lr=0.001)
         # baseline is Adam
-        return optim.RMSprop(params, lr=0.01)
+        # return optim.RMSprop(params, lr=0.01)
+        return optim.Adam(params, 0.0001)
     # TODO implement other surrogate optimizers
 
 
 def get_scheduler(model_str, optimizer, num_epochs, batch_size):
     if model_str == "MLP":
         # return lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1)
-        # return lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+        return lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
         # return lr_scheduler.MultiStepLR(optimizer, milestones=[10, 20], gamma=0.1)
-        return lr_scheduler.CosineAnnealingLR(optimizer,T_max=10)
+        # return lr_scheduler.CosineAnnealingLR(optimizer,T_max=10)
     # TODO implement other surrogate schedulers
 
 
@@ -84,19 +88,22 @@ def save_model_weights(model_str, model):
     torch.save(model.state_dict(), weights_out)
 
     
-def engine(cfg):
+def engine(cfg, metrics_subset=None):
 
     models = cfg['models']
     num_epochs = cfg['surrogate_train_epochs']
     batch_size = cfg['surrogate_batch_size']
-    train_loader, val_loader = prepare_data(batch_size)
+    train_loader, val_loader = prepare_data(batch_size, metrics_subset=metrics_subset)
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    if metrics_subset is None:
+        metrics_subset = list(range(12))
 
     # perform training and validation for each surrogate model
     for model_str in models:
 
         # get surrogate model and specific optimizer, scheduler
-        model = get_model(model_str).to(device)
+        output_size = len(metrics_subset)
+        model = get_model(model_str, output_size=output_size).to(device)
         params = model.parameters()
         optimizer = get_optimizer(model_str, params)
         scheduler = get_scheduler(model_str, optimizer, num_epochs, batch_size)
@@ -108,7 +115,7 @@ def engine(cfg):
 
             # train and validate for one epoch
             train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler)
-            epoch_metrics = val_one_epoch(model, device, val_loader)
+            epoch_metrics = val_one_epoch(model, device, val_loader, metrics_subset=metrics_subset)
 
             # update metrics df
             epoch_metrics['epoch_num'] = epoch
@@ -162,7 +169,7 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
     return surrogate_train_loss
 
 
-def val_one_epoch(model, device, val_loader):
+def val_one_epoch(model, device, val_loader, metrics_subset):
     model.eval()
 
     # actual surrogate validation loss
@@ -171,6 +178,13 @@ def val_one_epoch(model, device, val_loader):
     mse_metrics_per_batch = []
     # no mean taken for losses in validation 
     criterion = nn.MSELoss(reduction='none')
+    
+    metric_names = [
+        'mse_uw_val_loss', 'mse_iou_loss', 'mse_giou_loss', 'mse_diou_loss', 
+        'mse_ciou_loss', 'mse_center_loss', 'mse_size_loss', 'mse_obj_loss', 
+        'mse_precision', 'mse_recall', 'mse_f1_score', 'mse_average_precision'
+    ]
+    selected_metric_names = [metric_names[i] for i in metrics_subset]
 
     data_iter = tqdm(val_loader, 'Evaluating')
     with torch.no_grad():
@@ -207,20 +221,24 @@ def val_one_epoch(model, device, val_loader):
     mse_metrics_meaned = mse_metrics_per_batch.mean(dim=0)
 
     epoch_metrics = {
-        'val_loss': surrogate_val_loss,
-        'mse_uw_val_loss': mse_metrics_meaned[0].item(), 
-        'mse_iou_loss': mse_metrics_meaned[1].item(), 
-        'mse_giou_loss': mse_metrics_meaned[2].item(), 
-        'mse_diou_loss': mse_metrics_meaned[3].item(), 
-        'mse_ciou_loss': mse_metrics_meaned[4].item(), 
-        'mse_center_loss': mse_metrics_meaned[5].item(), 
-        'mse_size_loss': mse_metrics_meaned[6].item(), 
-        'mse_obj_loss': mse_metrics_meaned[7].item(), 
-        'mse_precision': mse_metrics_meaned[8].item(),
-        'mse_recall': mse_metrics_meaned[9].item(), 
-        'mse_f1_score': mse_metrics_meaned[10].item(),
-        'mse_average_precision': mse_metrics_meaned[11].item()
-    }  
+        'val_loss': surrogate_val_loss
+        # 'mse_uw_val_loss': mse_metrics_meaned[0].item(), 
+        # 'mse_iou_loss': mse_metrics_meaned[1].item(), 
+        # 'mse_giou_loss': mse_metrics_meaned[2].item(), 
+        # 'mse_diou_loss': mse_metrics_meaned[3].item(), 
+        # 'mse_ciou_loss': mse_metrics_meaned[4].item(), 
+        # 'mse_center_loss': mse_metrics_meaned[5].item(), 
+        # 'mse_size_loss': mse_metrics_meaned[6].item(), 
+        # 'mse_obj_loss': mse_metrics_meaned[7].item(), 
+        # 'mse_precision': mse_metrics_meaned[8].item(),
+        # 'mse_recall': mse_metrics_meaned[9].item(), 
+        # 'mse_f1_score': mse_metrics_meaned[10].item(),
+        # 'mse_average_precision': mse_metrics_meaned[11].item()
+    }
+
+    epoch_metrics.update({
+        selected_metric_names[i]: mse_metrics_meaned[i].item() for i in range(len(metrics_subset))
+    })
 
     return epoch_metrics
 
@@ -233,5 +251,6 @@ if __name__ == '__main__':
     config_path = args.config_path
     configs = toml.load(config_path)
     surrogate_config = configs['surrogate']
-    engine(surrogate_config)
+    metrics_subset = None
+    engine(surrogate_config, metrics_subset=metrics_subset)
 

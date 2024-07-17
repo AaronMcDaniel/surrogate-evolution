@@ -15,7 +15,7 @@ import pickle
 
 class SurrogateDataset(Dataset):
     # init using df
-    def __init__(self, df, mode, metrics_scaler=StandardScaler(), genomes_scaler = StandardScaler()):
+    def __init__(self, df, mode, metrics_subset=None, metrics_scaler=StandardScaler(), genomes_scaler = StandardScaler()):
         self.df = df
         self.genomes_scaler = genomes_scaler
         self.metrics_scaler = metrics_scaler
@@ -25,7 +25,11 @@ class SurrogateDataset(Dataset):
         # TODO concatenate the epoch number at the front of the genome encoding
         self.genomes = np.stack(df['genome'].values)
         # labels/metrics in the last 12 cols of df
-        self.metrics = df.iloc[:, -12:].values
+        if metrics_subset is None:
+            metrics_subset = list(range(12))
+        metrics_subset = [-12 + i for i in metrics_subset]
+
+        self.metrics = df.iloc[:, metrics_subset].values
 
         # standardize genome/metrics data dist if train mode
         if mode == 'train':
