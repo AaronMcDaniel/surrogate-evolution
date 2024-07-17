@@ -28,32 +28,21 @@ def prepare_data(batch_size, metrics_subset):
 
 def get_model(model_str, output_size=12):
     if model_str == "MLP":
-        # NOTE mlp hyperparameters will be optimized with grid search in the future
-        # return sm.MLP(dropout=0.4, hidden_sizes=[2048, 1024, 512, 12])
         input_size = 1021
         dropout = 0.0
-        hidden_sizes = [512, 256]
+        hidden_sizes = [2048, 1024, 512]
         return sm.MLP(input_size=input_size, output_size=output_size, dropout=dropout, hidden_sizes=hidden_sizes)
-    # TODO implement other surrogate models
 
 
 def get_optimizer(model_str, params):
     if model_str == "MLP":
         # NOTE use sparse adam for actual surrogate encoding
-        # return optim.RMSprop(params, lr=0.001)
-        # baseline is Adam
-        # return optim.RMSprop(params, lr=0.01)
-        return optim.Adam(params, 0.0001)
-    # TODO implement other surrogate optimizers
+        return optim.RMSprop(params, lr=0.01)
 
 
 def get_scheduler(model_str, optimizer, num_epochs, batch_size):
     if model_str == "MLP":
-        # return lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1)
-        return lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
-        # return lr_scheduler.MultiStepLR(optimizer, milestones=[10, 20], gamma=0.1)
-        # return lr_scheduler.CosineAnnealingLR(optimizer,T_max=10)
-    # TODO implement other surrogate schedulers
+        return lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5)
 
 
 def create_metrics_df():
@@ -89,7 +78,6 @@ def save_model_weights(model_str, model):
 
     
 def engine(cfg, metrics_subset=None):
-
     models = cfg['models']
     num_epochs = cfg['surrogate_train_epochs']
     batch_size = cfg['surrogate_batch_size']
@@ -222,18 +210,6 @@ def val_one_epoch(model, device, val_loader, metrics_subset):
 
     epoch_metrics = {
         'val_loss': surrogate_val_loss
-        # 'mse_uw_val_loss': mse_metrics_meaned[0].item(), 
-        # 'mse_iou_loss': mse_metrics_meaned[1].item(), 
-        # 'mse_giou_loss': mse_metrics_meaned[2].item(), 
-        # 'mse_diou_loss': mse_metrics_meaned[3].item(), 
-        # 'mse_ciou_loss': mse_metrics_meaned[4].item(), 
-        # 'mse_center_loss': mse_metrics_meaned[5].item(), 
-        # 'mse_size_loss': mse_metrics_meaned[6].item(), 
-        # 'mse_obj_loss': mse_metrics_meaned[7].item(), 
-        # 'mse_precision': mse_metrics_meaned[8].item(),
-        # 'mse_recall': mse_metrics_meaned[9].item(), 
-        # 'mse_f1_score': mse_metrics_meaned[10].item(),
-        # 'mse_average_precision': mse_metrics_meaned[11].item()
     }
 
     epoch_metrics.update({
@@ -251,6 +227,6 @@ if __name__ == '__main__':
     config_path = args.config_path
     configs = toml.load(config_path)
     surrogate_config = configs['surrogate']
-    metrics_subset = None
+    metrics_subset = [0, 4, 11]
     engine(surrogate_config, metrics_subset=metrics_subset)
 
