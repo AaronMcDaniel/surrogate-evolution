@@ -1,10 +1,11 @@
 import copy
 import hashlib
+import inspect
 from codec import Codec
 from deap import creator, gp, base, tools
 import numpy as np
 import pandas as pd
-from pipeline import CustomPrimitiveTree
+from primitive_tree import CustomPrimitiveTree
 import primitives
 import surrogate_models as sm
 import toml
@@ -139,7 +140,13 @@ class Surrogate():
             for i in range(self.genome_epochs):
                 encoded_genomes.append(self.codec.encode_surrogate(str(genome), i+1)) # error handling needs to be done in case encoding breaks (punish)
         
-        model = self.models[model_idx].to(self.device)
+        model_dict = self.models[model_idx]
+        # build model
+        model = model_dict['model']
+        output_size = len(model_dict['metrics_subset'])
+        sig = inspect.signature(model.__init__)
+        filtered_params = {k: v for k, v in model_dict.items() if k in sig.parameters}
+        model = model(output_size=output_size, **filtered_params).to(self.device)
         model.load_state_dict(torch.load('test/weights/weights.pth', map_location=self.device)) # weights dir is hardcoded rn
         model.eval()
         all_inferences = []

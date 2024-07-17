@@ -1,10 +1,8 @@
-from collections import deque
 import copy
 import csv
 import hashlib
 import pickle
 import random
-import re
 import shutil
 import subprocess
 import time
@@ -15,8 +13,8 @@ import pandas as pd
 from deap import creator, gp, base, tools
 
 import primitives
-import surrogate_dataset as sd
 from surrogate import Surrogate
+from primitive_tree import CustomPrimitiveTree
 
 # job file params
 JOB_NAME = 'precog_eval'
@@ -451,37 +449,3 @@ conda run -n {ENV_NAME} --no-capture-output python -u {SCRIPT} $((SLURM_ARRAY_TA
 """
         with open(f'{JOB_NAME}.job', 'w') as fh:
             fh.write(batch_script)
-    
-
-class CustomPrimitiveTree(gp.PrimitiveTree):
-    @classmethod
-    def from_string(cls, string, pset):
-        tokens = re.split("[ \t\n\r\f\v(),]", string)
-        expr = []
-        ret_types = deque()
-        for token in tokens:
-            if token == '':
-                continue
-            if len(ret_types) != 0:
-                type_ = ret_types.popleft()
-            else:
-                type_ = None
-
-            if token in pset.mapping:
-                primitive = pset.mapping[token]
-
-                expr.append(primitive)
-                if isinstance(primitive, gp.Primitive):
-                    ret_types.extendleft(reversed(primitive.args))
-            else:
-                try:
-                    token = eval(token)
-                except NameError:
-                    raise TypeError("Unable to evaluate terminal: {}.".format(token))
-
-                if type_ is None:
-                    type_ = type(token)
-
-                expr.append(gp.Terminal(token, False, type_))
-        return cls(expr)
-        
