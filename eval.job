@@ -1,0 +1,18 @@
+#!/bin/bash
+#SBATCH --job-name=eval
+#SBATCH --nodes=1
+#SBATCH -G 1
+#SBATCH -x ice109,ice111,ice161,ice113,ice116,ice114,ice170,ice149,ice158,ice177,ice178,ice120
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32GB
+#SBATCH --time=1-00:00
+#SBATCH --output=/gv1/projects/GRIP_Precog_Opt/outputs/logs/generation_3/evaluation.%A.%a.log
+#SBATCH --error=/gv1/projects/GRIP_Precog_Opt/outputs/logs/generation_3/evaluation_error.%A.%a.log
+#SBATCH --array=0-24
+#SBATCH --constraint="TeslaV100-PCIE-32GB|TeslaV100S-PCIE-32GB|NVIDIAA100-SXM4-80GB|NVIDIAA10080GBPCIe"
+
+module load anaconda3/2023.07
+module load cuda/12.1.1
+
+# Execute the Python script with SLURM_ARRAY_TASK_ID as argument. Script also has optional args -i and -o to specify input file and output directory respectively
+conda run -n tv1 --no-capture-output python -u better_eval.py $((SLURM_ARRAY_TASK_ID)) -i /gv1/projects/GRIP_Precog_Opt/outputs/eval_inputs/eval_input_gen3.csv -o /gv1/projects/GRIP_Precog_Opt/outputs
