@@ -27,8 +27,7 @@ def build_configuration(model_dict, device):
         output_size = len(model_dict['metrics_subset'])
         sig = inspect.signature(model.__init__)
         filtered_params = {k: v for k, v in model_dict.items() if k in sig.parameters}
-        model = model(output_size=output_size, **filtered_params)
-        model.to(device)
+        model = model(output_size=output_size, **filtered_params).to(device)
 
         # build optimizer
         params = model.parameters()
