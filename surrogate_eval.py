@@ -11,7 +11,11 @@ from functools import partial
 import eval as e
 import surrogate_models as sm
 from torch.cuda.amp import autocast, GradScaler
+import numpy as np
 
+best_loss_metric = np.inf
+best_epoch = None
+best_epoch_num = None
 
 def prepare_data(model_dict, batch_size, train_df, val_df):
     train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=model_dict['metrics_subset'])
@@ -48,7 +52,9 @@ def build_configuration(model_dict, device):
         else:
             scheduler = scheduler_func(optimizer=optimizer)
         scaler = GradScaler()
-        return model, optimizer, scheduler, scaler
+
+        val_subset = model_dict['validation_subset']
+        return model, optimizer, scheduler, scaler, val_subset
 
 
 def create_metrics_df(cfg):
@@ -60,11 +66,13 @@ def create_metrics_df(cfg):
 
 
 def engine(cfg, model_dict, train_df, val_df):
-
+    global best_loss_metric
+    global best_epoch
+    global best_epoch_num
     # pull surrogate train/eval config attributes
     num_epochs = cfg['surrogate_train_epochs']
     batch_size = cfg['surrogate_batch_size']
-
+    metric_names = cfg['surrogate_metrics']
     # define subset of metrics to train on and prepare data accordingly
     metrics_subset = model_dict['metrics_subset']
     train_loader, val_loader, train_dataset, val_dataset = prepare_data(model_dict, batch_size, train_df, val_df)
@@ -74,21 +82,39 @@ def engine(cfg, model_dict, train_df, val_df):
     min_metrics = train_dataset.min_metrics
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    model, optimizer, scheduler, scaler = build_configuration(model_dict=model_dict, device=device)
+    model, optimizer, scheduler, scaler, val_subset = build_configuration(model_dict=model_dict, device=device)
 
     # create metrics_df
     metrics_df = create_metrics_df(cfg)
     for epoch in range(1, num_epochs + 1):
-            # train and validate for one epoch
-            train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics)
-            epoch_metrics = val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, min_metrics)
-
-            # update metrics df
-            epoch_metrics['epoch_num'] = epoch
-            epoch_metrics['train_loss'] = train_epoch_loss
-            epoch_metrics_df = pd.DataFrame([epoch_metrics])
-            metrics_df = pd.concat([metrics_df, epoch_metrics_df], ignore_index=True)
+        # train and validate for one epoch
+        train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics)
+        epoch_metrics = val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, min_metrics)
+        print(epoch_metrics)
+        
+        val_losses = []
+                
+        for val in val_subset:
+            val_losses.append(epoch_metrics[metric_names[val]])
+            #val_losses.append(loss_tensor[metrics_subset.index(val)])
+            print('CHECK', epoch_metrics, epoch_metrics[metric_names[val]])
+        #print(loss_tensor[val_losses[0]])
+        loss_metric = sum(val_losses)
+        print(loss_metric)
+        #print(loss_metric)
+        if loss_metric < best_loss_metric:
+            best_loss_metric = loss_metric
+            best_epoch = model
+            best_epoch_num = epoch
+        # update metrics df
+        epoch_metrics['epoch_num'] = epoch
+        epoch_metrics['train_loss'] = train_epoch_loss
+        epoch_metrics_df = pd.DataFrame([epoch_metrics])
+        metrics_df = pd.concat([metrics_df, epoch_metrics_df], ignore_index=True)
     
+    torch.save(best_epoch.state_dict(), '/gv1/projects/GRIP_Precog_Opt/surrogates/run_weights/' + model_dict['name'] + '.pth')
+    print('Save epoch #:', best_epoch_num)
+
     return metrics_df, genomes_scaler, metrics_scaler
             
 
@@ -165,8 +191,12 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
                 loss_matrix = criterion(clamped_outputs, metrics)
                 # loss tensor shape: (12)
                 loss_tensor = torch.mean(loss_matrix, dim=0)
+                #print('loss_tensor', loss_tensor, len(loss_tensor))
+                
                 # loss is meaned, so is scalar tensor value
                 loss = torch.mean(loss_tensor)
+            
+            
             
             # update validation loss
             surrogate_val_loss += loss.item()
@@ -202,7 +232,7 @@ model_dict = {
                 'optimizer': optim.RMSprop,
                 'lr': 0.01,
                 'scheduler': optim.lr_scheduler.CosineAnnealingLR,
-                'metrics_subset': [11],
+                'metrics_subset': [0, 4, 11],
                 'validation_subset': [11],
                 'model': sm.MLP
             }  
