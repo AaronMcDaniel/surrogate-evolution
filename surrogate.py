@@ -1,15 +1,18 @@
 import copy
 import hashlib
+import inspect
 from codec import Codec
 from deap import creator, gp, base, tools
 import numpy as np
 import pandas as pd
-from pipeline import CustomPrimitiveTree
+from primitive_tree import CustomPrimitiveTree
 import primitives
 import surrogate_models as sm
 import toml
 import torch
 import torch.optim as optim
+from sklearn.preprocessing import StandardScaler
+import surrogate_dataset as sd
 
 
 def ensure_deap_classes(objectives, codec_config):
@@ -101,12 +104,12 @@ class Surrogate():
     
     # The calc_pool is a list of deap individuals with calculated fitnesses. The model infers the metrics and 
     # we see the intersection in selections
-    def calc_trust(self, model_idx, calc_pool):        
+    def calc_trust(self, model_idx, genome_scaler, metrics_scaler, calc_pool):        
         # create copy of calc_pool
         surrogate_pool = copy.deepcopy(calc_pool)
         
         # get inferences on copy of calc_pool and assign fitness to copy
-        inferences = self.get_surrogate_inferences(model_idx, surrogate_pool, list(self.objectives.keys()))
+        inferences = self.get_surrogate_inferences(model_idx, genome_scaler, metrics_scaler, surrogate_pool, list(self.objectives.keys()))
         for i, individual in enumerate(surrogate_pool):
             individual.fitness.values = inferences[i]
         
@@ -133,20 +136,37 @@ class Surrogate():
     
     
     # Get surrogate inferences on a list of deap individuals
-    def get_surrogate_inferences(self, model_idx, inference_pool, objectives):
+    def get_surrogate_inferences(self, model_idx, genome_scaler: StandardScaler, metric_scaler: StandardScaler, inference_pool, objectives):
         encoded_genomes = []
+    
+        # Encode genomes
         for genome in inference_pool:
             for i in range(self.genome_epochs):
                 encoded_genomes.append(self.codec.encode_surrogate(str(genome), i+1)) # error handling needs to be done in case encoding breaks (punish)
         
-        model = self.models[model_idx].to(self.device)
+        # Get model dictionary and initialize the model
+        model_dict = self.models[model_idx]
+        model = model_dict['model']
+        output_size = len(model_dict['metrics_subset'])
+        sig = inspect.signature(model.__init__)
+        filtered_params = {k: v for k, v in model_dict.items() if k in sig.parameters}
+        model = model(output_size=output_size, **filtered_params).to(self.device)
+        
+        # Load model weights
         model.load_state_dict(torch.load('test/weights/weights.pth', map_location=self.device)) # weights dir is hardcoded rn
         model.eval()
+        
         all_inferences = []
+        
+        # Transform encoded genomes
+        encoded_genomes = np.array(encoded_genomes)
+        encoded_genomes = genome_scaler.transform(encoded_genomes)
+        
         for genome in encoded_genomes:
             genome = torch.tensor(genome, dtype=torch.float32, device=self.device).unsqueeze(0)
             with torch.no_grad():
                 inference = model(genome)
+                inference = metric_scaler.inverse_transform(inference.cpu().numpy())
                 all_inferences.append(tuple(inference.squeeze().tolist()))
 
         # Select the best inference for each genome
@@ -215,5 +235,9 @@ class Surrogate():
 
 surrogate = Surrogate('conf.toml')
 individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/baseline_evolution/out.csv")
-print(surrogate.calc_trust(0, individuals))
+train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')
+train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=[0, 4, 11])
+genome_scaler = train_dataset.genomes_scaler
+metrics_scaler = train_dataset.metrics_scaler
+print(surrogate.calc_trust(0, genome_scaler, metrics_scaler, individuals))
      
