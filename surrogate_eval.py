@@ -191,16 +191,17 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset):
 configs = toml.load('conf.toml')
 surrogate_config = configs['surrogate']
 model_dict = {
-                'name': 'best_overall',
-                'dropout': 0.0,
+                'name': 'best_mse_average_precision',
+                'dropout': 0.6,
                 'hidden_sizes': [2048, 1024, 512],
                 'optimizer': optim.RMSprop,
                 'lr': 0.01,
-                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
-                'metrics_subset': [0, 4, 11], 
-                'validation_subset': [0, 4, 11],
+                'scheduler': optim.lr_scheduler.CosineAnnealingLR,
+                'metrics_subset': [11],
+                'validation_subset': [11],
                 'model': sm.MLP
-            }
+            }  
 train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')
 val_df = pd.read_pickle('surrogate_dataset/val_dataset.pkl')
-print(engine(surrogate_config, model_dict, train_df, val_df))
+metrics_df, genomes_scaler, metrics_scaler = engine(surrogate_config, model_dict, train_df, val_df)
+print(metrics_df)
