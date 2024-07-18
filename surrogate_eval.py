@@ -18,7 +18,7 @@ def prepare_data(model_dict, batch_size, train_df, val_df):
     val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=model_dict['metrics_subset'], metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=True)
-    return train_loader, val_loader, train_dataset.genomes_scaler, train_dataset.metrics_scaler
+    return train_loader, val_loader, train_dataset, val_dataset
 
 
 def build_configuration(model_dict, device):
@@ -67,7 +67,11 @@ def engine(cfg, model_dict, train_df, val_df):
 
     # define subset of metrics to train on and prepare data accordingly
     metrics_subset = model_dict['metrics_subset']
-    train_loader, val_loader, genome_scaler, metrics_scaler = prepare_data(model_dict, batch_size, train_df, val_df)
+    train_loader, val_loader, train_dataset, val_dataset = prepare_data(model_dict, batch_size, train_df, val_df)
+    genomes_scaler = train_dataset.genomes_scaler
+    metrics_scaler = train_dataset.metrics_scaler
+    max_metrics = train_dataset.max_metrics
+    min_metrics = train_dataset.min_metrics
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     model, optimizer, scheduler, scaler = build_configuration(model_dict=model_dict, device=device)
@@ -76,8 +80,8 @@ def engine(cfg, model_dict, train_df, val_df):
     metrics_df = create_metrics_df(cfg)
     for epoch in range(1, num_epochs + 1):
             # train and validate for one epoch
-            train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler)
-            epoch_metrics = val_one_epoch(cfg, model, device, val_loader, metrics_subset=metrics_subset)
+            train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics)
+            epoch_metrics = val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, min_metrics)
 
             # update metrics df
             epoch_metrics['epoch_num'] = epoch
@@ -85,16 +89,16 @@ def engine(cfg, model_dict, train_df, val_df):
             epoch_metrics_df = pd.DataFrame([epoch_metrics])
             metrics_df = pd.concat([metrics_df, epoch_metrics_df], ignore_index=True)
     
-    return metrics_df, genome_scaler, metrics_scaler
+    return metrics_df, genomes_scaler, metrics_scaler
             
 
-def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
+def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics):
     model.train()
 
     # actual surrogate training loss
     surrogate_train_loss = 0.0
     # mean taken for metric regression losses in train
-    criterion = nn.MSELoss()
+    criterion = nn.L1Loss()
 
     data_iter = tqdm(train_loader, desc='Training')
     for genomes, metrics in data_iter:
@@ -108,8 +112,9 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
         with autocast():
             # outputs shape: (batch_size, 12)
             outputs = model(genomes)
+            clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
             # metric regression loss is meaned, so is scalar tensor value
-            loss = criterion(outputs, metrics)
+            loss = criterion(clamped_outputs, metrics)
         
         # backwards
         optimizer.zero_grad()
@@ -130,7 +135,7 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
     return surrogate_train_loss
 
 
-def val_one_epoch(cfg, model, device, val_loader, metrics_subset):
+def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, min_metrics):
     model.eval()
 
     # actual surrogate validation loss
@@ -138,7 +143,7 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset):
     # mse loss matrx for each metric, where rows = num batches and cols = 12 for all predicted metrics
     mse_metrics_per_batch = []
     # no mean taken for losses in validation 
-    criterion = nn.MSELoss(reduction='none')
+    criterion = nn.L1Loss(reduction='none')
     
     metric_names = cfg['surrogate_metrics']
     selected_metric_names = [metric_names[i] for i in metrics_subset]
@@ -155,8 +160,9 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset):
             with autocast():
                 # outputs shape: (batch_size, 12)
                 outputs = model(genomes)
+                clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
                 # loss_matrix shape: (batch_size, 12)
-                loss_matrix = criterion(outputs, metrics)
+                loss_matrix = criterion(clamped_outputs, metrics)
                 # loss tensor shape: (12)
                 loss_tensor = torch.mean(loss_matrix, dim=0)
                 # loss is meaned, so is scalar tensor value
