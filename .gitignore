@@ -9,4 +9,5 @@ surrogate_dataset/
 codec_backup.py
 codec_tester.py
 find_max_params.py
-
+analysis/graphs/
+logs/
