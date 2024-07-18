@@ -76,8 +76,6 @@ def engine(cfg, model_dict, train_df, val_df):
     # define subset of metrics to train on and prepare data accordingly
     metrics_subset = model_dict['metrics_subset']
     train_loader, val_loader, train_dataset, val_dataset = prepare_data(model_dict, batch_size, train_df, val_df)
-    genomes_scaler = train_dataset.genomes_scaler
-    metrics_scaler = train_dataset.metrics_scaler
     max_metrics = train_dataset.max_metrics
     min_metrics = train_dataset.min_metrics
 
@@ -112,10 +110,12 @@ def engine(cfg, model_dict, train_df, val_df):
         epoch_metrics_df = pd.DataFrame([epoch_metrics])
         metrics_df = pd.concat([metrics_df, epoch_metrics_df], ignore_index=True)
     
+
     torch.save(best_epoch.state_dict(), '/gv1/projects/GRIP_Precog_Opt/surrogates/run_weights/' + model_dict['name'] + '.pth')
     print('Save epoch #:', best_epoch_num)
 
-    return metrics_df, genomes_scaler, metrics_scaler
+    return metrics_df, train_dataset.genomes_scaler
+
             
 
 def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics):
@@ -227,16 +227,16 @@ configs = toml.load('conf.toml')
 surrogate_config = configs['surrogate']
 model_dict = {
                 'name': 'best_mse_average_precision',
-                'dropout': 0.6,
-                'hidden_sizes': [2048, 1024, 512],
-                'optimizer': optim.RMSprop,
+                'dropout': 0.0,
+                'hidden_sizes': [512, 256],
+                'optimizer': optim.Adam,
                 'lr': 0.01,
-                'scheduler': optim.lr_scheduler.CosineAnnealingLR,
+                'scheduler': optim.lr_scheduler.StepLR,
                 'metrics_subset': [0, 4, 11],
-                'validation_subset': [11],
+                'validation_subset': [0, 4, 11],
                 'model': sm.MLP
             }  
 train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')
 val_df = pd.read_pickle('surrogate_dataset/val_dataset.pkl')
-metrics_df, genomes_scaler, metrics_scaler = engine(surrogate_config, model_dict, train_df, val_df)
+metrics_df, genome_scaler = engine(surrogate_config, model_dict, train_df, val_df)
 print(metrics_df)

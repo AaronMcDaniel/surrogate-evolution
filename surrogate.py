@@ -47,7 +47,7 @@ class Surrogate():
                 'optimizer': optim.Adam,
                 'lr': 0.0001,
                 'scheduler': optim.lr_scheduler.StepLR,
-                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 
+                'metrics_subset': [0, 4, 11],
                 'validation_subset': [0, 4, 11],
                 'model': sm.MLP
             },
@@ -116,18 +116,18 @@ class Surrogate():
     
     # The calc_pool is a list of deap individuals with calculated fitnesses. The model infers the metrics and 
     # we see the intersection in selections
-    def calc_trust(self, model_idx, genome_scaler, metrics_scaler, calc_pool):        
+    def calc_trust(self, model_idx, genome_scaler, calc_pool):        
         # create copy of calc_pool
         surrogate_pool = copy.deepcopy(calc_pool)
         
         # get inferences on copy of calc_pool and assign fitness to copy
-        inferences = self.get_surrogate_inferences(model_idx, genome_scaler, metrics_scaler, surrogate_pool, list(self.objectives.keys()))
+        inferences = self.get_surrogate_inferences(model_idx, genome_scaler, surrogate_pool)
         for i, individual in enumerate(surrogate_pool):
             individual.fitness.values = inferences[i]
         
-        '''TESTING'''
-        for i in range(len(calc_pool)):
-            print(calc_pool[i].fitness.values, surrogate_pool[i].fitness.values)
+        # '''TESTING'''
+        # for i in range(len(calc_pool)):
+        #     print(calc_pool[i].fitness.values, surrogate_pool[i].fitness.values)
         
         # run trust-calc strategy to select trust_calc_ratio-based number of individuals for both calc_pool and its copy
         # TODO: add other cases of trust_calc_strategy
@@ -142,14 +142,13 @@ class Surrogate():
         selected = set(selected)
         surrogate_selected = set(surrogate_selected)
         intersection = selected.intersection(surrogate_selected)
-        print(intersection)
-        trust = len(intersection)/(len(selected)+len(surrogate_selected))
+        trust = len(intersection)/len(selected)
         return trust
     
     
     # Get surrogate inferences on a list of deap individuals
     # CLIPS ENCODED GENOME VALUES
-    def get_surrogate_inferences(self, model_idx, genome_scaler: StandardScaler, metric_scaler: StandardScaler, inference_pool):
+    def get_surrogate_inferences(self, model_idx, genome_scaler: StandardScaler, inference_pool):
         encoded_genomes = []
     
         # Encode genomes
@@ -170,7 +169,7 @@ class Surrogate():
         model = model(output_size=output_size, **filtered_params).to(self.device)
         
         # Load model weights
-        model.load_state_dict(torch.load('test/weights/weights.pth', map_location=self.device)) # weights dir is hardcoded rn
+        model.load_state_dict(torch.load('test/weights/weights_genome_scaled.pth', map_location=self.device)) # weights dir is hardcoded rn
         model.eval()
         
         all_inferences = []
@@ -183,7 +182,6 @@ class Surrogate():
             genome = torch.tensor(genome, dtype=torch.float32, device=self.device).unsqueeze(0)
             with torch.no_grad():
                 inference = model(genome)
-                inference = metric_scaler.inverse_transform(inference.cpu().numpy())
                 # here we have all values in the metrics subset inferred on
                 inference = tuple(inference.squeeze().tolist())
                 inference_dict = {}
@@ -252,11 +250,10 @@ class Surrogate():
         return hashlib.shake_256(s.encode()).hexdigest(5)
 
 
-surrogate = Surrogate('conf.toml')
-individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/baseline_evolution/out.csv")
-train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')
-train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
-genome_scaler = train_dataset.genomes_scaler
-metrics_scaler = train_dataset.metrics_scaler
-print(surrogate.calc_trust(0, genome_scaler, metrics_scaler, individuals))
+# surrogate = Surrogate('conf.toml')
+# individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/baseline_evolution/out.csv")
+# train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')
+# train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=[0, 4, 11])
+# genome_scaler = train_dataset.genomes_scaler
+# print(surrogate.calc_trust(0, genome_scaler, individuals))
      

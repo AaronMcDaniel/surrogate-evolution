@@ -33,16 +33,16 @@ class SurrogateDataset(Dataset):
         self.max_metrics = torch.ones((1, len(metrics_subset))) * 300.0
         self.min_metrics = torch.ones((1, len(metrics_subset))) * -300.0
         
-        # # # standardize genome/metrics data dist if train mode
-        if mode == 'train':
-            # self.metrics = self.metrics_scaler.fit_transform(self.metrics)
-            self.genomes = self.genomes_scaler.fit_transform(self.genomes)
-        if mode == 'val':
-            # self.metrics = self.metrics_scaler.transform(self.metrics)
-            self.genomes = self.genomes_scaler.transform(self.genomes)
+        # standardize genome/metrics data dist if train mode
+        # if mode == 'train':
+        #     self.metrics = self.metrics_scaler.fit_transform(self.metrics)
+        #     self.genomes = self.genomes_scaler.fit_transform(self.genomes)
+        # if mode == 'val':
+        #     self.metrics = self.metrics_scaler.transform(self.metrics)
+        #     self.genomes = self.genomes_scaler.transform(self.genomes)
 
-        # # self.max_metrics = torch.tensor(self.metrics_scaler.transform(self.max_metrics), dtype=torch.float32)
-        # # self.min_metrics = torch.tensor(self.metrics_scaler.transform(self.min_metrics), dtype=torch.float32)
+        # self.max_metrics = torch.tensor(self.metrics_scaler.transform(self.max_metrics), dtype=torch.float32)
+        # self.min_metrics = torch.tensor(self.metrics_scaler.transform(self.min_metrics), dtype=torch.float32)
             
         if np.isnan(self.genomes).any() or np.isnan(self.metrics).any():
             breakpoint()
@@ -180,7 +180,7 @@ def find_bad_individuals(df, bad_thresh=100000):
     return bad_individuals
 
 
-build_dataset(infile='/gv1/projects/GRIP_Precog_Opt/baseline_evolution/out.csv', working_dir='/gv1/projects/GRIP_Precog_Opt/baseline_evolution')
+# build_dataset(infile='/gv1/projects/GRIP_Precog_Opt/baseline_evolution/out.csv', working_dir='/gv1/projects/GRIP_Precog_Opt/baseline_evolution')
 # train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/train_dataset.pkl')
 # val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/val_dataset.pkl')
 # train_dataset = SurrogateDataset(train_df, mode='train', metrics_subset=None)
