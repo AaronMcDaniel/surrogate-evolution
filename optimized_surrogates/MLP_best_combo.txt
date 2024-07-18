@@ -1,0 +1,2 @@
+Best Parameters: {'callbacks': [<skorch.callbacks.lr_scheduler.LRScheduler object at 0x7f4daac91940>], 'module__dropout': 0.0, 'module__hidden_sizes': [512, 256, 12], 'optimizer': <class 'torch.optim.rmsprop.RMSprop'>, 'optimizer__lr': 0.01}
+Best Score: -68474087.66034913

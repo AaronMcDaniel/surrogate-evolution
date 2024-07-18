@@ -1,10 +1,8 @@
-from collections import deque
 import copy
 import csv
 import hashlib
 import pickle
 import random
-import re
 import shutil
 import subprocess
 import time
@@ -15,6 +13,9 @@ import pandas as pd
 from deap import creator, gp, base, tools
 
 import primitives
+from surrogate import Surrogate
+from primitive_tree import CustomPrimitiveTree
+from surrogate_eval import engine
 
 # job file params
 JOB_NAME = 'precog_eval'
@@ -54,6 +55,7 @@ class Pipeline:
         configs = toml.load(config_dir)
         pipeline_config = configs["pipeline"]
         codec_config = configs["codec"]
+        surrogate_config = configs["surrogate"]
 
         self.initial_population_size = pipeline_config['initial_population_size']
         self.population_size = pipeline_config['population_size']
@@ -62,6 +64,9 @@ class Pipeline:
         self.crossovers = pipeline_config['crossovers']
         self.mutations = pipeline_config['mutations']
         self.surrogate_enabled = pipeline_config['surrogate_enabled']
+        self.surrogate_pretrained = surrogate_config['pretrained']
+        self.surrogate_dataset_path = surrogate_config['surrogate_dataset_path']
+        self.surrogate_metrics = surrogate_config['surrogate_metrics']
         self.objectives = pipeline_config['objectives']
         self.selection_method_trusted = pipeline_config['selection_method_trusted']
         self.selection_method_untrusted = pipeline_config['selection_method_untrusted']
@@ -74,14 +79,18 @@ class Pipeline:
 
         # Other useful attributes
         self.holy_grail = pd.DataFrame(columns=['gen', 'hash', 'genome', 'metrics']) # data regarding every evaluated individual; metrics are from best epoch since all other metric data is already stored by eval_script
-        self.surrogate_data = pd.DataFrame(columns=['gen', 'model', 'metrics']) # all data regarding surrogates; metrics are per epoch
+        self.surrogate_data = pd.DataFrame(columns=['gen', 'model'] + self.surrogate_metrics) # all data regarding surrogates; metrics are per epoch
+        surrogate_train_path = os.path.join(self.surrogate_dataset_path, 'train_dataset.pkl')
+        surrogate_val_path = os.path.join(self.surrogate_dataset_path, 'val_dataset.pkl')
+        self.surrogate_df_train = pd.read_pickle(surrogate_train_path) if self.surrogate_pretrained is not None else pd.DataFrame()
+        self.surrogate_df_val = pd.read_pickle(surrogate_val_path) if self.surrogate_pretrained is not None else pd.DataFrame()
         self.current_population = {} # dict of genomes associated with their metrics with hash as key
         self.current_deap_pop = [] # list of deap individuals representing the current population; no other info
         self.elite_pool = [] # list of deap individuals in the elite pool
         self.elite_pool_history = {} # dict keeping track of elite pool through generations
         self.hall_of_fame = tools.ParetoFront() # hall of fame as a ParetoFront object
         self.hof_history = {} # dict keeping track of hall of fame through generations
-        self.surrogate = None # Surrogate class to be defined
+        self.surrogate = Surrogate(config_dir) # Surrogate class to be defined
         self.pset = primitives.pset # primitive set
         self.gen_count = 1
         self.num_genome_fails = 0
@@ -280,7 +289,8 @@ class Pipeline:
             to_remove = self.holy_grail[~self.holy_grail['hash'].isin(hof_hashes)]
             to_remove = to_remove[['gen', 'hash']].values.tolist()
             for gen, hash in to_remove:
-                os.popen(f'rm -rf {self.output_dir}/generation_{gen}/{hash}/')
+                os.popen(f'rm {self.output_dir}/generation_{gen}/{hash}/best_epoch.pth')
+                os.popen(f'rm {self.output_dir}/generation_{gen}/{hash}/last_epoch.pth')
             print('Done!')
 
 
@@ -320,6 +330,13 @@ class Pipeline:
                     continue
         print('Done!')
         return new_pop
+    
+    
+    def train_surrogates(self, cfg):
+        # takes in self.surrogate_train_df and surrogate_val_df
+        for model_dict in self.surrogate.models:
+             engine(cfg, model_dict, train_df=self.surrogate_df_train, val_df=self.surrogate_df_val) 
+        return None
 
 
     def downselect(self, unsustainable_pop):
@@ -429,37 +446,3 @@ conda run -n {ENV_NAME} --no-capture-output python -u {SCRIPT} $((SLURM_ARRAY_TA
 """
         with open(f'{JOB_NAME}.job', 'w') as fh:
             fh.write(batch_script)
-    
-
-class CustomPrimitiveTree(gp.PrimitiveTree):
-    @classmethod
-    def from_string(cls, string, pset):
-        tokens = re.split("[ \t\n\r\f\v(),]", string)
-        expr = []
-        ret_types = deque()
-        for token in tokens:
-            if token == '':
-                continue
-            if len(ret_types) != 0:
-                type_ = ret_types.popleft()
-            else:
-                type_ = None
-
-            if token in pset.mapping:
-                primitive = pset.mapping[token]
-
-                expr.append(primitive)
-                if isinstance(primitive, gp.Primitive):
-                    ret_types.extendleft(reversed(primitive.args))
-            else:
-                try:
-                    token = eval(token)
-                except NameError:
-                    raise TypeError("Unable to evaluate terminal: {}.".format(token))
-
-                if type_ is None:
-                    type_ = type(token)
-
-                expr.append(gp.Terminal(token, False, type_))
-        return cls(expr)
-        

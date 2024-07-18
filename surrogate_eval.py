@@ -1,127 +1,104 @@
-import argparse
-import os
+import inspect
 import toml
+from tqdm import tqdm
+import surrogate_dataset as sd
+import pandas as pd
 import torch
 import torch.optim as optim
-from torch.optim import lr_scheduler
-from tqdm import tqdm
+import torch.nn as nn
+from torch.utils.data import DataLoader
+from functools import partial
+import eval as e
 import surrogate_models as sm
 from torch.cuda.amp import autocast, GradScaler
-import pandas as pd
-import torch.nn as nn
-import itertools
-import eval as e
-from torch.utils.data import DataLoader
-import surrogate_dataset as sd
-import pickle
 
 
-def prepare_data(batch_size):
-    train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/train_dataset.pkl')
-    val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/val_dataset.pkl')
-    train_dataset = sd.SurrogateDataset(train_df, mode='train')
-    val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
+def prepare_data(model_dict, batch_size, train_df, val_df):
+    train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=model_dict['metrics_subset'])
+    val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=model_dict['metrics_subset'], metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=True)
-    return train_loader, val_loader
+    return train_loader, val_loader, train_dataset, val_dataset
 
 
-def get_model(model_str):
-    if model_str == "MLP":
-        # NOTE mlp hyperparameters will be optimized with grid search in the future
-        return sm.MLP()
-    # TODO implement other surrogate models
+def build_configuration(model_dict, device):
+        # build model
+        model = model_dict['model']
+        output_size = len(model_dict['metrics_subset'])
+        sig = inspect.signature(model.__init__)
+        filtered_params = {k: v for k, v in model_dict.items() if k in sig.parameters}
+        model = model(output_size=output_size, **filtered_params).to(device)
+
+        # build optimizer
+        params = model.parameters()
+        lr = model_dict['lr']
+        optimizer_func = partial(model_dict['optimizer'])
+        optimizer = optimizer_func(params=params, lr=lr)
+
+        # build scheduler and scaler
+        scheduler_func = model_dict['scheduler']
+        if scheduler_func == optim.lr_scheduler.StepLR:
+            scheduler = scheduler_func(optimizer=optimizer, step_size=10, gamma=0.1)
+        elif scheduler_func == optim.lr_scheduler.MultiStepLR:
+            scheduler = scheduler_func(optimizer=optimizer, milestones=[10, 20], gamma=0.1)
+        elif scheduler_func == optim.lr_scheduler.CosineAnnealingLR:
+            scheduler = scheduler_func(optimizer=optimizer, T_max=10)
+        elif scheduler_func == optim.lr_scheduler.ReduceLROnPlateau:
+            scheduler = scheduler_func(optimizer=optimizer, mode='min', factor=0.1, patience=5)
+        else:
+            scheduler = scheduler_func(optimizer=optimizer)
+        scaler = GradScaler()
+        return model, optimizer, scheduler, scaler
 
 
-def get_optimizer(model_str, params):
-    if model_str == "MLP":
-        # NOTE use sparse adam for actual surrogate encoding
-        # return optim.SparseAdam(params, lr=0.001)
-        return optim.Adam(params, lr=0.001)
-    # TODO implement other surrogate optimizers
-
-
-def get_scheduler(model_str, optimizer, num_epochs, batch_size):
-    if model_str == "MLP":
-        return lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1)
-    # TODO implement other surrogate schedulers
-
-
-def create_metrics_df():
+def create_metrics_df(cfg):
     return pd.DataFrame(columns=[
         'epoch_num',
         'train_loss',
         'val_loss',
-        'mse_uw_val_loss', 
-        'mse_iou_loss', 
-        'mse_giou_loss', 
-        'mse_diou_loss', 
-        'mse_ciou_loss', 
-        'mse_center_loss', 
-        'mse_size_loss', 
-        'mse_obj_loss', 
-        'mse_precision',
-        'mse_recall', 
-        'mse_f1_score',
-        'mse_average_precision'
-    ])
+    ] + cfg['surrogate_metrics'])
 
 
-def store_data(model_str, metrics_df):
-    metrics_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/surrogate_metrics.csv'
-    os.makedirs(os.path.dirname(metrics_out), exist_ok=True)
-    metrics_df.to_csv(metrics_out, index=False)
+def engine(cfg, model_dict, train_df, val_df):
 
-
-def save_model_weights(model_str, model):
-    weights_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/weights.pth'
-    os.makedirs(os.path.dirname(weights_out), exist_ok=True)
-    torch.save(model.state_dict(), weights_out)
-
-    
-def engine(cfg):
-
-    models = cfg['models']
+    # pull surrogate train/eval config attributes
     num_epochs = cfg['surrogate_train_epochs']
     batch_size = cfg['surrogate_batch_size']
-    train_loader, val_loader = prepare_data(batch_size)
+
+    # define subset of metrics to train on and prepare data accordingly
+    metrics_subset = model_dict['metrics_subset']
+    train_loader, val_loader, train_dataset, val_dataset = prepare_data(model_dict, batch_size, train_df, val_df)
+    genomes_scaler = train_dataset.genomes_scaler
+    metrics_scaler = train_dataset.metrics_scaler
+    max_metrics = train_dataset.max_metrics
+    min_metrics = train_dataset.min_metrics
+
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    model, optimizer, scheduler, scaler = build_configuration(model_dict=model_dict, device=device)
 
-    # perform training and validation for each surrogate model
-    for model_str in models:
-
-        # get surrogate model and specific optimizer, scheduler
-        model = get_model(model_str).to(device)
-        params = model.parameters()
-        optimizer = get_optimizer(model_str, params)
-        scheduler = get_scheduler(model_str, optimizer, num_epochs, batch_size)
-        scaler = GradScaler()
-
-        # NOTE metrics df for each surrogate must be stored in different directories
-        metrics_df = create_metrics_df()
-        for epoch in range(1, num_epochs + 1):
-
+    # create metrics_df
+    metrics_df = create_metrics_df(cfg)
+    for epoch in range(1, num_epochs + 1):
             # train and validate for one epoch
-            train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler)
-            epoch_metrics = val_one_epoch(model, device, val_loader)
+            train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics)
+            epoch_metrics = val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, min_metrics)
 
             # update metrics df
             epoch_metrics['epoch_num'] = epoch
             epoch_metrics['train_loss'] = train_epoch_loss
             epoch_metrics_df = pd.DataFrame([epoch_metrics])
             metrics_df = pd.concat([metrics_df, epoch_metrics_df], ignore_index=True)
+    
+    return metrics_df, genomes_scaler, metrics_scaler
+            
 
-        store_data(model_str, metrics_df)
-        save_model_weights(model_str, model)
-
-
-def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
+def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics):
     model.train()
 
     # actual surrogate training loss
     surrogate_train_loss = 0.0
     # mean taken for metric regression losses in train
-    criterion = nn.MSELoss()
+    criterion = nn.L1Loss()
 
     data_iter = tqdm(train_loader, desc='Training')
     for genomes, metrics in data_iter:
@@ -135,8 +112,9 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
         with autocast():
             # outputs shape: (batch_size, 12)
             outputs = model(genomes)
+            clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
             # metric regression loss is meaned, so is scalar tensor value
-            loss = criterion(outputs, metrics)
+            loss = criterion(clamped_outputs, metrics)
         
         # backwards
         optimizer.zero_grad()
@@ -157,7 +135,7 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
     return surrogate_train_loss
 
 
-def val_one_epoch(model, device, val_loader):
+def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, min_metrics):
     model.eval()
 
     # actual surrogate validation loss
@@ -165,7 +143,10 @@ def val_one_epoch(model, device, val_loader):
     # mse loss matrx for each metric, where rows = num batches and cols = 12 for all predicted metrics
     mse_metrics_per_batch = []
     # no mean taken for losses in validation 
-    criterion = nn.MSELoss(reduction='none')
+    criterion = nn.L1Loss(reduction='none')
+    
+    metric_names = cfg['surrogate_metrics']
+    selected_metric_names = [metric_names[i] for i in metrics_subset]
 
     data_iter = tqdm(val_loader, 'Evaluating')
     with torch.no_grad():
@@ -179,8 +160,9 @@ def val_one_epoch(model, device, val_loader):
             with autocast():
                 # outputs shape: (batch_size, 12)
                 outputs = model(genomes)
+                clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
                 # loss_matrix shape: (batch_size, 12)
-                loss_matrix = criterion(outputs, metrics)
+                loss_matrix = criterion(clamped_outputs, metrics)
                 # loss tensor shape: (12)
                 loss_tensor = torch.mean(loss_matrix, dim=0)
                 # loss is meaned, so is scalar tensor value
@@ -202,31 +184,29 @@ def val_one_epoch(model, device, val_loader):
     mse_metrics_meaned = mse_metrics_per_batch.mean(dim=0)
 
     epoch_metrics = {
-        'val_loss': surrogate_val_loss,
-        'mse_uw_val_loss': mse_metrics_meaned[0].item(), 
-        'mse_iou_loss': mse_metrics_meaned[1].item(), 
-        'mse_giou_loss': mse_metrics_meaned[2].item(), 
-        'mse_diou_loss': mse_metrics_meaned[3].item(), 
-        'mse_ciou_loss': mse_metrics_meaned[4].item(), 
-        'mse_center_loss': mse_metrics_meaned[5].item(), 
-        'mse_size_loss': mse_metrics_meaned[6].item(), 
-        'mse_obj_loss': mse_metrics_meaned[7].item(), 
-        'mse_precision': mse_metrics_meaned[8].item(),
-        'mse_recall': mse_metrics_meaned[9].item(), 
-        'mse_f1_score': mse_metrics_meaned[10].item(),
-        'mse_average_precision': mse_metrics_meaned[11].item()
-    }  
+        'val_loss': surrogate_val_loss
+    }
+
+    epoch_metrics.update({
+        selected_metric_names[i]: mse_metrics_meaned[i].item() for i in range(len(metrics_subset))
+    })
 
     return epoch_metrics
 
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    # NOTE default config path should change later on
-    parser.add_argument('-c', '--config_path', required=False, default='/home/tthakur9/precog-opt-grip/conf.toml')
-    args = parser.parse_args()
-    config_path = args.config_path
-    configs = toml.load(config_path)
-    surrogate_config = configs['surrogate']
-    engine(surrogate_config)
-
+configs = toml.load('conf.toml')
+surrogate_config = configs['surrogate']
+model_dict = {
+                'name': 'best_mse_average_precision',
+                'dropout': 0.6,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.RMSprop,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.CosineAnnealingLR,
+                'metrics_subset': [11],
+                'validation_subset': [11],
+                'model': sm.MLP
+            }  
+train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')
+val_df = pd.read_pickle('surrogate_dataset/val_dataset.pkl')
+metrics_df, genomes_scaler, metrics_scaler = engine(surrogate_config, model_dict, train_df, val_df)
+print(metrics_df)

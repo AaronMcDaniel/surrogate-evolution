@@ -8,7 +8,8 @@ class MLP(nn.Module):
     def __init__(
             self, 
             input_size=1021, 
-            hidden_sizes=[512, 256, 12], 
+            output_size=12,
+            hidden_sizes=[512, 256], 
             activation_layer=nn.ReLU, 
             norm_layer=nn.BatchNorm1d, 
             bias=True, inplace=None, 
@@ -21,7 +22,7 @@ class MLP(nn.Module):
 
         # build intermediate hidden layers, but not output layer
         in_dim = input_size
-        for hidden_dim in hidden_sizes[:-1]:
+        for hidden_dim in hidden_sizes:
             # linear -> norm -> activation -> dropout
             layers.append(nn.Linear(in_dim, hidden_dim, bias=bias))
             if norm_layer is not None:
@@ -31,9 +32,8 @@ class MLP(nn.Module):
             # output size of hidden layer is input size of next hidden layer
             in_dim = hidden_dim
 
-        # build output layer without normalization and activation
-        layers.append(nn.Linear(in_dim, hidden_sizes[-1], bias=bias))
-        layers.append(nn.Dropout(dropout, **params))
+        # build output layer
+        layers.append(nn.Linear(in_dim, output_size, bias=bias))
         self.mlp = nn.Sequential(*layers)
         # initialize weights
         self.apply(self._init_weights)
