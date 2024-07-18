@@ -33,16 +33,16 @@ class SurrogateDataset(Dataset):
         self.max_metrics = torch.ones((1, len(metrics_subset))) * 300.0
         self.min_metrics = torch.ones((1, len(metrics_subset))) * -300.0
         
-        # standardize genome/metrics data dist if train mode
-        if mode == 'train':
-            self.metrics = self.metrics_scaler.fit_transform(self.metrics)
-            self.genomes = self.genomes_scaler.fit_transform(self.genomes)
-        if mode == 'val':
-            self.metrics = self.metrics_scaler.transform(self.metrics)
-            self.genomes = self.genomes_scaler.transform(self.genomes)
+        # # # standardize genome/metrics data dist if train mode
+        # if mode == 'train':
+        #     # self.metrics = self.metrics_scaler.fit_transform(self.metrics)
+        #     self.genomes = self.genomes_scaler.fit_transform(self.genomes)
+        # if mode == 'val':
+        #     # self.metrics = self.metrics_scaler.transform(self.metrics)
+        #     self.genomes = self.genomes_scaler.transform(self.genomes)
 
-        self.max_metrics = torch.tensor(self.metrics_scaler.transform(self.max_metrics), dtype=torch.float32)
-        self.min_metrics = torch.tensor(self.metrics_scaler.transform(self.min_metrics), dtype=torch.float32)
+        # # self.max_metrics = torch.tensor(self.metrics_scaler.transform(self.max_metrics), dtype=torch.float32)
+        # # self.min_metrics = torch.tensor(self.metrics_scaler.transform(self.min_metrics), dtype=torch.float32)
             
         if np.isnan(self.genomes).any() or np.isnan(self.metrics).any():
             breakpoint()
