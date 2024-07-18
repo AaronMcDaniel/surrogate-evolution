@@ -11,7 +11,7 @@ import torch.nn as nn
 from torch.optim import lr_scheduler as lr
 from sklearn.preprocessing import StandardScaler
 import itertools
-import surrogate_eval as se
+import test_surrogate as ts
 from functools import partial
 
 def engine(cfg, model_str, param_combo, combo_num):
@@ -22,18 +22,18 @@ def engine(cfg, model_str, param_combo, combo_num):
 
     # define subset of metrics to train on and prepare data accordingly
     metrics_subset = param_combo['metrics_subset']
-    train_loader, val_loader = se.prepare_data(batch_size, metrics_subset=metrics_subset)
+    train_loader, val_loader, max_metrics, min_metrics = ts.prepare_data(batch_size, metrics_subset=metrics_subset)
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     model, optimizer, scheduler, scaler = build_configuration(model_str=model_str, device=device, param_combo=param_combo)
 
     # create metrics_df
-    metrics_df = se.create_metrics_df()
+    metrics_df = ts.create_metrics_df()
     for epoch in range(1, num_epochs + 1):
 
             # train and validate for one epoch
-            train_epoch_loss = se.train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler)
-            epoch_metrics = se.val_one_epoch(model, device, val_loader, metrics_subset=metrics_subset)
+            train_epoch_loss = ts.train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics=max_metrics, min_metrics=min_metrics)
+            epoch_metrics = ts.val_one_epoch(model, device, val_loader, metrics_subset=metrics_subset, max_metrics=max_metrics, min_metrics=min_metrics)
 
             # update metrics df
             epoch_metrics['param_combo'] = str(param_combo)
