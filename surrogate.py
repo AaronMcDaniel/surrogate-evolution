@@ -41,6 +41,17 @@ class Surrogate():
         model_config = configs["model"]
         self.models = [
             {
+                'name': 'test',
+                'dropout': 0.0,
+                'hidden_sizes': [512, 256],
+                'optimizer': optim.Adam,
+                'lr': 0.0001,
+                'scheduler': optim.lr_scheduler.StepLR,
+                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 
+                'validation_subset': [0, 4, 11],
+                'model': sm.MLP
+            },
+            {
                 'name': 'best_overall',
                 'dropout': 0.0,
                 'hidden_sizes': [2048, 1024, 512],
@@ -97,6 +108,7 @@ class Surrogate():
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         
         self.METRICS = surrogate_config["surrogate_metrics"]
+        self.opt_directions = surrogate_config["opt_directions"]
         
         ensure_deap_classes(self.objectives, codec_config)
         self.toolbox = base.Toolbox()
@@ -136,17 +148,22 @@ class Surrogate():
     
     
     # Get surrogate inferences on a list of deap individuals
-    def get_surrogate_inferences(self, model_idx, genome_scaler: StandardScaler, metric_scaler: StandardScaler, inference_pool, objectives):
+    # CLIPS ENCODED GENOME VALUES
+    def get_surrogate_inferences(self, model_idx, genome_scaler: StandardScaler, metric_scaler: StandardScaler, inference_pool):
         encoded_genomes = []
     
         # Encode genomes
         for genome in inference_pool:
             for i in range(self.genome_epochs):
-                encoded_genomes.append(self.codec.encode_surrogate(str(genome), i+1)) # error handling needs to be done in case encoding breaks (punish)
+                encoded_genome = self.codec.encode_surrogate(str(genome), i+1) # error handling needs to be done in case encoding breaks (punish)
+                encoded_genomes.append(np.clip(encoded_genome, -1000, 1000)) 
         
         # Get model dictionary and initialize the model
         model_dict = self.models[model_idx]
         model = model_dict['model']
+        metrics_subset = model_dict['metrics_subset']
+        val_subset = model_dict['validation_subset']
+        val_names = [self.METRICS[i] for i in val_subset]
         output_size = len(model_dict['metrics_subset'])
         sig = inspect.signature(model.__init__)
         filtered_params = {k: v for k, v in model_dict.items() if k in sig.parameters}
@@ -167,24 +184,24 @@ class Surrogate():
             with torch.no_grad():
                 inference = model(genome)
                 inference = metric_scaler.inverse_transform(inference.cpu().numpy())
-                all_inferences.append(tuple(inference.squeeze().tolist()))
+                # here we have all values in the metrics subset inferred on
+                inference = tuple(inference.squeeze().tolist())
+                inference_dict = {}
+                for i, val in enumerate(inference):
+                    inference_dict[self.METRICS[metrics_subset[i]]] = val
+                all_inferences.append(inference_dict)
 
-        # Select the best inference for each genome
+        # Select the best inference for each genome and format to tuple
+        def get_overall_loss(x):
+            loss = 0
+            for i in val_subset:
+                loss += x[self.METRICS[i]] * (1 if self.opt_directions[i] == 'min' else -1)
+            return loss 
         final_inferences = []
-        criteria_metric = self.best_epoch_criteria[0]
-        criteria_type = self.best_epoch_criteria[1]
-        criteria_index = objectives.index(criteria_metric)
-
         for i in range(0, len(all_inferences), self.genome_epochs):
             epoch_inferences = all_inferences[i:i + self.genome_epochs]
-
-            if criteria_type == 'min':
-                best_inference = min(epoch_inferences, key=lambda x: x[criteria_index])
-            elif criteria_type == 'max':
-                best_inference = max(epoch_inferences, key=lambda x: x[criteria_index])
-            else:
-                raise ValueError(f"Invalid criteria type: {criteria_type}")
-
+            best_inference = min(epoch_inferences, key=lambda x: get_overall_loss(x))
+            best_inference = tuple([best_inference[key] for key in val_names])
             final_inferences.append(best_inference)
 
         return final_inferences
@@ -193,6 +210,7 @@ class Surrogate():
     # This function converts string representations of genomes from a file like out.csv into deap individuals
     # with fitness that can be used to either train on or calculate trust with
     # parameter generations tells us what generations to get individuals from. Will use all individuals in a file if unspecified
+    # CLIPS TARGET VALUES
     def get_individuals_from_file(self, filepath, generations=None):
         # Read the CSV file into a DataFrame
         genomes_df = pd.read_csv(filepath)
@@ -208,13 +226,14 @@ class Surrogate():
         # Convert the DataFrame to a list of DEAP individuals
         genomes = genomes_df['genome'].values  
         fitness_values = genomes_df[list(self.objectives.keys())].values
+        fitness_values = np.clip(fitness_values, -300, 300)
         
         # Check for NaN values and replace them
         for i, key in enumerate(self.objectives.keys()):
             if self.objectives[key] < 0:
-                fitness_values[:, i] = np.where(np.isnan(fitness_values[:, i]), 1000000, fitness_values[:, i])
+                fitness_values[:, i] = np.where(np.isnan(fitness_values[:, i]), 300, fitness_values[:, i])
             elif self.objectives[key] > 0:
-                fitness_values[:, i] = np.where(np.isnan(fitness_values[:, i]), -1000000, fitness_values[:, i])
+                fitness_values[:, i] = np.where(np.isnan(fitness_values[:, i]), -300, fitness_values[:, i])
 
         # Convert genome string to deap individual
         individuals = [
@@ -236,7 +255,7 @@ class Surrogate():
 surrogate = Surrogate('conf.toml')
 individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/baseline_evolution/out.csv")
 train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')
-train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=[0, 4, 11])
+train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
 genome_scaler = train_dataset.genomes_scaler
 metrics_scaler = train_dataset.metrics_scaler
 print(surrogate.calc_trust(0, genome_scaler, metrics_scaler, individuals))
