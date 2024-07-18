@@ -22,7 +22,9 @@ def engine(cfg, model_str, param_combo, combo_num):
 
     # define subset of metrics to train on and prepare data accordingly
     metrics_subset = param_combo['metrics_subset']
-    train_loader, val_loader, max_metrics, min_metrics = ts.prepare_data(batch_size, metrics_subset=metrics_subset)
+    train_loader, val_loader, train_dataset = ts.prepare_data(batch_size, metrics_subset=metrics_subset)
+    max_metrics = train_dataset.max_metrics
+    min_metrics = train_dataset.min_metrics
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     model, optimizer, scheduler, scaler = build_configuration(model_str=model_str, device=device, param_combo=param_combo)
