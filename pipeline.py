@@ -17,6 +17,7 @@ from deap import creator, gp, base, tools
 import primitives
 import surrogate_dataset as sd
 from surrogate import Surrogate
+from surrogate_eval import engine
 
 # job file params
 JOB_NAME = 'precog_eval'
@@ -333,15 +334,11 @@ class Pipeline:
         return new_pop
     
     
-    def train_surrogates(self):
+    def train_surrogates(self, cfg):
         # takes in self.surrogate_train_df and surrogate_val_df
         for model_dict in self.surrogate.models:
-            
-            pass
-        # loops through 
-        # generates datasets for each model in the surrogate class
-        
-        pass # function to train the surrogates and eval??
+             engine(cfg, model_dict, train_df=self.surrogate_df_train, val_df=self.surrogate_df_val) 
+        return None
 
 
     def downselect(self, unsustainable_pop):
