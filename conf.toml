@@ -67,6 +67,8 @@ surrogate_encoding_strat = "String2Vec"
 models = ["MLP"]
 # surrogate metrics
 surrogate_metrics = ["mse_uw_val_loss", "mse_iou_loss", "mse_giou_loss", "mse_diou_loss", "mse_ciou_loss", "mse_center_loss", "mse_size_loss", "mse_obj_loss", "mse_precision", "mse_recall", "mse_f1_score", "mse_average_precision"]
+# optimization directions of the genome metrics
+opt_directions = ['min', 'min', 'min', 'min', 'min', 'min', 'min', 'min', 'max', 'max', 'max', 'max']
 # number of epochs to train the surrogates for
 surrogate_train_epochs = 30
 # batch size used in surrogate evaluation
