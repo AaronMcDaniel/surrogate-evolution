@@ -145,7 +145,7 @@ class Surrogate():
             #fitness_idx = model_idxs.index(model_idx)
         #print('START')
         #print('info', unique_model_idxs, unique_inferences[0][0], unique_inferences[1][0])
-        print('    Constructing fitnessess...')
+        print('    Constructing fitnesses...')
         constructed_inferences = []
         #print(len(unique_inferences[0]), len(unique_inferences[1]), len(surrogate_pool))
         for idx in range(len(inference_pool)):
@@ -184,7 +184,7 @@ class Surrogate():
                 #fitness_idx = model_idxs.index(model_idx)
             #print('START')
             #print('info', unique_model_idxs, unique_inferences[0][0], unique_inferences[1][0])
-            print('    Constructing fitnessess...')
+            print('    Constructing fitnesses...')
             constructed_inferences = []
             #print(len(unique_inferences[0]), len(unique_inferences[1]), len(surrogate_pool))
             for idx in range(len(surrogate_pool)):
