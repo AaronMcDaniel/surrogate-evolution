@@ -209,7 +209,7 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
             for j, image in enumerate(images):
                 pred_boxes, true_boxes, flight_id, frame_id = e.process_preds_truths(targets[j], outputs[j])
                 # NOTE pred boxes are normalized, in xywh format, and have scores, and true boxes are nomalized and in xywh format
-                draw_boxes(image, flight_id, frame_id, pred_boxes[:, :4], true_boxes, outdir='images')
+                # draw_boxes(image, flight_id, frame_id, pred_boxes[:, :4], true_boxes, outdir='images')
 
                 matches, fp, fn = u.match_boxes(pred_boxes, true_boxes, iou_thresh, conf_thresh, "val", iou_type)
                 num_tp = len(matches)
@@ -234,10 +234,12 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
                 size_loss += loss_tensor[5]
                 obj_loss += loss_tensor[6]
 
-                for _, (true_pos, _) in matches.items():
+                curve_matches, curve_fp, _ = u.match_boxes(pred_boxes, true_boxes, iou_thresh, 0.00, 'val', iou_type)
+
+                for _, (true_pos, _) in curve_matches.items():
                     confidences.append(true_pos[4].item())
                     confusion_status.append(True)
-                for false_pos in fp:
+                for false_pos in curve_fp:
                     confidences.append(false_pos[4].item())
                     confusion_status.append(False)
 
@@ -283,12 +285,12 @@ if __name__ == '__main__':
     iou_thresh = 0.0
     conf_thresh = 0.2
     iou_type = "ciou"
-    train_seed = 0
-    val_seed = 0
-    batch_size = 1
+    train_seed = 1
+    val_seed = 1
+    batch_size = 2
     num_epochs = 1
 
-    hash_path = '/gv1/projects/GRIP_Precog_Opt/baseline_evolution/generation_10/1787ecc82f'
+    hash_path = '/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/generation_6/46ca466104'
     split_list = hash_path.split('/')
     hash = split_list[-1]
     input_path = '/'.join(split_list[:-2]) + '/eval_inputs/' + f'eval_input_gen{split_list[-2].split("_")[-1]}.csv'
@@ -300,27 +302,30 @@ if __name__ == '__main__':
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     model = model_dict['model'].to(device)
     params = model.parameters()
-    # optimizer = e.get_optimizer(params, model_dict)
-    optimizer = optim.RMSprop(params, lr=0.01, alpha=0.99, eps=1e-8, weight_decay=1e-4)
-    # scheduler = e.get_scheduler(optimizer, model_dict, num_epochs, batch_size)
-    scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
+    optimizer = e.get_optimizer(params, model_dict)
+    # optimizer = optim.RMSprop(params, lr=0.01, alpha=0.99, eps=1e-8, weight_decay=1e-4)
+    scheduler = e.get_scheduler(optimizer, model_dict, num_epochs, batch_size)
+    # scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
     scaler = GradScaler()
 
-    # loss_weights = model_dict['loss_weights']
-    loss_weights = torch.full((7,), 1/7)
+    loss_weights = model_dict['loss_weights']
+    # loss_weights = torch.full((7,), 1/7)
+
     configs = toml.load("conf.toml")
     model_config = configs["model"]
     codec_config = configs["codec"]
     data_config = configs["data"]
     all_config = model_config | codec_config | data_config
     train_loader, val_loader = e.prepare_data(all_config, train_seed, val_seed, batch_size)
-    # model = load_model_weights(model, device, os.path.join(hash_path, 'best_epoch.pth'))
-    # model = load_model_weights(model, device, '/home/tthakur9/precog-opt-grip/weights/custom_train_5000_img_size_loss.pth')
-    for i in range(5):
-        train_epoch_loss = custom_train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler,
-                                              custom_loss=True, loss_weights=loss_weights, iou_type=iou_type, max_batch=500)
-        print(f"epoch {i} train loss: {train_epoch_loss}")
-        epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, max_batch=30)
-        print(f"epoch {i} eval metrics: {epoch_metrics}")
+    model = load_model_weights(model, device, os.path.join(hash_path, 'best_epoch.pth'))
+
+    epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, max_batch=500)
+
+    # for i in range(5):
+    #     train_epoch_loss = custom_train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler,
+    #                                           custom_loss=True, loss_weights=loss_weights, iou_type=iou_type, max_batch=500)
+    #     print(f"epoch {i} train loss: {train_epoch_loss}")
+    #     epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, max_batch=30)
+    #     print(f"epoch {i} eval metrics: {epoch_metrics}")
 
     
