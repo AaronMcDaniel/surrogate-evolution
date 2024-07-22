@@ -30,9 +30,9 @@ def eval_wrapper(cfg, gen_num, hash, genome, eval: callable):
     hostname = os.uname().nodename
     print()
     print("====================")
-    print(f"Running on node: {hostname.split(".")[0]}")
+    print(f'Running on node: {hostname.split(".")[0]}')
     print("--------------------")
-    print(f"Gen: {gen_num} Genome hash: {hash}")
+    print(f'Gen: {gen_num} Genome hash: {hash}')
     print("====================")
     print()
     summary.tree_genome_summary(genome, cfg['num_loss_components'])

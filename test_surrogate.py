@@ -19,8 +19,8 @@ import pickle
 
 
 def prepare_data(batch_size, metrics_subset):
-    train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/train_dataset.pkl')
-    val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/val_dataset.pkl')
+    train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')
+    val_df = pd.read_pickle('surrogate_dataset/val_dataset.pkl')
     train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=metrics_subset)
     val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=metrics_subset, metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
@@ -284,7 +284,7 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # NOTE default config path should change later on
-    parser.add_argument('-c', '--config_path', required=False, default='/home/tthakur9/precog-opt-grip/conf.toml')
+    parser.add_argument('-c', '--config_path', required=False, default='conf.toml')
     args = parser.parse_args()
     config_path = args.config_path
     configs = toml.load(config_path)
