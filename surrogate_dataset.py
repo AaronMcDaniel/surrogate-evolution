@@ -180,7 +180,7 @@ def find_bad_individuals(df, bad_thresh=100000):
     return bad_individuals
 
 
-build_dataset(infile='/gv1/projects/GRIP_Precog_Opt/baseline_evolution/out.csv', working_dir='/gv1/projects/GRIP_Precog_Opt/baseline_evolution')
+# build_dataset(infile='/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv', working_dir='/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution')
 # train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/train_dataset.pkl')
 # val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/val_dataset.pkl')
 # train_dataset = SurrogateDataset(train_df, mode='train', metrics_subset=None)

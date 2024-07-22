@@ -52,7 +52,7 @@ def build_configuration(model_dict, device):
         else:
             scheduler = scheduler_func(optimizer=optimizer)
         scaler = GradScaler()
-
+        
         val_subset = model_dict['validation_subset']
         return model, optimizer, scheduler, scaler, val_subset
 
@@ -88,17 +88,17 @@ def engine(cfg, model_dict, train_df, val_df):
         # train and validate for one epoch
         train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics)
         epoch_metrics = val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, min_metrics)
-        print(epoch_metrics)
+        #print(epoch_metrics)
         
         val_losses = []
                 
         for val in val_subset:
             val_losses.append(epoch_metrics[metric_names[val]])
             #val_losses.append(loss_tensor[metrics_subset.index(val)])
-            print('CHECK', epoch_metrics, epoch_metrics[metric_names[val]])
+            #print('CHECK', epoch_metrics, epoch_metrics[metric_names[val]])
         #print(loss_tensor[val_losses[0]])
         loss_metric = sum(val_losses)
-        print(loss_metric)
+        #print(loss_metric)
         #print(loss_metric)
         if loss_metric < best_loss_metric:
             best_loss_metric = loss_metric
@@ -227,13 +227,19 @@ configs = toml.load('conf.toml')
 surrogate_config = configs['surrogate']
 model_dict = {
                 'name': 'best_mse_average_precision',
+                # 'dropout': 0.6,
+                # 'hidden_sizes': [2048, 1024, 512],
+                # 'optimizer': optim.RMSprop,
+                # 'lr': 0.01,
+                # 'scheduler': optim.lr_scheduler.CosineAnnealingLR,
+                # 'metrics_subset': [11],
                 'dropout': 0.0,
                 'hidden_sizes': [512, 256],
                 'optimizer': optim.Adam,
-                'lr': 0.01,
-                'scheduler': optim.lr_scheduler.StepLR,
-                'metrics_subset': [0, 4, 11],
-                'validation_subset': [0, 4, 11],
+                'lr': 0.1,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'metrics_subset': [11],
+                'validation_subset': [11],
                 'model': sm.MLP
             }  
 train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')
