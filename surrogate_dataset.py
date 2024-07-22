@@ -64,15 +64,11 @@ def build_dataset(
         working_dir='/gv1/projects/GRIP_Precog_Opt/outputs', 
         outdir='surrogate_dataset', 
         metrics='uw_val_epoch_loss,iou_loss,giou_loss,diou_loss,ciou_loss,center_loss,size_loss,obj_loss,precision,recall,f1_score,average_precision', 
-        exclude='', val_ratio=0.3, seed=0
+        exclude=[], include_only=None, val_ratio=0.3, seed=0
     ):
     codec = Codec(num_classes=7)
     metric_headings = metrics.split(',')
     excluded_gens = exclude
-    if excluded_gens == '':
-        excluded_gens = []
-    else:
-        excluded_gens = [int(gen) for gen in excluded_gens.split(',')]
     
     local_random = random.Random(seed)
 
@@ -96,6 +92,9 @@ def build_dataset(
         genome = line['genome']
 
         if gen in excluded_gens:
+            continue
+        
+        if include_only is not None and gen not in include_only:
             continue
 
         metrics_path = os.path.join(working_dir, f'generation_{gen}', genome_hash, 'metrics.csv')
@@ -168,6 +167,11 @@ def build_dataset(
     val_set.to_pickle(val_output_filename)
 
     return train_set, val_set
+
+
+def merge_dfs_to_dataset(df1: pd.DataFrame, df2: pd.DataFrame, outdir):
+    merged_df = pd.concat([df1, df2])
+    merged_df.to_pickle(outdir)
 
 
 def find_bad_individuals(df, bad_thresh=100000):
