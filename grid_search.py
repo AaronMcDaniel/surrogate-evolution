@@ -117,40 +117,41 @@ def cat_results(model_str='MLP'):
     master_df.to_csv(out_path, index=False)
     return None
 
+cat_results()
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-cn', '--combo_num', type=int, required=True, default=None)
-    parser.add_argument('-cp', '--cfg_path', type=str, required=False, default='/home/tthakur9/precog-opt-grip/conf.toml')
-    args = parser.parse_args()
-    combo_num = args.combo_num
-    cfg_path = args.cfg_path
-    all_cfg = toml.load(cfg_path)
-    cfg = all_cfg['surrogate']
-    models = cfg['models']
+# if __name__ == '__main__':
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument('-cn', '--combo_num', type=int, required=True, default=None)
+#     parser.add_argument('-cp', '--cfg_path', type=str, required=False, default='/home/tthakur9/precog-opt-grip/conf.toml')
+#     args = parser.parse_args()
+#     combo_num = args.combo_num
+#     cfg_path = args.cfg_path
+#     all_cfg = toml.load(cfg_path)
+#     cfg = all_cfg['surrogate']
+#     models = cfg['models']
 
-    for model_str in models:
-        if model_str == "MLP":
-            # define MLP-unique parameter grid
-            param_grid = {
-                        'dropout': [0.0, 0.2, 0.4, 0.6],
-                        'hidden_sizes': [[512, 256], [1024, 512], [2048, 1024, 512]],
-                        'optimizer': [optim.SGD, optim.Adam, optim.RMSprop, optim.Adagrad],
-                        'lr': [0.0001, 0.001, 0.01, 0.1],
-                        'scheduler': [lr.StepLR, lr.MultiStepLR, lr.CosineAnnealingLR, lr.ReduceLROnPlateau],
-                        'metrics_subset': [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], [0, 4, 11], [11], [4], [0]]
-            }
+#     for model_str in models:
+#         if model_str == "MLP":
+#             # define MLP-unique parameter grid
+#             param_grid = {
+#                         'dropout': [0.0, 0.2, 0.4, 0.6],
+#                         'hidden_sizes': [[512, 256], [1024, 512], [2048, 1024, 512]],
+#                         'optimizer': [optim.SGD, optim.Adam, optim.RMSprop, optim.Adagrad],
+#                         'lr': [0.0001, 0.001, 0.01, 0.1],
+#                         'scheduler': [lr.StepLR, lr.MultiStepLR, lr.CosineAnnealingLR, lr.ReduceLROnPlateau],
+#                         'metrics_subset': [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], [0, 4, 11], [11], [4], [0]]
+#             }
 
-            # use grid's keys & values to create a list of dicts for each combo in search space
-            param_names = param_grid.keys()
-            param_values = param_grid.values()
-            combinations = list(itertools.product(*param_values))
-            combinations_dicts = [dict(zip(param_names, combo)) for combo in combinations]
+#             # use grid's keys & values to create a list of dicts for each combo in search space
+#             param_names = param_grid.keys()
+#             param_values = param_grid.values()
+#             combinations = list(itertools.product(*param_values))
+#             combinations_dicts = [dict(zip(param_names, combo)) for combo in combinations]
 
-            # run train/val engine with specific parameter combination
-            if combo_num is not None and combo_num < len(combinations_dicts):
-                combo = combinations_dicts[combo_num]
-                engine(cfg=cfg, model_str=model_str, param_combo=combo, combo_num=combo_num)
-            else:
-                print(f'No more {model_str} parameter combinations to try.')
-                break
+#             # run train/val engine with specific parameter combination
+#             if combo_num is not None and combo_num < len(combinations_dicts):
+#                 combo = combinations_dicts[combo_num]
+#                 engine(cfg=cfg, model_str=model_str, param_combo=combo, combo_num=combo_num)
+#             else:
+#                 print(f'No more {model_str} parameter combinations to try.')
+#                 break
