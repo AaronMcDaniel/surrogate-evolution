@@ -132,6 +132,39 @@ class Surrogate():
         self.toolbox = base.Toolbox()
         
     
+    def set_inferred_fitness(self, model_idxs, genome_scaler, inference_pool):        
+        unique_model_idxs = list(set(model_idxs))
+        unique_inferences = []
+        
+        for model_idx in unique_model_idxs:
+            # get inferences on copy of calc_pool and assign fitness to copy
+            print(f'    Getting inferences using {self.models[model_idx]['name']}...')
+            inferences = self.get_surrogate_inferences(model_idx, genome_scaler, inference_pool)
+            unique_inferences.append(inferences)
+            
+            #fitness_idx = model_idxs.index(model_idx)
+        #print('START')
+        #print('info', unique_model_idxs, unique_inferences[0][0], unique_inferences[1][0])
+        print('    Constructing fitnessess...')
+        constructed_inferences = []
+        #print(len(unique_inferences[0]), len(unique_inferences[1]), len(surrogate_pool))
+        for idx in range(len(inference_pool)):
+            fitnesses = []
+            for i, model_idx in enumerate(model_idxs):
+                unique_idx = unique_model_idxs.index(model_idx)
+                if len(unique_inferences[unique_idx][idx]) == 1:
+                    i = 0
+                #print(idx, unique_idx, i, unique_inferences[unique_idx][idx][i])
+                fitnesses.append(unique_inferences[unique_idx][idx][i])
+            #print('fitnesses', fitnesses)
+            constructed_inferences.append(tuple(fitnesses))
+        #print('constructed inferences', constructed_inferences)
+            #for inference in unique_inferences[unique_idx]:
+
+        for i, individual in enumerate(inference_pool):
+            individual.fitness.values = constructed_inferences[i]
+    
+    
     # The calc_pool is a list of deap individuals with calculated fitnesses. The model infers the metrics and 
     # we see the intersection in selections
     def calc_ensemble_trust(self, model_idxs, genome_scaler, calc_pool, rand = False):        
