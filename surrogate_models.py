@@ -304,7 +304,9 @@ class KANLinear(torch.nn.Module):
 class KAN(torch.nn.Module):
     def __init__(
         self,
-        layers_hidden,
+        input_size=1021,
+        output_size=12,
+        hidden_sizes=[512, 256],
         grid_size=5,
         spline_order=3,
         scale_noise=0.1,
@@ -318,8 +320,11 @@ class KAN(torch.nn.Module):
         self.grid_size = grid_size
         self.spline_order = spline_order
 
+        hidden_sizes.append(output_size)
+        hidden_sizes.insert(0, input_size)
+
         self.layers = torch.nn.ModuleList()
-        for in_features, out_features in zip(layers_hidden, layers_hidden[1:]):
+        for in_features, out_features in zip(hidden_sizes, hidden_sizes[1:]):
             self.layers.append(
                 KANLinear(
                     in_features,
@@ -349,19 +354,19 @@ class KAN(torch.nn.Module):
         )
 
 
-model = KAN([1021, 2048, 512, 256, 12])
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-model.to(device)
-data = torch.randn((16, 1021), dtype=torch.float32, device=device)
-label = torch.randn((16, 12), dtype=torch.float32, device=device)
-model.train()
-output = model(data)
-train_criterion = nn.L1Loss()
-loss = train_criterion(output, label)
-print(loss)
-val_criterion = nn.L1Loss(reduction='none')
-# (16, 12) matrix of 12 mse losses for each image in batch of 16
-loss_matrix = val_criterion(output, label)
-# meaned losses per metric
-loss_means = torch.mean(loss_matrix, dim=0)
-print(loss_means)
+# model = KAN([1021, 2048, 512, 256, 12])
+# device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+# model.to(device)
+# data = torch.randn((16, 1021), dtype=torch.float32, device=device)
+# label = torch.randn((16, 12), dtype=torch.float32, device=device)
+# model.train()
+# output = model(data)
+# train_criterion = nn.L1Loss()
+# loss = train_criterion(output, label)
+# print(loss)
+# val_criterion = nn.L1Loss(reduction='none')
+# # (16, 12) matrix of 12 mse losses for each image in batch of 16
+# loss_matrix = val_criterion(output, label)
+# # meaned losses per metric
+# loss_means = torch.mean(loss_matrix, dim=0)
+# print(loss_means)
