@@ -13,15 +13,12 @@ import surrogate_models as sm
 from torch.cuda.amp import autocast, GradScaler
 import numpy as np
 
-best_loss_metric = np.inf
-best_epoch = None
-best_epoch_num = None
 
 def prepare_data(model_dict, batch_size, train_df, val_df):
     train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=model_dict['metrics_subset'])
     val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=model_dict['metrics_subset'], metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
-    train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+    val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     return train_loader, val_loader, train_dataset, val_dataset
 
 
@@ -66,9 +63,9 @@ def create_metrics_df(cfg):
 
 
 def engine(cfg, model_dict, train_df, val_df):
-    global best_loss_metric
-    global best_epoch
-    global best_epoch_num
+    best_loss_metric = np.inf
+    best_epoch = None
+    best_epoch_num = None
     # pull surrogate train/eval config attributes
     num_epochs = cfg['surrogate_train_epochs']
     batch_size = cfg['surrogate_batch_size']
@@ -112,7 +109,7 @@ def engine(cfg, model_dict, train_df, val_df):
     
 
     torch.save(best_epoch.state_dict(), '/gv1/projects/GRIP_Precog_Opt/surrogates/run_weights/' + model_dict['name'] + '.pth')
-    print('Save epoch #:', best_epoch_num)
+    print('Save epoch #:', best_epoch_num)    
 
     return metrics_df, train_dataset.genomes_scaler
 
@@ -222,27 +219,3 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
     })
 
     return epoch_metrics
-
-configs = toml.load('conf.toml')
-surrogate_config = configs['surrogate']
-model_dict = {
-                'name': 'best_mse_average_precision',
-                # 'dropout': 0.6,
-                # 'hidden_sizes': [2048, 1024, 512],
-                # 'optimizer': optim.RMSprop,
-                # 'lr': 0.01,
-                # 'scheduler': optim.lr_scheduler.CosineAnnealingLR,
-                # 'metrics_subset': [11],
-                'dropout': 0.0,
-                'hidden_sizes': [512, 256],
-                'optimizer': optim.Adam,
-                'lr': 0.1,
-                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
-                'metrics_subset': [11],
-                'validation_subset': [11],
-                'model': sm.MLP
-            }  
-train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')
-val_df = pd.read_pickle('surrogate_dataset/val_dataset.pkl')
-metrics_df, genome_scaler = engine(surrogate_config, model_dict, train_df, val_df)
-print(metrics_df)

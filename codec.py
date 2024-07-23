@@ -284,7 +284,6 @@ class Codec:
             if torch.backends.mps.is_available()
             else "cpu"
         )
-        print(f"Codec using {self.device} device")
 
 
     def pset_info(self):

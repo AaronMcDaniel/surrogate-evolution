@@ -13,6 +13,7 @@ import torch
 import torch.optim as optim
 from sklearn.preprocessing import StandardScaler
 import surrogate_dataset as sd
+import random
 
 
 def ensure_deap_classes(objectives, codec_config):
@@ -40,23 +41,6 @@ class Surrogate():
         codec_config = configs["codec"]
         model_config = configs["model"]
         self.models = [
-            {
-                'name': 'test',
-                # 'dropout': 0.0,
-                # 'hidden_sizes': [512, 256],
-                # 'optimizer': optim.Adam,
-                # 'lr': 0.0001,
-                # 'scheduler': optim.lr_scheduler.StepLR,
-                # 'metrics_subset': [0, 4, 11],
-                'dropout': 0.2,
-                'hidden_sizes': [2048, 1024, 512],
-                'optimizer': optim.Adam,
-                'lr': 0.1,
-                'scheduler': optim.lr_scheduler.StepLR,
-                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-                'validation_subset': [0, 4, 11],
-                'model': sm.MLP
-            },
             {
                 'name': 'best_overall',
                 # 'dropout': 0.0,
@@ -187,26 +171,23 @@ class Surrogate():
         self.toolbox = base.Toolbox()
         
     
-    # The calc_pool is a list of deap individuals with calculated fitnesses. The model infers the metrics and 
-    # we see the intersection in selections
-    def calc_ensemble_trust(self, model_idxs, genome_scaler, calc_pool):        
-        # create copy of calc_pool
-        surrogate_pool = copy.deepcopy(calc_pool)
-        
+    def set_inferred_fitness(self, model_idxs, genome_scaler, inference_pool):        
         unique_model_idxs = list(set(model_idxs))
         unique_inferences = []
         
         for model_idx in unique_model_idxs:
             # get inferences on copy of calc_pool and assign fitness to copy
-            inferences = self.get_surrogate_inferences(model_idx, genome_scaler, surrogate_pool)
+            print(f'    Getting inferences using {self.models[model_idx]['name']}...')
+            inferences = self.get_surrogate_inferences(model_idx, genome_scaler, inference_pool)
             unique_inferences.append(inferences)
             
             #fitness_idx = model_idxs.index(model_idx)
         #print('START')
         #print('info', unique_model_idxs, unique_inferences[0][0], unique_inferences[1][0])
+        print('    Constructing fitnesses...')
         constructed_inferences = []
         #print(len(unique_inferences[0]), len(unique_inferences[1]), len(surrogate_pool))
-        for idx in range(len(surrogate_pool)):
+        for idx in range(len(inference_pool)):
             fitnesses = []
             for i, model_idx in enumerate(model_idxs):
                 unique_idx = unique_model_idxs.index(model_idx)
@@ -240,7 +221,7 @@ class Surrogate():
         selected = set(selected)
         surrogate_selected = set(surrogate_selected)
         intersection = selected.intersection(surrogate_selected)
-        trust = len(intersection)/len(selected)   #len(selected.union(surrogate_selected))
+        trust = len(intersection)/len(selected)
         return trust
     
     # The calc_pool is a list of deap individuals with calculated fitnesses. The model infers the metrics and 
@@ -302,7 +283,7 @@ class Surrogate():
         model = model(output_size=output_size, **filtered_params).to(self.device)
         
         # Load model weights
-        model.load_state_dict(torch.load(f'/gv1/projects/GRIP_Precog_Opt/surrogates/run_weights/{model_name}.pth', map_location=self.device)) # weights dir is hardcoded rn
+        model.load_state_dict(torch.load(f'/gv1/projects/GRIP_Precog_Opt/surrogates/run_weights/{model_name}.pth', map_location=self.device))
         model.eval()
         
         all_inferences = []
@@ -355,7 +336,7 @@ class Surrogate():
     # with fitness that can be used to either train on or calculate trust with
     # parameter generations tells us what generations to get individuals from. Will use all individuals in a file if unspecified
     # CLIPS TARGET VALUES
-    def get_individuals_from_file(self, filepath, generations=None):
+    def get_individuals_from_file(self, filepath, generations=None, hashes=None):
         # Read the CSV file into a DataFrame
         genomes_df = pd.read_csv(filepath)
 
@@ -366,6 +347,12 @@ class Surrogate():
         # Filter the DataFrame based on generations if provided
         if generations is not None:
             genomes_df = genomes_df[genomes_df['gen'].isin(generations)]
+            
+        # Filter the DataFrame based on hashes if provided
+        if hashes is not None:
+            if 'hash' not in genomes_df.columns:
+                raise ValueError("The DataFrame does not contain a 'hash' column.")
+            genomes_df = genomes_df[genomes_df['hash'].isin(hashes)]
 
         # Convert the DataFrame to a list of DEAP individuals
         genomes = genomes_df['genome'].values  
