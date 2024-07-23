@@ -128,7 +128,46 @@ class Surrogate():
                 'metrics_subset': [11],
                 'validation_subset': [11],
                 'model': sm.MLP
-            }            
+            },
+            {
+                'name': 'kan_best_ap',
+                'hidden_sizes': [512, 256],
+                'optimizer': optim.AdamW,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'metrics_subset': [11],
+                'validation_subset': [11],
+                'model': sm.KAN,
+                'scale_spline': 2.0,
+                'scale_noise': 0.25,
+                'spline_order': 4
+            },
+            {
+                'name': 'kan_best_ciou',
+                'hidden_sizes': [2048, 512],
+                'optimizer': optim.AdamW,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.StepLR,
+                'metrics_subset': [0, 4, 11],
+                'validation_subset': [0, 4, 11],
+                'model': sm.KAN,
+                'scale_spline': 2.0,
+                'scale_noise': 0.25,
+                'spline_order': 4
+            },
+            {
+                'name': 'kan_best_uw_val',
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.SGD,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.StepLR,
+                'metrics_subset': [0, 4, 11],
+                'validation_subset': [0, 4, 11],
+                'model': sm.KAN,
+                'scale_spline': 1.0,
+                'scale_noise': 0.25,
+                'spline_order': 4
+            }               
         ]
         self.trust_calc_strategy = surrogate_config["trust_calc_strategy"]
         self.trust_calc_ratio = surrogate_config["trust_calc_ratio"]
@@ -206,34 +245,34 @@ class Surrogate():
     
     # The calc_pool is a list of deap individuals with calculated fitnesses. The model infers the metrics and 
     # we see the intersection in selections
-    # def calc_trust(self, model_idx, genome_scaler, calc_pool):        
-    #     # create copy of calc_pool
-    #     surrogate_pool = copy.deepcopy(calc_pool)
+    def calc_trust(self, model_idx, genome_scaler, calc_pool):        
+        # create copy of calc_pool
+        surrogate_pool = copy.deepcopy(calc_pool)
         
-    #     # get inferences on copy of calc_pool and assign fitness to copy
-    #     inferences = self.get_surrogate_inferences(model_idx, genome_scaler, surrogate_pool)
-    #     for i, individual in enumerate(surrogate_pool):
-    #         individual.fitness.values = inferences[i]
+        # get inferences on copy of calc_pool and assign fitness to copy
+        inferences = self.get_surrogate_inferences(model_idx, genome_scaler, surrogate_pool)
+        for i, individual in enumerate(surrogate_pool):
+            individual.fitness.values = inferences[i]
         
-    #     # '''TESTING'''
-    #     # for i in range(len(calc_pool)):
-    #     #     print(calc_pool[i].fitness.values, surrogate_pool[i].fitness.values)
+        # '''TESTING'''
+        # for i in range(len(calc_pool)):
+        #     print(calc_pool[i].fitness.values, surrogate_pool[i].fitness.values)
         
-    #     # run trust-calc strategy to select trust_calc_ratio-based number of individuals for both calc_pool and its copy
-    #     # TODO: add other cases of trust_calc_strategy
-    #     match self.trust_calc_strategy.lower():
-    #         case 'spea2':
-    #             self.toolbox.register("select", tools.selSPEA2, k = int(len(calc_pool)*self.trust_calc_ratio))
+        # run trust-calc strategy to select trust_calc_ratio-based number of individuals for both calc_pool and its copy
+        # TODO: add other cases of trust_calc_strategy
+        match self.trust_calc_strategy.lower():
+            case 'spea2':
+                self.toolbox.register("select", tools.selSPEA2, k = int(len(calc_pool)*self.trust_calc_ratio))
         
-    #     selected = [self.__get_hash(str(g)) for g in self.toolbox.select(calc_pool)]
-    #     surrogate_selected = [self.__get_hash(str(g)) for g in self.toolbox.select(surrogate_pool)]
+        selected = [self.__get_hash(str(g)) for g in self.toolbox.select(calc_pool)]
+        surrogate_selected = [self.__get_hash(str(g)) for g in self.toolbox.select(surrogate_pool)]
         
-    #     # check intersection of selected individuals and return
-    #     selected = set(selected)
-    #     surrogate_selected = set(surrogate_selected)
-    #     intersection = selected.intersection(surrogate_selected)
-    #     trust = len(intersection)/len(selected)
-    #     return trust
+        # check intersection of selected individuals and return
+        selected = set(selected)
+        surrogate_selected = set(surrogate_selected)
+        intersection = selected.intersection(surrogate_selected)
+        trust = len(intersection)/len(selected)
+        return trust
     
     
     # Get surrogate inferences on a list of deap individuals
@@ -362,5 +401,6 @@ individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt
 train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')
 train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=[0, 4, 11])
 genome_scaler = train_dataset.genomes_scaler
-print(surrogate.calc_ensemble_trust([2, 3, 4], genome_scaler, individuals))
+# print(surrogate.calc_ensemble_trust([5, 6, 7], genome_scaler, individuals))
+print(surrogate.calc_trust(-2, genome_scaler, individuals))
      
