@@ -81,3 +81,4 @@ trust_calc_ratio = 0.3
 [data]
 # time in hours the dataset cache is valid for
 cache_thresh = 1
+max_size = 1000
