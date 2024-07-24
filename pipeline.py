@@ -115,6 +115,7 @@ class Pipeline:
         match self.selection_method_parents.lower():
             case 'nsga2':
                 self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents)
+                self.toolbox.register("downselect", tools.selNSGA2, k = self.population_size)
     
         # TODO: add other cases of selection_method_elite_pool
         match self.selection_method_elite_pool.lower():
@@ -342,10 +343,16 @@ class Pipeline:
     def downselect(self, unsustainable_pop):
         print('Downselecting...')
         if (self.surrogate_enabled):
-            # model = self.surrogate.getBestModel()
-            # predictions = self.surrogate.getPredictions(model, unsustainable_pop)
-            # ...
-            pass # surrogate code will eventually go here
+            # UNTESTED STARTED SURROGATE CODE
+            to_downselect = list(unsustainable_pop.values())
+            self.surrogate.set_inferred_fitness(to_downselect)
+            downselected = self.toolbox.downselect(to_downselect)
+            new_pop = {}
+            for individual in downselected:
+                hash = self.__get_hash(str(individual))
+                new_pop[hash] = {'genome': str(unsustainable_pop[hash]), 'metrics': None}
+            self.current_population = new_pop
+            self.current_deap_pop = downselected
         else :
             if (self.selection_method_untrusted.lower() == 'random'): # choose randomly
                 new_hashes = random.sample(list(unsustainable_pop.keys()), self.population_size)
