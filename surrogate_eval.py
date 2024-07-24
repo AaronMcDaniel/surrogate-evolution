@@ -111,7 +111,7 @@ def engine(cfg, model_dict, train_df, val_df):
     torch.save(best_epoch.state_dict(), '/gv1/projects/GRIP_Precog_Opt/surrogates/run_weights/' + model_dict['name'] + '.pth')
     print('Save epoch #:', best_epoch_num)    
 
-    return metrics_df, train_dataset.genomes_scaler
+    return metrics_df, best_epoch_num, train_dataset.genomes_scaler
 
             
 
