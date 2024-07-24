@@ -349,19 +349,19 @@ class KAN(torch.nn.Module):
         )
 
 
-model = KAN([1021, 2048, 512, 256, 12])
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-model.to(device)
-data = torch.randn((16, 1021), dtype=torch.float32, device=device)
-label = torch.randn((16, 12), dtype=torch.float32, device=device)
-model.train()
-output = model(data)
-train_criterion = nn.L1Loss()
-loss = train_criterion(output, label)
-print(loss)
-val_criterion = nn.L1Loss(reduction='none')
-# (16, 12) matrix of 12 mse losses for each image in batch of 16
-loss_matrix = val_criterion(output, label)
-# meaned losses per metric
-loss_means = torch.mean(loss_matrix, dim=0)
-print(loss_means)
+# model = KAN([1021, 2048, 512, 256, 12])
+# device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+# model.to(device)
+# data = torch.randn((16, 1021), dtype=torch.float32, device=device)
+# label = torch.randn((16, 12), dtype=torch.float32, device=device)
+# model.train()
+# output = model(data)
+# train_criterion = nn.L1Loss()
+# loss = train_criterion(output, label)
+# print(loss)
+# val_criterion = nn.L1Loss(reduction='none')
+# # (16, 12) matrix of 12 mse losses for each image in batch of 16
+# loss_matrix = val_criterion(output, label)
+# # meaned losses per metric
+# loss_means = torch.mean(loss_matrix, dim=0)
+# print(loss_means)
