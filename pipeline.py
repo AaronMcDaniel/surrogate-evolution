@@ -15,19 +15,36 @@ from deap import creator, gp, base, tools
 import primitives
 from surrogate import Surrogate
 from primitive_tree import CustomPrimitiveTree
-from surrogate_eval import engine
+from surrogate_eval import engine, get_val_scores
+from surrogate_dataset import build_dataset
 
 # job file params
-JOB_NAME = 'precog_eval'
+JOB_NAME = 'test_eval'
 NODES = 1
 CORES = 8
 MEM = '32GB'
 JOB_TIME = '04:00:00'
-SCRIPT = 'eval.py'
+SCRIPT = 'test/dummy_eval.py'
 ENV_NAME = 'myenv'
 EXCEPTED_NODES = ['ice109', 'ice111', 'ice161', 'ice113', 'ice116', 'ice114', 'ice170', 'ice149', 'ice158', 'ice177', 'ice178', 'ice120']
 GPUS = ["TeslaV100-PCIE-32GB", "TeslaV100S-PCIE-32GB", "NVIDIAA100-SXM4-80GB", "NVIDIAA10080GBPCIe", "TeslaP100-SXM2-16GB", "TeslaK80"]
 # ALLOWED_NODES = ['ice108', 'ice107', 'ice110', 'ice143', 'ice144', 'ice145', 'ice151', 'ice162', 'ice163', 'ice164', 'ice165', 'ice175', 'ice176', 'ice179', 'ice183', 'ice185', 'ice191', 'ice192', 'ice193']
+
+
+def ensure_deap_classes(objectives, codec_config):
+    # Check if the 'FitnessMulti' class exists, if not, create it
+    if not hasattr(creator, 'FitnessMulti'):
+        creator.create("FitnessMulti", base.Fitness, weights=tuple(objectives.values()))
+
+    # TODO: add other cases for encoding strategy
+        genome_type = gp.PrimitiveTree # default
+        match codec_config["genome_encoding_strat"].lower():
+            case "tree":
+                genome_type = gp.PrimitiveTree
+
+    # Check if the 'Individual' class exists, if not, create it
+    if not hasattr(creator, 'Individual'):
+        creator.create("Individual", genome_type, fitness=creator.FitnessMulti)
 
 
 class Pipeline:
@@ -56,6 +73,7 @@ class Pipeline:
         pipeline_config = configs["pipeline"]
         codec_config = configs["codec"]
         surrogate_config = configs["surrogate"]
+        self.surrogate_config = surrogate_config
 
         self.initial_population_size = pipeline_config['initial_population_size']
         self.population_size = pipeline_config['population_size']
@@ -64,8 +82,8 @@ class Pipeline:
         self.crossovers = pipeline_config['crossovers']
         self.mutations = pipeline_config['mutations']
         self.surrogate_enabled = pipeline_config['surrogate_enabled']
-        self.surrogate_pretrained = surrogate_config['pretrained']
-        self.surrogate_dataset_path = surrogate_config['surrogate_dataset_path']
+        self.surrogate_temp_dataset_path = os.path.join(self.output_dir, 'temp_surrogate_datasets')
+        self.surrogate_weights_dir = os.path.join(output_dir, 'surrogate_weights')
         self.surrogate_metrics = surrogate_config['surrogate_metrics']
         self.objectives = pipeline_config['objectives']
         self.selection_method_trusted = pipeline_config['selection_method_trusted']
@@ -79,33 +97,25 @@ class Pipeline:
 
         # Other useful attributes
         self.holy_grail = pd.DataFrame(columns=['gen', 'hash', 'genome', 'metrics']) # data regarding every evaluated individual; metrics are from best epoch since all other metric data is already stored by eval_script
-        self.surrogate_data = pd.DataFrame(columns=['gen', 'model'] + self.surrogate_metrics) # all data regarding surrogates; metrics are per epoch
-        surrogate_train_path = os.path.join(self.surrogate_dataset_path, 'train_dataset.pkl')
-        surrogate_val_path = os.path.join(self.surrogate_dataset_path, 'val_dataset.pkl')
-        self.surrogate_df_train = pd.read_pickle(surrogate_train_path) if self.surrogate_pretrained is not None else pd.DataFrame()
-        self.surrogate_df_val = pd.read_pickle(surrogate_val_path) if self.surrogate_pretrained is not None else pd.DataFrame()
+        self.surrogate_data = pd.DataFrame(columns=['gen', 'model', 'epoch_num', 'train_loss'] + self.surrogate_metrics) # all data regarding surrogates; metrics are per epoch
+        self.surrogate_mse_scores = pd.DataFrame(columns=['gen'] + [x+'_model' for x in self.objectives.keys()]+['mse_'+x.replace('epoch_', '') for x in self.objectives.keys()]) # mse metrics for the selected enseble per generation
         self.current_population = {} # dict of genomes associated with their metrics with hash as key
         self.current_deap_pop = [] # list of deap individuals representing the current population; no other info
         self.elite_pool = [] # list of deap individuals in the elite pool
         self.elite_pool_history = {} # dict keeping track of elite pool through generations
         self.hall_of_fame = tools.ParetoFront() # hall of fame as a ParetoFront object
         self.hof_history = {} # dict keeping track of hall of fame through generations
-        self.surrogate = Surrogate(config_dir) # Surrogate class to be defined
+        self.surrogate = Surrogate(config_dir, self.surrogate_weights_dir) # Surrogate class to be defined
+        self.genome_scaler = None # scaler used to transform genomes on training and inference
+        self.sub_surrogates = [0, 0, 0] # list of sub-surrogate indices to use (SHOULD BE SAVED)
+        self.surrogate_trusts = [] # list to keep track of surrogate trust over the generations (SHOULD BE SAVED)
         self.pset = primitives.pset # primitive set
         self.gen_count = 1
         self.num_genome_fails = 0
         self.total_evaluated_individuals = 0
 
         # Setting up pipeline
-        creator.create("FitnessMulti", base.Fitness, weights=tuple(self.objectives.values()))
-        
-        # TODO: add other cases for encoding strategy
-        genome_type = gp.PrimitiveTree # default
-        match codec_config["genome_encoding_strat"].lower():
-            case "tree":
-                genome_type = gp.PrimitiveTree
-                
-        creator.create("Individual", genome_type, fitness=creator.FitnessMulti)
+        ensure_deap_classes(self.objectives, codec_config)
         self.toolbox = base.Toolbox()
         self.toolbox.register("expr", gp.genHalfAndHalf, pset=self.pset, min_=4, max_=8)
         self.toolbox.register("individual", tools.initIterate, creator.Individual, self.toolbox.expr)
@@ -115,7 +125,6 @@ class Pipeline:
         match self.selection_method_parents.lower():
             case 'nsga2':
                 self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents)
-                self.toolbox.register("downselect", tools.selNSGA2, k = self.population_size)
     
         # TODO: add other cases of selection_method_elite_pool
         match self.selection_method_elite_pool.lower():
@@ -161,7 +170,18 @@ class Pipeline:
             with open(os.path.join(checkpoint_path,'hof.pkl'), 'rb') as f:
                 self.hall_of_fame = pickle.load(f)
             print('Found hof.pkl!')
+            if self.surrogate_enabled:
+                with open(os.path.join(checkpoint_path,'genome_scaler.pkl'), 'rb') as f:
+                    self.genome_scaler = pickle.load(f)
+                print('Found genome_scaler.pkl!')
+                with open(os.path.join(checkpoint_path,'sub_surrogate_selection.pkl'), 'rb') as f:
+                    self.sub_surrogates = pickle.load(f)
+                print('Found sub_surrogate_selection.pkl!')
+                df = pd.read_csv(os.path.join(checkpoint_path,'surrogate_trusts.csv'))
+                self.surrogate_trusts = df['trust'].to_list()
+                print('Found surrogate_trusts.csv!')
         else:
+            os.makedirs(self.surrogate_weights_dir)
             self.init_pop(seed_file)
             
 
@@ -201,11 +221,22 @@ class Pipeline:
         self.create_job_file(len(self.current_population), self.gen_count)
 
         # create this gen's log diretory
+        os.system(f'rm -rf {os.path.join(self.logs_dir, f'generation_{self.gen_count}')}')
         os.makedirs(os.path.join(self.logs_dir, f'generation_{self.gen_count}'))
 
         # dispatch job
         print('    Dispatching jobs...')
         os.popen(f"sbatch {JOB_NAME}.job" )
+        if self.surrogate_enabled:
+            print('    Preparing surrogate...')
+            all_subsurrogate_metrics = self.prepare_surrogate()
+            if all_subsurrogate_metrics is not None:
+                for i, metrics_df in enumerate(all_subsurrogate_metrics):
+                    metrics_df['gen'] = self.gen_count
+                    metrics_df['model'] = self.surrogate.models[i]['name']
+                    self.surrogate_data = pd.concat([self.surrogate_data, metrics_df], ignore_index=True)
+            self.surrogate_trusts.append(self.surrogate.trust)
+            
         print('    Waiting for jobs...')
         # wait for job to finish
         while True:
@@ -333,26 +364,154 @@ class Pipeline:
         return new_pop
     
     
-    def train_surrogates(self, cfg):
-        # takes in self.surrogate_train_df and surrogate_val_df
-        for model_dict in self.surrogate.models:
-             engine(cfg, model_dict, train_df=self.surrogate_df_train, val_df=self.surrogate_df_val) 
-        return None
+    def prepare_surrogate(self):
+        seen_gens = list(range(1, self.gen_count))
+        if self.gen_count == 1:
+            return None
+        print('    Building surrogate train and val datasets...')
+        # implement growing sliding window till gen 7 (then use prev 5 gens as val and everything before that as train)
+        if self.gen_count == 2: # use train val split from gen 1 at gen 2
+            build_dataset(os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0.2, include_only=[1])
+            train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/train_dataset.pkl')
+            val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/val_dataset.pkl')
+            subset_val_df = val_df
+        elif self.gen_count < 7: # grows here
+            build_dataset(os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=[1])
+            train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/train_dataset.pkl')
+            build_dataset(os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[1:])
+            val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/val_dataset.pkl')
+            build_dataset(os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
+            subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/val_dataset.pkl')
+        else: # slides here
+            build_dataset(os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=seen_gens[:-5])
+            train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/train_dataset.pkl')
+            build_dataset(os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-5:])
+            val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/val_dataset.pkl')
+            build_dataset(os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
+            subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/val_dataset.pkl')
+        
+        # print('++++++++++++++++++++++++')
+        # print('train size:', train_df.shape)
+        # print('val size:', val_df.shape)
+        # print('++++++++++++++++++++++++')
+        
+        calc_pool = self.surrogate.get_individuals_from_file(os.path.join(self.output_dir, 'out.csv'), hashes=val_df['hash'].to_list())
+        print('    Done!')
+        
+        print('    Training surrogate ensenble...')
+        model_dicts = self.surrogate.models
+        all_model_metrics = []
+        best_epochs = []
+        val_subsets = []
+        for model_dict in model_dicts:
+            print(f'        Training {model_dict['name']}...')
+            metrics, best_epoch, genome_scaler = engine(self.surrogate_config, model_dict, train_df, val_df, self.surrogate_weights_dir) # we want mse scores on a subset of this
+            all_model_metrics.append(metrics)
+            best_epochs.append(best_epoch)
+            val_subsets.append(model_dict['validation_subset'])    
+            print('        Done!')
+            
+        print('    Selecting best sub-surrogates...')
+        best_metrics = self.__find_best_metrics(self.objectives, all_model_metrics, best_epochs, val_subsets)
+        sub_surrogates = []
+        for objective in self.objectives.keys():
+            sub_surrogates.append(best_metrics[objective])
+            print(f'    Selected {self.surrogate.models[best_metrics[objective]]['name']} for {objective}')
+            
+        self.sub_surrogates = sub_surrogates # sub surrogates need to be in order of objectives
+        # get val scores for the selected models and store
+        ensemble_scores = {}
+        ensemble_scores['gen'] = self.gen_count-1
+        for i, surrogate in enumerate(self.sub_surrogates):
+            model_dict = self.surrogate.models[surrogate]
+            val_scores = get_val_scores(self.surrogate_config, model_dict, train_df, subset_val_df, self.surrogate_weights_dir)
+            mse_name = 'mse_'+list(self.objectives.keys())[i].replace('epoch_', '')
+            ensemble_scores[list(self.objectives.keys())[i]+'_model'] = model_dict['name']
+            ensemble_scores[mse_name] = val_scores[mse_name]
+        
+        self.surrogate_mse_scores.loc[len(self.surrogate_mse_scores)] = ensemble_scores
+        print(ensemble_scores)
+        print(self.surrogate_mse_scores)
+            
+        self.genome_scaler = genome_scaler
+        self.surrogate.trust = self.surrogate.calc_ensemble_trust(self.sub_surrogates, genome_scaler, calc_pool)
+        print('    Done!')
+        return all_model_metrics
+    
+    
+    def __find_best_metrics(self, objectives, all_model_metrics, best_epochs, val_subsets):
+        # Convert 1-based best_epochs to 0-based index
+        best_epochs = [epoch - 1 for epoch in best_epochs]
+        
+        # Retrieve the specified row from each dataframe
+        metrics = [df.iloc[epoch] for df, epoch in zip(all_model_metrics, best_epochs)]
+        
+        best_metrics = {}
+        
+        for objective, goal in objectives.items():
+            # Initialize best value and corresponding dataframe index
+            best_value = None
+            best_index = None
+            
+            for i, metric in enumerate(metrics):
+                val_headings = [self.surrogate_metrics[x] for x in val_subsets[i]]
+                surrogate_metric_name = 'mse_'+objective.replace('epoch_', '')
+                if surrogate_metric_name not in val_headings:
+                    continue
+                value = metric[surrogate_metric_name]
+                
+                # Skip if the value is NaN
+                if pd.isna(value):
+                    continue
+                
+                if best_value is None or value < best_value:
+                    best_value = value
+                    best_index = i
+            
+            best_metrics[objective] = best_index
+        
+        return best_metrics
 
 
     def downselect(self, unsustainable_pop):
         print('Downselecting...')
-        if (self.surrogate_enabled):
-            # UNTESTED STARTED SURROGATE CODE
-            to_downselect = list(unsustainable_pop.values())
-            self.surrogate.set_inferred_fitness(to_downselect)
+        if self.surrogate_enabled and self.gen_count != 1:
+            unsustainable_pop_copy = copy.deepcopy(unsustainable_pop)
+            
+            # get num individuals to be downselected by surrogate vs other technique
+            num_surrogate_select = int(self.population_size*self.surrogate.trust)
+            num_other_select = self.population_size-num_surrogate_select
+            
+            # create downselect function
+            self.toolbox.register("downselect", tools.selNSGA2, k = num_surrogate_select)
+            
+            # get surrogate ensemble inferences on unsustainable pop
+            to_downselect = list(unsustainable_pop_copy.values()) 
+            self.surrogate.set_inferred_fitness(self.sub_surrogates, self.genome_scaler, to_downselect)
+            
+            # downselect using surrogate
             downselected = self.toolbox.downselect(to_downselect)
+            
+            # create new population dict
             new_pop = {}
             for individual in downselected:
                 hash = self.__get_hash(str(individual))
-                new_pop[hash] = {'genome': str(unsustainable_pop[hash]), 'metrics': None}
+                new_pop[hash] = {'genome': str(unsustainable_pop_copy[hash]), 'metrics': None}
+                # delete surrogate selected individuals to avoid duplicates being selected by other technique
+                del unsustainable_pop_copy[hash]
+            
+            # other technique    
+            if (self.selection_method_untrusted.lower() == 'random'): # choose randomly
+                new_hashes = random.sample(list(unsustainable_pop_copy.keys()), num_other_select)
+                other_deap_pop = []
+                for hash in new_hashes:
+                    other_deap_pop.append(unsustainable_pop_copy[hash])
+                    new_pop[hash] = {'genome': str(unsustainable_pop_copy[hash]), 'metrics': None}
+           
+            # set new current pop and current deap pop
             self.current_population = new_pop
-            self.current_deap_pop = downselected
+            self.current_deap_pop = downselected + other_deap_pop
+            
         else :
             if (self.selection_method_untrusted.lower() == 'random'): # choose randomly
                 new_hashes = random.sample(list(unsustainable_pop.keys()), self.population_size)
@@ -399,6 +558,13 @@ class Pipeline:
             pickle.dump(self.elite_pool, f)
         with open(os.path.join(checkpoint_path,'hof.pkl'), 'wb') as f:
             pickle.dump(self.hall_of_fame, f)
+        if self.surrogate_enabled:
+            # store current genome scaler to be used for downselect
+            with open(os.path.join(checkpoint_path,'genome_scaler.pkl'), 'wb') as f:
+                pickle.dump(self.genome_scaler, f)
+            # store current selected sub-surrogates
+            with open(os.path.join(checkpoint_path,'sub_surrogate_selection.pkl'), 'wb') as f:
+                pickle.dump(self.sub_surrogates, f)
         # store elite pool and hof history as pickle files
         with open(os.path.join(self.output_dir,'elites_history.pkl'), 'wb') as f:
             pickle.dump(self.elite_pool_history, f)
@@ -413,6 +579,16 @@ class Pipeline:
         # get all entries from holy grail that share the same hashes as the hall of fame members
         hof_df = holy_grail_expanded[holy_grail_expanded['hash'].isin([self.__get_hash(str(genome)) for genome in self.hall_of_fame.items])]
         hof_df.to_csv(f'{self.output_dir}/hall_of_fame.csv', index=False)
+        if self.surrogate_enabled:
+            # write surrogate information to file
+            self.surrogate_data.to_csv(f'{self.output_dir}/surrogate_data.csv', index=False)
+            # write trust info
+            data = [{'gen': g, 'trust': t} for g, t in zip(list(range(1, self.gen_count+1)), self.surrogate_trusts)]
+            with open(f'{self.output_dir}/surrogate_trusts.csv', mode='w', newline='') as file:
+                writer = csv.DictWriter(file, fieldnames=['gen', 'trust'])
+                writer.writeheader()
+                writer.writerows(data)
+                
         print('Done!')
 
 
