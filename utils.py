@@ -42,7 +42,7 @@ def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="v
         pred_boxes = pred_boxes[pred_boxes[:, 4] >= conf_thresh]
 
         # apply NMS to the predictions, specify threshold and NMS implementaton 
-        pred_boxes = non_max_suppresion(pred_boxes, iou_thresh, 2, iou_type)
+        pred_boxes = non_max_suppresion(pred_boxes, iou_thresh, 3, iou_type)
         if pred_boxes.size(0) == 0:
             return {}, [], true_boxes.tolist()
 

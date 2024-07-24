@@ -85,3 +85,5 @@ surrogate_dataset_path = "surrogate_dataset"
 [data]
 # time in hours the dataset cache is valid for
 cache_thresh = 1
+# size of the dataset
+max_size = 1000

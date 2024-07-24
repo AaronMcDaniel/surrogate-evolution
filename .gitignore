@@ -11,3 +11,9 @@ analysis/graphs/
 logs/
 precog_eval.job
 eval.job
+stage_for_deletion/
+conf_dmytro.toml
+test_genome_test.py
+targets.pkl
+dmytro_metrics/
+plots/

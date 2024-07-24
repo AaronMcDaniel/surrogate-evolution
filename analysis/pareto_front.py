@@ -217,6 +217,9 @@ if __name__ == "__main__":
     #df = df[(df['uw_val_epoch_loss'] != 1000000) & (df['ciou_loss'] != 1000000) & (df['average_precision'] != -1000000)]
     df_baseline = df_baseline.dropna()
     df_surrogate = df_surrogate.dropna()
+
+    df_baseline = df_baseline.drop_duplicates(subset=['uw_val_epoch_loss', 'ciou_loss', 'average_precision'])
+    df_surrogate = df_surrogate.drop_duplicates(subset=['uw_val_epoch_loss', 'ciou_loss', 'average_precision'])
     #print(df[df['uw_val_epoch_loss'] == df['uw_val_epoch_loss'].max()])
     bounds = [df_baseline['uw_val_epoch_loss'].min(), df_baseline[df_baseline['uw_val_epoch_loss'] <= 200]['uw_val_epoch_loss'].max(), df_baseline['ciou_loss'].min(), df_baseline[df_baseline['ciou_loss'] < 1000000]['ciou_loss'].max(), df_baseline[df_baseline['average_precision'] > -1000000]['average_precision'].min(), df_baseline['average_precision'].max()]
     print(bounds)
