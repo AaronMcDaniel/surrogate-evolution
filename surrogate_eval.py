@@ -62,7 +62,7 @@ def create_metrics_df(cfg):
     ] + cfg['surrogate_metrics'])
 
 
-def engine(cfg, model_dict, train_df, val_df):
+def engine(cfg, model_dict, train_df, val_df, weights_dir):
     best_loss_metric = np.inf
     best_epoch = None
     best_epoch_num = None
@@ -108,12 +108,27 @@ def engine(cfg, model_dict, train_df, val_df):
         metrics_df = pd.concat([metrics_df, epoch_metrics_df], ignore_index=True)
     
 
-    torch.save(best_epoch.state_dict(), '/gv1/projects/GRIP_Precog_Opt/surrogates/run_weights/' + model_dict['name'] + '.pth')
-    print('Save epoch #:', best_epoch_num)    
+    torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict['name']}.pth')
+    print('        Save epoch #:', best_epoch_num)    
 
     return metrics_df, best_epoch_num, train_dataset.genomes_scaler
 
-            
+
+def get_val_scores(cfg, model_dict, train_df, val_df, weights_dir):
+    # pull surrogate train/eval config attributes
+    batch_size = cfg['surrogate_batch_size']
+    # define subset of metrics to train on and prepare data accordingly
+    metrics_subset = model_dict['metrics_subset']
+    train_loader, val_loader, train_dataset, val_dataset = prepare_data(model_dict, batch_size, train_df, val_df)
+    max_metrics = train_dataset.max_metrics
+    min_metrics = train_dataset.min_metrics
+
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    model, optimizer, scheduler, scaler, val_subset = build_configuration(model_dict=model_dict, device=device)
+    model.load_state_dict(torch.load(f'{weights_dir}/{model_dict['name']}.pth', map_location=device)) 
+    epoch_metrics = val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, min_metrics)
+    return epoch_metrics               
+
 
 def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics):
     model.train()

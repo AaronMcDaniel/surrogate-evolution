@@ -33,7 +33,7 @@ def ensure_deap_classes(objectives, codec_config):
 
 
 class Surrogate():
-    def __init__(self, config_dir):
+    def __init__(self, config_dir, weights_dir):
         # Begin by loading config attributes
         configs = toml.load(config_dir)
         surrogate_config = configs["surrogate"]
@@ -118,7 +118,7 @@ class Surrogate():
         self.trust_calc_ratio = surrogate_config["trust_calc_ratio"]
         self.objectives = pipeline_config["objectives"]
         self.genome_epochs = model_config["train_epochs"]
-        self.best_epoch_criteria = pipeline_config["best_epoch_criteria"]
+        self.weights_dir = weights_dir
         
         self.pset = primitives.pset
         self.trust = 0
@@ -257,7 +257,7 @@ class Surrogate():
         model = model(output_size=output_size, **filtered_params).to(self.device)
         
         # Load model weights
-        model.load_state_dict(torch.load(f'/gv1/projects/GRIP_Precog_Opt/surrogates/run_weights/{model_name}.pth', map_location=self.device))
+        model.load_state_dict(torch.load(f'{self.weights_dir}/{model_name}.pth', map_location=self.device))
         model.eval()
         
         all_inferences = []
