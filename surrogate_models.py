@@ -349,6 +349,51 @@ class KAN(torch.nn.Module):
         )
 
 
+# potential classifier model
+class BinaryClassifier(nn.Module):
+    def __init__(
+            self, 
+            input_size=1021, 
+            hidden_sizes=[512, 256], 
+            activation_layer=nn.ReLU, 
+            norm_layer=nn.BatchNorm1d, 
+            bias=True, inplace=None, 
+            dropout=0.3
+    ):
+        super(BinaryClassifier, self).__init__()
+        self.activation_layer = activation_layer
+        params = {} if inplace is None else {"inplace": inplace}
+        layers = []
+
+        # Build intermediate hidden layers, but not output layer
+        in_dim = input_size
+        for hidden_dim in hidden_sizes:
+            layers.append(nn.Linear(in_dim, hidden_dim, bias=bias))
+            if norm_layer is not None:
+                layers.append(norm_layer(hidden_dim))
+            layers.append(activation_layer(**params))
+            layers.append(nn.Dropout(dropout, **params))
+            in_dim = hidden_dim
+
+        # Build output layer for binary classification
+        layers.append(nn.Linear(in_dim, 1, bias=bias))
+        layers.append(nn.Sigmoid())
+        self.mlp = nn.Sequential(*layers)
+        self.apply(self._init_weights)
+
+    def forward(self, x):
+        y = self.mlp(x)
+        return y
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            if self.activation_layer in [nn.ReLU, nn.LeakyReLU]:
+                nn.init.kaiming_normal_(module.weight, nonlinearity='relu')
+            elif self.activation_layer in [nn.Sigmoid, nn.Tanh]:
+                nn.init.xavier_normal_(module.weight)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+
 # model = KAN([1021, 2048, 512, 256, 12])
 # device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 # model.to(device)
