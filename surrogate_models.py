@@ -1,3 +1,4 @@
+import copy
 import torch.nn as nn
 import torch.nn.functional as F
 import math
@@ -87,7 +88,6 @@ class KANLinear(torch.nn.Module):
         self.out_features = out_features
         self.grid_size = grid_size
         self.spline_order = spline_order
-
         h = (grid_range[1] - grid_range[0]) / grid_size
         grid = (
             (
@@ -174,7 +174,7 @@ class KANLinear(torch.nn.Module):
         )
         return bases.contiguous()
 
-    def curve2coeff(self, x: torch.Tensor, y: torch.Tensor):
+    def curve2coeff(self, x: torch.Tensor, y: torch.Tensor, regularization: float=1e-6):
         """
         Compute the coefficients of the curve that interpolates the given points.
 
@@ -187,17 +187,17 @@ class KANLinear(torch.nn.Module):
         """
         assert x.dim() == 2 and x.size(1) == self.in_features
         assert y.size() == (x.size(0), self.in_features, self.out_features)
+        A = self.b_splines(x).transpose(0, 1).float()  # (in_features, batch_size, grid_size + spline_order)
+        B = y.transpose(0, 1).float()  # (in_features, batch_size, out_features)
 
-        A = self.b_splines(x).transpose(
-            0, 1
-        )  # (in_features, batch_size, grid_size + spline_order)
-        B = y.transpose(0, 1)  # (in_features, batch_size, out_features)
-        solution = torch.linalg.lstsq(
-            A, B
-        ).solution  # (in_features, grid_size + spline_order, out_features)
-        result = solution.permute(
-            2, 0, 1
-        )  # (out_features, in_features, grid_size + spline_order)
+        # apply ridge regularization to A
+        # breakpoint()
+        # I = torch.eye(A.size(-1), device=A.device, dtype=A.dtype)
+        # I = I.unsqueeze(0).unsqueeze(0)
+        # A_reg = A.permute(0, 2, 1) + regularization * I
+
+        solution = torch.linalg.lstsq(A, B).solution  # (in_features, grid_size + spline_order, out_features)
+        result = solution.permute(2, 0, 1)  # (out_features, in_features, grid_size + spline_order)
 
         assert result.size() == (
             self.out_features,
@@ -218,7 +218,6 @@ class KANLinear(torch.nn.Module):
         assert x.size(-1) == self.in_features
         original_shape = x.shape
         x = x.reshape(-1, self.in_features)
-
         base_output = F.linear(self.base_activation(x), self.base_weight)
         spline_output = F.linear(
             self.b_splines(x).view(x.size(0), -1),
@@ -315,11 +314,12 @@ class KAN(torch.nn.Module):
         base_activation=torch.nn.SiLU,
         grid_eps=0.02,
         grid_range=[-1, 1],
-    ):
+    ):  
         super(KAN, self).__init__()
         self.grid_size = grid_size
         self.spline_order = spline_order
 
+        hidden_sizes = copy.deepcopy(hidden_sizes)
         hidden_sizes.append(output_size)
         hidden_sizes.insert(0, input_size)
 
@@ -341,6 +341,7 @@ class KAN(torch.nn.Module):
             )
 
     def forward(self, x: torch.Tensor, update_grid=False):
+        x = torch.tanh(x)
         for layer in self.layers:
             if update_grid:
                 layer.update_grid(x)
@@ -352,21 +353,3 @@ class KAN(torch.nn.Module):
             layer.regularization_loss(regularize_activation, regularize_entropy)
             for layer in self.layers
         )
-
-
-# model = KAN([1021, 2048, 512, 256, 12])
-# device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-# model.to(device)
-# data = torch.randn((16, 1021), dtype=torch.float32, device=device)
-# label = torch.randn((16, 12), dtype=torch.float32, device=device)
-# model.train()
-# output = model(data)
-# train_criterion = nn.L1Loss()
-# loss = train_criterion(output, label)
-# print(loss)
-# val_criterion = nn.L1Loss(reduction='none')
-# # (16, 12) matrix of 12 mse losses for each image in batch of 16
-# loss_matrix = val_criterion(output, label)
-# # meaned losses per metric
-# loss_means = torch.mean(loss_matrix, dim=0)
-# print(loss_means)
