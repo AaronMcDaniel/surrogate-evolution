@@ -405,7 +405,7 @@ class Pipeline:
         val_subsets = []
         for model_dict in model_dicts:
             print(f'        Training {model_dict['name']}...')
-            metrics, best_epoch, genome_scaler = engine(self.surrogate_config, model_dict, train_df, val_df, self.surrogate_weights_dir) # we want mse scores on a subset of this
+            metrics, best_epoch_metrics, best_epoch, genome_scaler = engine(self.surrogate_config, model_dict, train_df, val_df, self.surrogate_weights_dir) # we want mse scores on a subset of this
             all_model_metrics.append(metrics)
             best_epochs.append(best_epoch)
             val_subsets.append(model_dict['validation_subset'])    

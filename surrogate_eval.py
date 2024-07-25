@@ -66,6 +66,7 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
     best_loss_metric = np.inf
     best_epoch = None
     best_epoch_num = None
+    best_epoch_metrics = None
     # pull surrogate train/eval config attributes
     num_epochs = cfg['surrogate_train_epochs']
     batch_size = cfg['surrogate_batch_size']
@@ -101,6 +102,7 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
             best_loss_metric = loss_metric
             best_epoch = model
             best_epoch_num = epoch
+            best_epoch_metrics = epoch_metrics
         # update metrics df
         epoch_metrics['epoch_num'] = epoch
         epoch_metrics['train_loss'] = train_epoch_loss
@@ -111,7 +113,7 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
     torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict['name']}.pth')
     print('        Save epoch #:', best_epoch_num)    
 
-    return metrics_df, best_epoch_num, train_dataset.genomes_scaler
+    return metrics_df, best_epoch_metrics, best_epoch_num, train_dataset.genomes_scaler
 
 
 def get_val_scores(cfg, model_dict, train_df, val_df, weights_dir):
