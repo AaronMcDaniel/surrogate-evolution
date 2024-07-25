@@ -187,9 +187,12 @@ def custom_train_one_epoch(model, device, train_loader, optimizer, scheduler, sc
     return train_epoch_loss
 
 
-def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, max_batch=None):
+def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, max_batch=None, epoch_stop=None):
     os.popen('rm -rf images')
     os.popen('rm -rf plots')
+    if epoch_stop is not None and epoch_stop != 9:
+        return
+    print(epoch_stop)
     confidences, confusion_status = [], []
     val_epoch_loss, iou_loss, giou_loss, diou_loss, ciou_loss, center_loss, size_loss, obj_loss = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     num_preds, num_labels, total_tp, total_fp, total_fn = 0, 0, 0, 0, 0
@@ -256,6 +259,7 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
     obj_loss /= (num_preds + 1e-9)
     uw_val_epoch_loss = iou_loss + giou_loss + diou_loss + ciou_loss + center_loss + size_loss + obj_loss
     epoch_f1, epoch_pre, epoch_rec = u.f1_score(total_tp, total_fn, total_fp)
+    breakpoint()
     pre_curve, rec_curve = u.precision_recall_curve(confidences, confusion_status, num_labels)
     epoch_avg_pre = u.AP(pre_curve, rec_curve)
     u.plot_PR_curve(pre_curve, rec_curve, epoch_avg_pre)
@@ -285,8 +289,8 @@ if __name__ == '__main__':
     iou_thresh = 0.0
     conf_thresh = 0.2
     iou_type = "ciou"
-    train_seed = 1
-    val_seed = 1
+    train_seed = 0
+    val_seed = 0
     batch_size = 2
     num_epochs = 1
 
@@ -319,13 +323,13 @@ if __name__ == '__main__':
     train_loader, val_loader = e.prepare_data(all_config, train_seed, val_seed, batch_size)
     model = load_model_weights(model, device, os.path.join(hash_path, 'best_epoch.pth'))
 
-    epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, max_batch=500)
+    # epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, max_batch=500)
 
-    # for i in range(5):
-    #     train_epoch_loss = custom_train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler,
-    #                                           custom_loss=True, loss_weights=loss_weights, iou_type=iou_type, max_batch=500)
-    #     print(f"epoch {i} train loss: {train_epoch_loss}")
-    #     epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, max_batch=30)
-    #     print(f"epoch {i} eval metrics: {epoch_metrics}")
+    for i in range(10):
+        # train_epoch_loss = custom_train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler,
+        #                                       custom_loss=True, loss_weights=loss_weights, iou_type=iou_type, max_batch=500)
+        # print(f"epoch {i} train loss: {train_epoch_loss}")
+        epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, max_batch=500, epoch_stop=i)
+        # print(f"epoch {i} eval metrics: {epoch_metrics}")
 
     

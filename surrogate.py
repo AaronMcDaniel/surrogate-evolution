@@ -43,12 +43,6 @@ class Surrogate():
         self.models = [
             {
                 'name': 'best_overall',
-                # 'dropout': 0.0,
-                # 'hidden_sizes': [2048, 1024, 512],
-                # 'optimizer': optim.RMSprop,
-                # 'lr': 0.01,
-                # 'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
-                # 'metrics_subset': [0, 4, 11], 
                 'dropout': 0.2,
                 'hidden_sizes': [2048, 1024, 512],
                 'optimizer': optim.Adam,
@@ -60,14 +54,6 @@ class Surrogate():
             },
             {
                 'name': 'best_mse_uw_val_loss',
-                # 'dropout': 0.6,
-                # 'hidden_sizes': [2048, 1024, 512],
-                # 'optimizer': optim.Adam,
-                # 'lr': 0.1,
-                # 'scheduler': optim.lr_scheduler.CosineAnnealingLR,
-                # 'metrics_subset': [0, 4, 11],
-                # 'validation_subset': [0],
-                # 'model': sm.MLP
                 'dropout': 0.2,
                 'hidden_sizes': [2048, 1024, 512],
                 'optimizer': optim.Adam,
@@ -79,14 +65,6 @@ class Surrogate():
             },
             {
                 'name': 'best_mse_ciou_loss',
-                # 'dropout': 0.6,
-                # 'hidden_sizes': [2048, 1024, 512],
-                # 'optimizer': optim.Adam,
-                # 'lr': 0.1,
-                # 'scheduler': optim.lr_scheduler.StepLR,
-                # 'metrics_subset': [0, 4, 11],
-                # 'validation_subset': [4],
-                # 'model': sm.MLP
                 'dropout': 0.4,
                 'hidden_sizes': [1024, 512],
                 'optimizer': optim.Adam,
@@ -98,12 +76,6 @@ class Surrogate():
             },
             {
                 'name': 'best_mse_average_precision',
-                # 'dropout': 0.6,
-                # 'hidden_sizes': [2048, 1024, 512],
-                # 'optimizer': optim.RMSprop,
-                # 'lr': 0.01,
-                # 'scheduler': optim.lr_scheduler.CosineAnnealingLR,
-                # 'metrics_subset': [11],
                 'dropout': 0.0,
                 'hidden_sizes': [512, 256],
                 'optimizer': optim.Adam,
@@ -112,7 +84,119 @@ class Surrogate():
                 'metrics_subset': [11],
                 'validation_subset': [11],
                 'model': sm.MLP
-            }            
+            },
+            # {
+            #     'name': 'kan_best_uw_val',
+            #     'hidden_sizes': [2048, 1024, 512],
+            #     'optimizer': optim.SGD,
+            #     'lr': 0.01,
+            #     'scheduler': optim.lr_scheduler.StepLR,
+            #     'metrics_subset': [0, 4, 11],
+            #     'validation_subset': [0, 4, 11],
+            #     'model': sm.KAN,
+            #     'scale_spline': 1.0,
+            #     'scale_noise': 0.25,
+            #     'spline_order': 4
+            # },
+            # {
+            #     'name': 'kan_best_ciou',
+            #     'hidden_sizes': [2048, 512],
+            #     'optimizer': optim.AdamW,
+            #     'lr': 0.01,
+            #     'scheduler': optim.lr_scheduler.StepLR,
+            #     'metrics_subset': [0, 4, 11],
+            #     'validation_subset': [0, 4, 11],
+            #     'model': sm.KAN,
+            #     'scale_spline': 2.0,
+            #     'scale_noise': 0.25,
+            #     'spline_order': 4
+            # },  
+            # {
+            #     'name': 'kan_best_ap',
+            #     'hidden_sizes': [512, 256],
+            #     'optimizer': optim.AdamW,
+            #     'lr': 0.01,
+            #     'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+            #     'metrics_subset': [11],
+            #     'validation_subset': [11],
+            #     'model': sm.KAN,
+            #     'scale_spline': 2.0,
+            #     'scale_noise': 0.25,
+            #     'spline_order': 4
+            # },
+            # kan trained on outlier-filtered dataset of uw_val_loss
+            # {'name': 'filtered_kan_uwv', 
+            # 'model': sm.KAN, 
+            # 'hidden_sizes': [], 
+            # 'optimizer': torch.optim.AdamW, 
+            # 'lr': 0.001, 
+            # 'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR, 
+            # 'metrics_subset': [0], 
+            # 'validation_subset': [0], 
+            # 'scale_noise': 0.1, 
+            # 'spline_order': 2,
+            # 'grid_size': 1000
+            # },
+            # # kan trained on outlier-filtered dataset of ciou_loss
+            # {'name': 'filtered_kan_ciou', 
+            # 'model': sm.KAN, 
+            # 'hidden_sizes': [], 
+            # 'optimizer': torch.optim.AdamW, 
+            # 'lr': 0.001, 
+            # 'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR, 
+            # 'metrics_subset': [4], 
+            # 'validation_subset': [4], 
+            # 'scale_noise': 0.1, 
+            # 'spline_order': 2,
+            # 'grid_size': 1000
+            # },
+            # # kan trained on outlier-filtered dataset of ap
+            # {'name': 'filtered_kan_ap', 
+            # 'model': sm.KAN, 
+            # 'hidden_sizes': [], 
+            # 'optimizer': torch.optim.AdamW, 
+            # 'lr': 0.001, 
+            # 'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR, 
+            # 'metrics_subset': [11], 
+            # 'validation_subset': [11], 
+            # 'scale_noise': 0.1, 
+            # 'spline_order': 2,
+            # 'grid_size': 1000
+            # },
+            {'name': 'kan_best_uwvl', 
+              'model': sm.KAN, 
+              'hidden_sizes': [512, 256], 
+              'optimizer': torch.optim.SGD, 
+              'lr': 0.001, 
+              'scheduler': torch.optim.lr_scheduler.StepLR, 
+              'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 
+              'validation_subset': [0], 
+              'scale_noise': 0.1, 
+              'spline_order': 2
+            },
+            {'name': 'kan_best_ciou', 
+              'model': sm.KAN, 
+              'hidden_sizes': [512, 256], 
+              'optimizer': torch.optim.SGD, 
+              'lr': 0.001, 
+              'scheduler': torch.optim.lr_scheduler.StepLR, 
+              'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 
+              'validation_subset': [4], 
+              'scale_noise': 0.1, 
+              'spline_order': 2
+            },
+            {
+                'name': 'kan_best_ap',
+                'hidden_sizes': [512, 256],
+                'optimizer': optim.SGD,
+                'lr': 0.001,
+                'scheduler': optim.lr_scheduler.StepLR,
+                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                'validation_subset': [11],
+                'model': sm.KAN,
+                'scale_noise': 0.1,
+                'spline_order': 2
+            }
         ]
         self.classifier_models = [
             {
@@ -208,8 +292,8 @@ class Surrogate():
         intersection = selected.intersection(surrogate_selected)
         trust = len(intersection)/len(selected)   #len(selected.union(surrogate_selected))
         return trust
-    
-    # The calc_pool is a list of deap individuals with calculated fitnesses. The model infers the metrics and 
+
+# The calc_pool is a list of deap individuals with calculated fitnesses. The model infers the metrics and 
     # we see the intersection in selections
     # def calc_trust(self, model_idx, genome_scaler, calc_pool):        
     #     # create copy of calc_pool
@@ -254,7 +338,6 @@ class Surrogate():
                     encoded_genomes.append(np.clip(encoded_genome, -1000, 1000)) 
                 except:
                     encoded_genomes.append(np.full(1021, np.nan))
-        
         # Get model dictionary and initialize the model
         model_dict = self.models[model_idx]
         model = model_dict['model']
@@ -265,7 +348,8 @@ class Surrogate():
         output_size = len(model_dict['metrics_subset'])
         sig = inspect.signature(model.__init__)
         filtered_params = {k: v for k, v in model_dict.items() if k in sig.parameters}
-        model = model(output_size=output_size, **filtered_params).to(self.device)
+        model = model(output_size=output_size, **filtered_params)
+        model = model.to(self.device)
         
         # Load model weights
         model.load_state_dict(torch.load(f'{self.weights_dir}/{model_name}.pth', map_location=self.device))
@@ -287,6 +371,7 @@ class Surrogate():
             genome = torch.tensor(genome, dtype=torch.float32, device=self.device).unsqueeze(0)
             with torch.no_grad():
                 inference = model(genome)
+                inference = torch.clamp(inference, min=(torch.ones_like(inference) * -300.0), max=(torch.ones_like(inference) * 300.0))
                 # here we have all values in the metrics subset inferred on
                 inference = inference.squeeze()
                 inference = inference.tolist()
@@ -350,6 +435,10 @@ class Surrogate():
                 fitness_values[:, i] = np.where(np.isnan(fitness_values[:, i]), 300, fitness_values[:, i])
             elif self.objectives[key] > 0:
                 fitness_values[:, i] = np.where(np.isnan(fitness_values[:, i]), -300, fitness_values[:, i])
+            
+        valid_rows = ~((fitness_values == 300) | (fitness_values == -300)).any(axis=1)
+        fitness_values = fitness_values[valid_rows]
+        genomes = genomes[valid_rows]
 
         # Convert genome string to deap individual
         individuals = [
@@ -366,7 +455,6 @@ class Surrogate():
     
     def __get_hash(self, s):
         return hashlib.shake_256(s.encode()).hexdigest(5)
-
 # surrogate = Surrogate('conf.toml')
 # individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv", generations=[21, 22, 23, 24])
 # train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')

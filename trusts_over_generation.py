@@ -2,18 +2,19 @@
 Script to calculate surrogate trustworthiness over generation off of an existing run
 '''
 
+import os
 import pickle
 import pandas as pd
 import toml
 from surrogate import Surrogate
-from surrogate_dataset import build_dataset
+from surrogate_dataset import SurrogateDataset, build_dataset
 from surrogate_eval import engine
 
 NUM_GENERATIONS = 20
 RUN_FOLDER = '/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution'
 CONFIG_DIR = 'conf.toml'
 DATASETS_FOLDER = 'test/trust_gens_datasets' # temp directory to store datasets
-SUB_SURROGATES = [1,2,3]
+SUB_SURROGATES = [4, 5, 6]
 TRUSTS_DIR = 'test/trusts_over_gens.pkl'
 
 configs = toml.load(CONFIG_DIR)

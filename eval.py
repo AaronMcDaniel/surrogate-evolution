@@ -405,10 +405,12 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
                 size_loss += loss_tensor[5]
                 obj_loss += loss_tensor[6]
 
-                for _, (true_pos, _) in matches.items():
+                curve_matches, curve_fp, _ = u.match_boxes(pred_boxes, true_boxes, iou_thresh, 0.0, 'val', iou_type)
+
+                for _, (true_pos, _) in curve_matches.items():
                     confidences.append(true_pos[4].item())
                     confusion_status.append(True)
-                for false_pos in fp:
+                for false_pos in curve_fp:
                     confidences.append(false_pos[4].item())
                     confusion_status.append(False)
 
