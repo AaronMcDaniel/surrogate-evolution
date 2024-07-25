@@ -237,19 +237,23 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
 # config_path = 'conf.toml'
 # configs = toml.load(config_path)
 # cfg = configs['surrogate']
-# train_df = pd.read_pickle('surrogate_dataset/filtered_train_dataset.pkl')
-# val_df = pd.read_pickle('surrogate_dataset/filtered_val_dataset.pkl')
+
+# # FILTERED DATASET TESTING
+# filt_train_df = pd.read_pickle('surrogate_dataset/filtered_train_dataset.pkl')
+# filt_val_df = pd.read_pickle('surrogate_dataset/filtered_val_dataset.pkl')
 # model_dict1 = {'name': 'kan_experiment', 
 #               'model': sm.KAN, 
-#               'hidden_sizes': [2048, 1024], 
+#               'hidden_sizes': [], 
 #               'optimizer': torch.optim.AdamW, 
-#               'lr': 0.001, 
+#               'lr': 0.1, 
 #               'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR, 
-#               'metrics_subset': [0, 4, 11], 
-#               'validation_subset': [0, 4, 11], 
-#               'scale_noise': 0.5, 
-#               'spline_order': 3,
-#               'grid_size': 10
+#               'metrics_subset': [11], 
+#               'validation_subset': [11], 
+#               'scale_noise': 0.01, 
+#               'spline_order': 1,
+#               'grid_size': 1000,
+#               'scale_base': 1.0,
+#               'scale_spline': 1.0
 #               }
 
-# print(engine(cfg, model_dict1, train_df, val_df))
+# print(engine(cfg, model_dict1, filt_train_df, filt_val_df, weights_dir='test'))

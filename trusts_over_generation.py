@@ -14,13 +14,14 @@ NUM_GENERATIONS = 20
 RUN_FOLDER = '/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution'
 CONFIG_DIR = 'conf.toml'
 DATASETS_FOLDER = 'test/trust_gens_datasets' # temp directory to store datasets
-SUB_SURROGATES = [4, 5, 6]
+SUB_SURROGATES = [-3, -2, -1]
 TRUSTS_DIR = 'test/trusts_over_gens.pkl'
+WEIGHTS_DIR = 'test'
 
 configs = toml.load(CONFIG_DIR)
 surrogate_config = configs["surrogate"]
 
-surrogate = Surrogate(CONFIG_DIR)
+surrogate = Surrogate(CONFIG_DIR, WEIGHTS_DIR)
 seen_gens = []
 trusts = []
 
@@ -59,7 +60,7 @@ for i in range(1, NUM_GENERATIONS+1):
     model_dicts = [surrogate.models[i] for i in SUB_SURROGATES]
     for model_dict in model_dicts:
         print(f'    Training {model_dict['name']}...')
-        metrics, best_epoch_num, genome_scaler = engine(surrogate_config, model_dict, train_df, val_df)    
+        metrics, best_epoch_num, genome_scaler = engine(surrogate_config, model_dict, train_df, val_df, WEIGHTS_DIR)    
     
     print('Getting trust score...')
     surrogate.trust = surrogate.calc_ensemble_trust(SUB_SURROGATES, genome_scaler, calc_pool)
