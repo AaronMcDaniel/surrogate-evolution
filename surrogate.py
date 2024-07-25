@@ -198,6 +198,17 @@ class Surrogate():
                 'spline_order': 2
             }
         ]
+        self.classifier_models = [
+            {
+                'name': 'fail_predictor_3000',
+                'dropout': 0.2,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.Adam,
+                'lr': 0.1,
+                'scheduler': optim.lr_scheduler.StepLR,
+                'model': sm.BinaryClassifier
+            }
+        ]
         self.trust_calc_strategy = surrogate_config["trust_calc_strategy"]
         self.trust_calc_ratio = surrogate_config["trust_calc_ratio"]
         self.objectives = pipeline_config["objectives"]

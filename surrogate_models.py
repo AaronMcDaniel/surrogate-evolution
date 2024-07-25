@@ -383,7 +383,6 @@ class BinaryClassifier(nn.Module):
 
         # Build output layer for binary classification
         layers.append(nn.Linear(in_dim, 1, bias=bias))
-        layers.append(nn.Sigmoid())
         self.mlp = nn.Sequential(*layers)
         self.apply(self._init_weights)
 
