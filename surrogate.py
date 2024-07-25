@@ -13,6 +13,8 @@ import torch
 import torch.optim as optim
 from sklearn.preprocessing import StandardScaler
 import surrogate_dataset as sd
+import classifier_surrogate_eval as cse
+import surrogate_eval as rse
 import random
 
 
@@ -33,10 +35,11 @@ def ensure_deap_classes(objectives, codec_config):
 
 
 class Surrogate():
-    def __init__(self, config_dir, weights_dir):
+    def __init__(self, config_dir, weights_dir): # this config is the overall config
         # Begin by loading config attributes
         configs = toml.load(config_dir)
         surrogate_config = configs["surrogate"]
+        self.surrogate_config = surrogate_config
         pipeline_config = configs["pipeline"]
         codec_config = configs["codec"]
         model_config = configs["model"]
@@ -85,84 +88,6 @@ class Surrogate():
                 'validation_subset': [11],
                 'model': sm.MLP
             },
-            # {
-            #     'name': 'kan_best_uw_val',
-            #     'hidden_sizes': [2048, 1024, 512],
-            #     'optimizer': optim.SGD,
-            #     'lr': 0.01,
-            #     'scheduler': optim.lr_scheduler.StepLR,
-            #     'metrics_subset': [0, 4, 11],
-            #     'validation_subset': [0, 4, 11],
-            #     'model': sm.KAN,
-            #     'scale_spline': 1.0,
-            #     'scale_noise': 0.25,
-            #     'spline_order': 4
-            # },
-            # {
-            #     'name': 'kan_best_ciou',
-            #     'hidden_sizes': [2048, 512],
-            #     'optimizer': optim.AdamW,
-            #     'lr': 0.01,
-            #     'scheduler': optim.lr_scheduler.StepLR,
-            #     'metrics_subset': [0, 4, 11],
-            #     'validation_subset': [0, 4, 11],
-            #     'model': sm.KAN,
-            #     'scale_spline': 2.0,
-            #     'scale_noise': 0.25,
-            #     'spline_order': 4
-            # },  
-            # {
-            #     'name': 'kan_best_ap',
-            #     'hidden_sizes': [512, 256],
-            #     'optimizer': optim.AdamW,
-            #     'lr': 0.01,
-            #     'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
-            #     'metrics_subset': [11],
-            #     'validation_subset': [11],
-            #     'model': sm.KAN,
-            #     'scale_spline': 2.0,
-            #     'scale_noise': 0.25,
-            #     'spline_order': 4
-            # },
-            # kan trained on outlier-filtered dataset of uw_val_loss
-            # {'name': 'filtered_kan_uwv', 
-            # 'model': sm.KAN, 
-            # 'hidden_sizes': [], 
-            # 'optimizer': torch.optim.AdamW, 
-            # 'lr': 0.001, 
-            # 'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR, 
-            # 'metrics_subset': [0], 
-            # 'validation_subset': [0], 
-            # 'scale_noise': 0.1, 
-            # 'spline_order': 2,
-            # 'grid_size': 1000
-            # },
-            # # kan trained on outlier-filtered dataset of ciou_loss
-            # {'name': 'filtered_kan_ciou', 
-            # 'model': sm.KAN, 
-            # 'hidden_sizes': [], 
-            # 'optimizer': torch.optim.AdamW, 
-            # 'lr': 0.001, 
-            # 'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR, 
-            # 'metrics_subset': [4], 
-            # 'validation_subset': [4], 
-            # 'scale_noise': 0.1, 
-            # 'spline_order': 2,
-            # 'grid_size': 1000
-            # },
-            # # kan trained on outlier-filtered dataset of ap
-            # {'name': 'filtered_kan_ap', 
-            # 'model': sm.KAN, 
-            # 'hidden_sizes': [], 
-            # 'optimizer': torch.optim.AdamW, 
-            # 'lr': 0.001, 
-            # 'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR, 
-            # 'metrics_subset': [11], 
-            # 'validation_subset': [11], 
-            # 'scale_noise': 0.1, 
-            # 'spline_order': 2,
-            # 'grid_size': 1000
-            # },
             {'name': 'kan_best_uwvl', 
               'model': sm.KAN, 
               'hidden_sizes': [512, 256], 
@@ -214,6 +139,8 @@ class Surrogate():
         self.objectives = pipeline_config["objectives"]
         self.genome_epochs = model_config["train_epochs"]
         self.weights_dir = weights_dir
+        self.num_epochs = surrogate_config['surrogate_train_epochs']
+        self.batch_size = surrogate_config['surrogate_batch_size']
         
         self.pset = primitives.pset
         self.trust = 0
@@ -455,7 +382,40 @@ class Surrogate():
     
     def __get_hash(self, s):
         return hashlib.shake_256(s.encode()).hexdigest(5)
-# surrogate = Surrogate('conf.toml')
+    
+    
+    # trains all the classifiers and regressors and stores their individual weights and metrics
+    def train(self, classifier_train_df, classifier_val_df, regressor_train_df, regressor_val_df):
+        scores = {
+            'classifiers': {},
+            'regressors': {}
+        }
+        genome_scaler = None
+        # loop through the classifier models
+        for classifier_dict in self.classifier_models:
+            metrics, gs = cse.engine(self.surrogate_config, classifier_dict, classifier_train_df, classifier_val_df, self.weights_dir)
+            if genome_scaler is None: genome_scaler = gs
+            scores['classifiers'][classifier_dict['name']] = metrics
+               
+        for regressor_dict in self.models:
+            metrics, best_epoch_metrics, gs = rse.engine(self.surrogate_config, regressor_dict, regressor_train_df, regressor_val_df, self.weights_dir)
+            if genome_scaler is None: genome_scaler = gs
+            scores['regressors'][classifier_dict['name']] = best_epoch_metrics
+            
+        return scores, genome_scaler
+    
+    
+    # val models is expected to be a tuple where the first value is the classifier model index and the second is the regressor model index
+    def combined_val(self, val_models, val_df, genome_scaler): 
+        pass
+    
+    
+    # inference models works similarly to val models
+    def get_inferences(self, inference_models, inference_df, genome_scaler):
+        pass
+    
+    
+# surrogate = Surrogate('conf.toml', 'test/weights/surrogate_weights')
 # individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv", generations=[21, 22, 23, 24])
 # train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')
 # train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=[0, 4, 11])
