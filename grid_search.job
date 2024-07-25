@@ -6,9 +6,10 @@
 #SBATCH --time=2-00:00
 #SBATCH --output="/gv1/projects/GRIP_Precog_Opt/surrogates/KAN/gs_logs/gs_outputs.%A.%a.log"
 #SBATCH --error="/gv1/projects/GRIP_Precog_Opt/surrogates/KAN/gs_logs/gs_error.%A.%a.log"
-#SBATCH --array=0-5759%50
+#SBATCH --array=0-5759%200
+#SBATCH --exclude=ice139,ice146,ice200,ice180,ice137
 
 module load anaconda3/2023.07
 module load cuda/12.2.2
 
-conda run -n tv1 --no-capture-output python -u grid_search.py -cn $((SLURM_ARRAY_TASK_ID))
+conda run -n tv1 --no-capture-output python -u grid_search.py -cn $((SLURM_ARRAY_TASK_ID)) -o 'false'

@@ -26,7 +26,7 @@ def engine(cfg, model_str, param_combo, combo_num):
     max_metrics = train_dataset.max_metrics
     min_metrics = train_dataset.min_metrics
 
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    device = torch.device('cpu')
     model, optimizer, scheduler, scaler = build_configuration(model_str=model_str, device=device, param_combo=param_combo)
 
     # create metrics_df
@@ -158,9 +158,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-cn', '--combo_num', type=int, required=True, default=None)
     parser.add_argument('-cp', '--cfg_path', type=str, required=False, default='/home/tthakur9/precog-opt-grip/conf.toml')
+    parser.add_argument('-o', '--overwrite', type=str, required=False, default='true')
     args = parser.parse_args()
     combo_num = args.combo_num
     cfg_path = args.cfg_path
+    overwrite = args.overwrite
     all_cfg = toml.load(cfg_path)
     cfg = all_cfg['surrogate']
     model_str = "KAN"
@@ -192,10 +194,13 @@ if __name__ == '__main__':
     param_values = param_grid.values()
     combinations = list(itertools.product(*param_values))
     combinations_dicts = [dict(zip(param_names, combo)) for combo in combinations]
-
-    # run train/val engine with specific parameter combination
-    if combo_num is not None and combo_num < len(combinations_dicts):
-        combo = combinations_dicts[combo_num]
-        engine(cfg=cfg, model_str=model_str, param_combo=combo, combo_num=combo_num)
-    else:
+    if combo_num is None or combo_num >= len(combinations_dicts):
         print(f'No more {model_str} parameter combinations to try.')
+    else:
+        combo = combinations_dicts[combo_num]
+        if overwrite == 'true':
+            engine(cfg=cfg, model_str=model_str, param_combo=combo, combo_num=combo_num)
+        else:
+            check_path = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/gs_combos/combo{combo_num}_metrics.csv'
+            if not os.path.exists(check_path):
+                engine(cfg=cfg, model_str=model_str, param_combo=combo, combo_num=combo_num)
