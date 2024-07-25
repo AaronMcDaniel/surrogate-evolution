@@ -9,5 +9,7 @@ codec_tester.py
 find_max_params.py
 analysis/graphs/
 logs/
-precog_eval.job
-eval.job
+*.job
+!main.job
+!grid_search.job
+!re_eval.job

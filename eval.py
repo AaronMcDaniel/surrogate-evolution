@@ -56,7 +56,7 @@ def prepare_data(cfg, train_seed, val_seed, batch_size=5):
         max_size = cfg['max_size']
     except KeyError:
         pass 
-    train_dataset = data.AOTDataset('train', seed=train_seed, string=1, cache_thresh=cache_thresh, max_size=max_size)
+    train_dataset = data.AOTDataset('train', seed=train_seed, string=1, cache_thresh=cache_thresh)
     val_dataset = data.AOTDataset('val', seed=val_seed, string=1, cache_thresh=cache_thresh, max_size=max_size)
     train_sampler = data.AOTSampler(train_dataset, batch_size, train_seed)
     val_sampler = data.AOTSampler(val_dataset, batch_size, val_seed)
@@ -306,7 +306,7 @@ def engine(cfg, genome):
         epoch_preds = {}
 
         train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, loss_weights, iou_type, max_batch=batches_per_epoch)
-        epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds, max_batch=batches_per_epoch)
+        epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds, max_batch=None)
 
         # update metrics_df and all_preds with current epoch's data
         epoch_metrics['epoch_num'] = epoch
@@ -364,7 +364,9 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
     if max_batch is not None:
         # Slice the dataloader to only include up to max_batch
         val_loader = itertools.islice(val_loader, max_batch)
-    data_iter = tqdm(val_loader, desc="Evaluating", total=max_batch)
+        data_iter = tqdm(val_loader, desc="Evaluating", total=max_batch)
+    else:     
+        data_iter = tqdm(val_loader, desc="Evaluating")
     with torch.no_grad():
         for i, (images, targets) in enumerate(data_iter):
             images = process_images(images, device)

@@ -33,7 +33,7 @@ for i in range(1, NUM_GENERATIONS+1):
     elif i == 2:
         print('Trained on a portion of generation 1. Validated on a portion of generation 1')
     else:
-        print(f'Trained on generations upto and including {i-2}. Validated on generation {i-1}')
+        print(f'Trained on generations upto and including {i-2}. Validated on portion of generations upto and including generation {i-2} and generation {i-1}')
     
     print('------------------------------------')
     if i == NUM_GENERATIONS:
@@ -59,7 +59,7 @@ for i in range(1, NUM_GENERATIONS+1):
     model_dicts = [surrogate.models[i] for i in SUB_SURROGATES]
     for model_dict in model_dicts:
         print(f'    Training {model_dict['name']}...')
-        metrics, genome_scaler = engine(surrogate_config, model_dict, train_df, val_df)  
+        metrics, best_epoch_num, genome_scaler = engine(surrogate_config, model_dict, train_df, val_df)    
     
     print('Getting trust score...')
     surrogate.trust = surrogate.calc_ensemble_trust(SUB_SURROGATES, genome_scaler, calc_pool)

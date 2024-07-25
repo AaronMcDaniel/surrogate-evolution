@@ -57,6 +57,42 @@ class SurrogateDataset(Dataset):
         genome = torch.tensor(self.genomes[i], dtype=torch.float32)
         metrics = torch.tensor(self.metrics[i], dtype=torch.float32)
         return genome, metrics
+    
+    
+class ClassifierSurrogateDataset(Dataset):
+    # init using df
+    def __init__(self, df, mode, genomes_scaler = StandardScaler()):
+        self.df = df
+        self.genomes_scaler = genomes_scaler
+        self.mode = mode
+
+        # features/genomes in the first two cols of df
+        # TODO concatenate the epoch number at the front of the genome encoding
+        self.genomes = np.stack(df['genome'].values)
+
+        self.labels = np.stack(df['label'].values)
+        
+        # # # standardize genome/metrics data dist if train mode
+        if mode == 'train':
+            # self.metrics = self.metrics_scaler.fit_transform(self.metrics)
+            self.genomes = self.genomes_scaler.fit_transform(self.genomes)
+        if mode == 'val':
+            # self.metrics = self.metrics_scaler.transform(self.metrics)
+            self.genomes = self.genomes_scaler.transform(self.genomes)
+            
+        if np.isnan(self.genomes).any() or np.isnan(self.labels).any():
+            breakpoint()
+
+    # returns num samples in dataset
+    def __len__(self):
+        return len(self.df)
+    
+    # retrieve genome, metrics at specific index
+    def __getitem__(self, i):
+        # NOTE this will not work until genomes are encoded
+        genome = torch.tensor(self.genomes[i], dtype=torch.float32)
+        label = torch.tensor(self.labels[i], dtype=torch.float32)
+        return genome, label
 
 
 def build_dataset(
@@ -83,6 +119,7 @@ def build_dataset(
     data = data.to_dict('records')
 
     all_genome_info = []
+    all_binary_genome_info = []
 
     genome_max_thresh = 100000
 
@@ -102,9 +139,11 @@ def build_dataset(
         metrics = metrics_df.to_dict('records')
 
         genome_info = []
+        binary_genome_info = []
 
         for metric_row in metrics:
             to_add = {}
+            binary_to_add = {}
 
             if 'epoch_num' not in metric_row:
                 for i in range(num_epochs):
@@ -117,6 +156,9 @@ def build_dataset(
                         break
                     to_add['genome'] = np.clip(tensor, -1000, 1000)
                     to_add['hash'] = genome_hash
+                    binary_to_add['genome'] = np.clip(tensor, -1000, 1000)
+                    binary_to_add['hash'] = genome_hash
+                    binary_to_add['label'] = 1
                     for heading in metric_headings:
                         if heading in MAX_METRICS:
                             to_add[heading] = -300.0
@@ -124,6 +166,7 @@ def build_dataset(
                             to_add[heading] = 300.0
                     out_data.loc[len(out_data)] = to_add
                     genome_info.append(to_add)
+                    binary_genome_info.append(binary_to_add)
                 continue
             try:
                 tensor = codec.encode_surrogate(genome, metric_row['epoch_num'])
@@ -133,40 +176,87 @@ def build_dataset(
                 break
             to_add['hash'] = genome_hash
             to_add['genome'] = np.clip(tensor, -1000, 1000)
+            binary_to_add['hash'] = genome_hash
+            binary_to_add['genome'] = np.clip(tensor, -1000, 1000)
+            binary_to_add['label'] = 0
             
             for heading in metric_headings:
                 if math.isnan(metric_row[heading]):
+                    binary_to_add['label'] = 1
                     if heading in MAX_METRICS:
                         to_add[heading] = -300.0
                     else:
                         to_add[heading] = 300.0
                 else:
                     to_add[heading] = np.clip(metric_row[heading], -300, 300)
+                    if to_add[heading] in [-300, 300]:
+                        binary_to_add['label'] = 1
             out_data.loc[len(out_data)] = to_add
             genome_info.append(to_add)
+            binary_genome_info.append(binary_to_add)
         
         all_genome_info.append(genome_info)
+        all_binary_genome_info.append(binary_genome_info)
 
+    assert len(all_genome_info) == len(all_binary_genome_info)
     val_size = int(val_ratio * len(all_genome_info))
-    shuffled_data = all_genome_info[:]
-    local_random.shuffle(shuffled_data)
-    val_genome_info = shuffled_data[:val_size]
-    train_genome_info = shuffled_data[val_size:]
+    
+    # Create a list of indices and shuffle them
+    indices = list(range(len(all_genome_info)))
+    local_random.shuffle(indices)
+
+    # Split the indices into train and validation sets
+    val_indices = indices[:val_size]
+    train_indices = indices[val_size:]
+
+    # Create the shuffled and split lists for all_genome_info and all_binary_genome_info
+    val_genome_info = [all_genome_info[i] for i in val_indices]
+    train_genome_info = [all_genome_info[i] for i in train_indices]
+    val_binary_info = [all_binary_genome_info[i] for i in val_indices]
+    train_binary_info = [all_binary_genome_info[i] for i in train_indices]
+
+    # Flatten the train and validation sets
     val_genomes = [epoch for genome in val_genome_info for epoch in genome]
     train_genomes = [epoch for genome in train_genome_info for epoch in genome]
-    local_random.shuffle(train_genomes)
-    local_random.shuffle(val_genomes)
+    val_binary_genomes = [epoch for genome in val_binary_info for epoch in genome]
+    train_binary_genomes = [epoch for genome in train_binary_info for epoch in genome]
 
+    # Pair the elements from the two lists
+    train_pairs = list(zip(train_genomes, train_binary_genomes))
+    val_pairs = list(zip(val_genomes, val_binary_genomes))
+
+    # Shuffle the pairs
+    local_random.shuffle(train_pairs)
+    local_random.shuffle(val_pairs)
+
+    # Separate the pairs back into the two lists
+    train_genomes, train_binary_genomes = zip(*train_pairs)
+    val_genomes, val_binary_genomes = zip(*val_pairs)
+
+    # Convert tuples back to lists
+    train_genomes = list(train_genomes)
+    train_binary_genomes = list(train_binary_genomes)
+    val_genomes = list(val_genomes)
+    val_binary_genomes = list(val_binary_genomes)
+
+    # Create dataframes from genome lists 
     train_set = pd.DataFrame(train_genomes)
     val_set = pd.DataFrame(val_genomes)
+    binary_train_set = pd.DataFrame(train_binary_genomes)
+    binary_val_set = pd.DataFrame(val_binary_genomes)
 
+    # Write stuff to file
     complete_output_filename = os.path.join(outdir, 'complete_dataset.pkl')
     train_output_filename = os.path.join(outdir, 'train_dataset.pkl')
     val_output_filename = os.path.join(outdir, 'val_dataset.pkl')
+    train_binary_output_filename = os.path.join(outdir, 'train_binary_dataset.pkl')
+    val_binary_output_filename = os.path.join(outdir, 'val_binary_dataset.pkl')
     os.makedirs(os.path.dirname(complete_output_filename), exist_ok=True)
     out_data.to_pickle(complete_output_filename)
     train_set.to_pickle(train_output_filename)
     val_set.to_pickle(val_output_filename)
+    binary_train_set.to_pickle(train_binary_output_filename)
+    binary_val_set.to_pickle(val_binary_output_filename)
 
     return train_set, val_set
 
