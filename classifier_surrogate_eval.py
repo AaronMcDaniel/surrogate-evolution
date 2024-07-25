@@ -62,7 +62,7 @@ def create_metrics_df(cfg):
 
 
 def engine(cfg, model_dict, train_df, val_df, weights_dir):
-    best_loss_metric = np.inf
+    best_acc = 0
     best_epoch = None
     best_epoch_num = None
     # pull surrogate train/eval config attributes
@@ -78,28 +78,17 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
         # train and validate for one epoch
         train_metrics = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler)
         val_metrics = val_one_epoch(model, device, val_loader)
-        print(f"---- Epoch {epoch} ----")
-        print(f"train : loss = {train_metrics['loss']:.4f} | accuracy = {train_metrics['acc']:.4f} | precision = {train_metrics['prec']:.4f} | recall = {train_metrics['rec']:.4f}")
-        print(f"val   : loss = {val_metrics['loss']:.4f} | accuracy = {val_metrics['acc']:.4f} | precision = {val_metrics['prec']:.4f} | recall = {val_metrics['rec']:.4f}")
+        # print(f"---- Epoch {epoch} ----")
+        # print(f"train : loss = {train_metrics['loss']:.4f} | accuracy = {train_metrics['acc']:.4f} | precision = {train_metrics['prec']:.4f} | recall = {train_metrics['rec']:.4f}")
+        # print(f"val   : loss = {val_metrics['loss']:.4f} | accuracy = {val_metrics['acc']:.4f} | precision = {val_metrics['prec']:.4f} | recall = {val_metrics['rec']:.4f}")
         
-        # val_losses = []
-                
-        # for val in val_subset:
-        #     val_losses.append(epoch_metrics[metric_names[val]])
-        #     #val_losses.append(loss_tensor[metrics_subset.index(val)])
-        #     #print('CHECK', epoch_metrics, epoch_metrics[metric_names[val]])
-        # #print(loss_tensor[val_losses[0]])
-        # loss_metric = sum(val_losses)
-        # #print(loss_metric)
-        # #print(loss_metric)
-        # if loss_metric < best_loss_metric:
-        #     best_loss_metric = loss_metric
-        #     best_epoch = model
-        #     best_epoch_num = epoch
+        if val_metrics['acc'] > best_acc:
+            best_acc = val_metrics['acc']
+            best_epoch = model
+            best_epoch_num = epoch
     
-
-    # torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict['name']}.pth')
-    # print('        Save epoch #:', best_epoch_num)    
+    torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict['name']}.pth')
+    print('        Save epoch #:', best_epoch_num)    
 
     return best_epoch_num, train_dataset.genomes_scaler
 
@@ -248,10 +237,10 @@ binary_val_df = pd.read_pickle('surrogate_dataset/val_binary_dataset.pkl')
 model_dict = {
                 'name': 'fail_predictor_3000',
                 'dropout': 0.2,
-                'hidden_sizes': [2048, 1024, 512, 256],
-                'optimizer': optim.Adam,
+                'hidden_sizes': [1024, 512],
+                'optimizer': optim.AdamW,
                 'lr': 0.01,
                 'scheduler': optim.lr_scheduler.CosineAnnealingLR,
                 'model': sm.BinaryClassifier
             }
-engine(surrogate_config, model_dict, binary_train_df, binary_val_df, '')
+engine(surrogate_config, model_dict, binary_train_df, binary_val_df, 'test/weights')
