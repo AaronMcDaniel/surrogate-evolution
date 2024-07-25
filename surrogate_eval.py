@@ -188,12 +188,8 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
                 loss_matrix = criterion(clamped_outputs, metrics)
                 # loss tensor shape: (12)
                 loss_tensor = torch.mean(loss_matrix, dim=0)
-                #print('loss_tensor', loss_tensor, len(loss_tensor))
-                
                 # loss is meaned, so is scalar tensor value
                 loss = torch.mean(loss_tensor)
-            
-            
             
             # update validation loss
             surrogate_val_loss += loss.item()
@@ -219,3 +215,24 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
     })
 
     return epoch_metrics
+
+
+# config_path = 'conf.toml'
+# configs = toml.load(config_path)
+# cfg = configs['surrogate']
+# train_df = pd.read_pickle('surrogate_dataset/filtered_train_dataset.pkl')
+# val_df = pd.read_pickle('surrogate_dataset/filtered_val_dataset.pkl')
+# model_dict1 = {'name': 'kan_experiment', 
+#               'model': sm.KAN, 
+#               'hidden_sizes': [2048, 1024], 
+#               'optimizer': torch.optim.AdamW, 
+#               'lr': 0.001, 
+#               'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR, 
+#               'metrics_subset': [0, 4, 11], 
+#               'validation_subset': [0, 4, 11], 
+#               'scale_noise': 0.5, 
+#               'spline_order': 3,
+#               'grid_size': 10
+#               }
+
+# print(engine(cfg, model_dict1, train_df, val_df))
