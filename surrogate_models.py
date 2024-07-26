@@ -236,8 +236,8 @@ class KANLinear(torch.nn.Module):
         # I = torch.eye(A.size(-1), device=A.device, dtype=A.dtype)
         # I = I.unsqueeze(0).unsqueeze(0)
         # A_reg = A.permute(0, 2, 1) + regularization * I
-
-        solution = torch.linalg.lstsq(A, B).solution  # (in_features, grid_size + spline_order, out_features)
+        solution = svd_lstsq(A, B)
+        #solution = torch.linalg.lstsq(A, B).solution  # (in_features, grid_size + spline_order, out_features)
         result = solution.permute(2, 0, 1)  # (out_features, in_features, grid_size + spline_order)
 
         assert result.size() == (

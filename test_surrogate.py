@@ -20,8 +20,8 @@ import pickle
 
 
 def prepare_data(batch_size, metrics_subset):
-    train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')
-    val_df = pd.read_pickle('surrogate_dataset/val_dataset.pkl')
+    train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
+    val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
     train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=metrics_subset)
     val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=metrics_subset, metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
@@ -37,7 +37,9 @@ def get_model(model_str, metric_subset):
         hidden_sizes = [512, 256]
         return sm.MLP(input_size=input_size, output_size=output_size, dropout=dropout, hidden_sizes=hidden_sizes)
     if model_str == 'effKAN':
-        layers_hidden = [1021, 512, 256, 3]
+        input_size = 1021
+        output_size = 3
+        layers_hidden = [512, 256]
         grid_size=25
         spline_order=5
         scale_noise=0.1
@@ -47,7 +49,7 @@ def get_model(model_str, metric_subset):
         grid_eps=0.02
         #grid_eps=1.0
         grid_range=[-1, 1]
-        return sm.KAN(layers_hidden, grid_size=grid_size, spline_order=spline_order, scale_noise=scale_noise, scale_base=scale_base, scale_spline=scale_spline, base_activation=base_activation, grid_eps=grid_eps, grid_range=grid_range)
+        return sm.KAN(input_size, output_size, layers_hidden, grid_size=grid_size, spline_order=spline_order, scale_noise=scale_noise, scale_base=scale_base, scale_spline=scale_spline, base_activation=base_activation, grid_eps=grid_eps, grid_range=grid_range)
     if model_str == 'pyKAN':
         width=[1021, 2048, 512, 256, 3]
         grid=3
