@@ -105,7 +105,7 @@ class Surrogate():
                 'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
                 'validation_subset': [0, 4, 11],
                 'model': sm.KAN
-            }            
+            },      
             {'name': 'kan_best_uwvl', 
               'model': sm.KAN, 
               'hidden_sizes': [512, 256], 
