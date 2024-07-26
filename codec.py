@@ -450,7 +450,10 @@ class Codec:
         #print('loss:', params)
         #print((params[0] - min(params)) / (max(params) - min(params)))
         for i, param in enumerate(params):
-            layer[num_layer_types + i] = (param - min(params)) / (max(params) - min(params))
+            if min(params) == max(params):
+                layer[num_layer_types + i] = param / len(params)
+            else:
+                layer[num_layer_types + i] = (param - min(params)) / (max(params) - min(params))
             #print((param - min(params)) / (max(params) - min(params)))
         #print(layer)
         return optimizer_layer, scheduler_layer, layer
