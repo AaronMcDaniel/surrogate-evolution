@@ -127,10 +127,10 @@ class Surrogate():
             {
                 'name': 'fail_predictor_3000',
                 'dropout': 0.2,
-                'hidden_sizes': [2048, 1024, 512],
-                'optimizer': optim.Adam,
-                'lr': 0.1,
-                'scheduler': optim.lr_scheduler.StepLR,
+                'hidden_sizes': [1024, 512],
+                'optimizer': optim.AdamW,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.CosineAnnealingLR,
                 'model': sm.BinaryClassifier
             }
         ]
@@ -391,34 +391,44 @@ class Surrogate():
             'regressors': {}
         }
         genome_scaler = None
+        print('Training classifier')
         # loop through the classifier models
         for classifier_dict in self.classifier_models:
             metrics, gs = cse.engine(self.surrogate_config, classifier_dict, classifier_train_df, classifier_val_df, self.weights_dir)
             if genome_scaler is None: genome_scaler = gs
             scores['classifiers'][classifier_dict['name']] = metrics
-               
+        
+        print('training regressor')
         for regressor_dict in self.models:
-            metrics, best_epoch_metrics, gs = rse.engine(self.surrogate_config, regressor_dict, regressor_train_df, regressor_val_df, self.weights_dir)
+            metrics, best_epoch_metrics, best_epoch_num, gs = rse.engine(self.surrogate_config, regressor_dict, regressor_train_df, regressor_val_df, self.weights_dir)
             if genome_scaler is None: genome_scaler = gs
-            scores['regressors'][classifier_dict['name']] = best_epoch_metrics
+            scores['regressors'][regressor_dict['name']] = best_epoch_metrics
             
         return scores, genome_scaler
     
     
-    # val models is expected to be a tuple where the first value is the classifier model index and the second is the regressor model index
-    def combined_val(self, val_models, val_df, genome_scaler): 
-        pass
-    
-    
-    # inference models works similarly to val models
+    # inference models is a list of models where the first entry is the classifier model index to use and the
+    # rest are the indices of the 
     def get_inferences(self, inference_models, inference_df, genome_scaler):
+        cls_model = inference_models[0]
+        reg_models = inference_models[1:]
+        classifier_dict = self.classifier_models[cls_model]
+        regressor_dicts = [self.models[x] for x in reg_models]
+        failed_statuses = cse.get_inferences(classifier_dict, self.device, inference_df, genome_scaler, self.weights_dir) # list of inferences. status of 1 means failed 0 means not
+        # to be completed
         pass
     
-    
+
+# TESTING SCRIPT
 # surrogate = Surrogate('conf.toml', 'test/weights/surrogate_weights')
-# individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv", generations=[21, 22, 23, 24])
-# train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')
-# train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=[0, 4, 11])
+# # individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv", generations=[21, 22, 23, 24])
+# reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
+# reg_val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
+# cls_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')
+# cls_val_df = pd.read_pickle('surrogate_dataset/cls_val_dataset.pkl')
+# train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
 # genome_scaler = train_dataset.genomes_scaler
+# print(surrogate.get_inferences([0,1,2,3], cls_val_df, genome_scaler))
+
 # print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
 # print(surrogate.calc_trust(-2, genome_scaler, individuals))
