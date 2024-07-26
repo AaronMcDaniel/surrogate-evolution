@@ -18,6 +18,7 @@ import glob
 
 class AOTDataset(Dataset):
     def __init__(self, mode, string=None, bad_data=None, cache_thresh=1, max_size=None, seed=None):
+        # decides which pickle_path and image_folder to use
         if bad_data == None:
             if string == None:
                 if mode == 'train':
@@ -44,6 +45,7 @@ class AOTDataset(Dataset):
             self.image_folder = '/gv1/projects/GRIP_Precog_Opt/data_loading/airborne-detection-starter-kit-master/data/part1/'
 
         self.string = string
+        # loads the pickle file to get image labels
         with open(self.pickle_path, 'rb') as f:
             self.labels = pickle.load(f)
         
@@ -54,7 +56,7 @@ class AOTDataset(Dataset):
         self.class_mapping_all = {'Airborne1': 0, 'Airborne2': 1, 'Airborne3': 2, 'Airborne4': 3, 'Airborne5': 4, 'Airborne6': 5, 'Airborne7': 6, 'Airborne9': 7, 'Airborne10': 8, 'Airborne11': 9, 'Airborne12': 10, 'Airborne14': 11, 'Airborne16': 12, 'Airborne17': 13, 'Airborne18': 14, 'Airplane1': 15, 'Airplane2': 16, 'Airplane3': 17, 'Airplane4': 18, 'Airplane5': 19, 'Airplane6': 20, 'Airplane7': 21, 'Airplane8': 22, 'Airplane10': 23, 'Bird1': 24, 'Bird2': 25, 'Bird3': 26, 'Bird4': 27, 'Bird5': 28, 'Bird6': 29, 'Bird7': 30, 'Bird8': 31, 'Bird9': 32, 'Bird10': 33, 'Bird15': 34, 'Bird23': 35, 'Drone1': 36, 'Flock1': 37, 'Flock2': 38, 'Flock3': 39, 'Helicopter1': 40, 'Helicopter2': 41, 'Helicopter3': 42}
         self.class_mapping = {'Airborne' : 0, 'Airplane' : 1, 'Bird' : 2, 'Drone' : 3, 'Flock' : 4, 'Helicopter' : 5}
         self.cache_thresh = cache_thresh
-
+        # if max size is set, take a subset of the labels 
         if max_size is not None and max_size < self.__len__():
             labels_subset = self.labels[:]
             labels_subset = np.array(labels_subset)
@@ -66,9 +68,10 @@ class AOTDataset(Dataset):
 
     def __getitem__(self, idx):
         label = self.labels[idx]
+        # if labels were serialized as a string, evaluate it back into a dictionary
         if self.string is not None:
             label = eval_label(label)
-                
+        # load the image as a tensor using the path stored in the label     
         image_path = label['path']
         image = cv2.imread(self.image_folder + image_path)
         image = np.array(image)
@@ -77,6 +80,7 @@ class AOTDataset(Dataset):
         return image, label
 
     def get_label(self, idx):
+        # same as getitem but doesn't return the image
         label = self.labels[idx]
         if self.string is not None:
             label = eval_label(label)
@@ -125,6 +129,7 @@ class AOTDataset(Dataset):
 
 
 def my_collate(batch):
+    # makes the dataloader return a list of dictionaries instead of the default dictionary of lists
     images = []
     labels = []
     for i, item in enumerate(batch):

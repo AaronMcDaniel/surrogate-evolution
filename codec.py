@@ -295,6 +295,7 @@ class Codec:
         pset = primitives.pset
         filtered_prims = []
         filtered_funcs = []
+        # gets the names and related functions of every primitive function except the ones that are filtered out
         for primitive, func in pset.mapping.items():
             if str(primitive)[:2] != 'to' and str(primitive) not in ['IN0', 'add', 'mul', 'dummyOp', 'protectedDiv', 'protectedSub']and type(func) not in [gp.Terminal, type]:
                 filtered_prims.append(primitive)
@@ -311,7 +312,6 @@ class Codec:
                 else:
                     tensor_exists = True
                 if type(val.annotation) is enum.EnumType:
-                    # enum_dict[prim] = {}
                     count += len(eval(f'primitives.{val.annotation.__name__}')) - 1
                     if tensor_exists:
                         enum_dict[prim][val.annotation.__name__] = i - 1
@@ -319,6 +319,7 @@ class Codec:
                         enum_dict[prim][val.annotation.__name__] = i
 
             counts[prim] = count
+
         max_num  = counts[max(counts, key=counts.get)]
 
         mapping = {}
@@ -335,7 +336,6 @@ class Codec:
             stack = []
             idx = 0
             all_layers = []
-            
             max_layers = 15
             num_layer_types = 54
 
@@ -347,47 +347,49 @@ class Codec:
                     arguments = []
                     while stack[-1] != '(':
                         arguments.insert(0, stack.pop())
+            
                     stack.pop()
                     function = stack.pop()
                     try:
                         stack.append(str(eval(f'primitives.{function}({",".join(arguments)})')))
                     except: # this is where we add the layers
                         layer_info = [function]+[self.__parse_arg(x) for x in arguments]
-                        all_layers.insert(0, layer_info)
-                        #print('LAYER INFO:', layer_info)
-                        #info = self.add_to_module_list(module_list, idx, layer_info, num_loss_components)
+                        all_layers.insert(0, layer_info) # adds layer to front to reverse the tree with head first
                         idx += 1
-            
+            # removes IN0 from layer info before processing
             del all_layers[-1][1]
+            # constructs the optimizer, scheduler, and head vectors for the encoding
             optimizer_layer, scheduler_layer, head_layer = self.construct_head(all_layers[0], num_layer_types)
-            
+            # removes head so only generic layers are left
             del all_layers[0]
-    
+            # creates the encoding tensor and fills the first 3 columns with the optimizer, scheduler, and head vectors
             encoded_genome = np.zeros((self.max_param + num_layer_types, self.max_layers))
             encoded_genome[0:len(optimizer_layer),0] = optimizer_layer
             encoded_genome[0:len(scheduler_layer),1] = scheduler_layer
             encoded_genome[0:len(head_layer),2] = head_layer
+            # loops over every generic layer, constructs its tensor, and adds it to the encoding tensor
             for i, layer_info in enumerate(all_layers):
                 layer = self.construct_vec(layer_info, num_layer_types)
                 encoded_genome[0:len(layer),i + 2] = layer
-            
-            np.set_printoptions(threshold=encoded_genome.size)
+            # flattens the encoding  and adds epoch num to the beginning
             flattened_encoding = encoded_genome.flatten()
             final_encoding = np.zeros(len(flattened_encoding) + 1)
             final_encoding[0] = epoch_num
             final_encoding[1:] = flattened_encoding
+
             return final_encoding.flatten()
     
     def construct_optimizer(self, layer_info, num_layer_types):
+        # gets the name and params from layer_info
         layer_vals = list(layer_info.values())
         name = layer_vals[0]
         layer_type = -1
         params = layer_vals[1:]
-
+        # use name to create one hot encoding
         layer_type = self.param_mapping[name]
         layer = np.zeros(num_layer_types + len(params))
         layer[layer_type] = 1
-
+        # pass every other parameter directly through
         for i, param in enumerate(params):
             layer[num_layer_types + i] = param
         
@@ -399,6 +401,7 @@ class Codec:
         layer_type = -1
         params = layer_vals[1:]
         enum_dict ={}
+        # these are the params in optim, sched, and head that have enums, and they print the words in the layer_info rather than the number which requires being handled special
         match name:
             case 'OneCycleLR':
                 params[self.enum_dict[name]['AnnealStrategy']] = primitives.AnnealStrategy[params[self.enum_dict[name]['AnnealStrategy']]].value
@@ -418,7 +421,6 @@ class Codec:
         return layer
 
     def construct_head(self, layer_info, num_layer_types):
-        #print(layer_info)
         name = layer_info[0]
         params = layer_info[3:]
 
@@ -430,25 +432,21 @@ class Codec:
 
         layer = np.zeros(num_layer_types + len(params))
         layer[layer_type] = 1
-        #print('loss:', params)
-        #print((params[0] - min(params)) / (max(params) - min(params)))
+        # normalize the loss components
         for i, param in enumerate(params):
             if min(params) == max(params):
                 layer[num_layer_types + i] = param / len(params)
             else:
                 layer[num_layer_types + i] = (param - min(params)) / (max(params) - min(params))
-            #print((param - min(params)) / (max(params) - min(params)))
-        #print(layer)
         return optimizer_layer, scheduler_layer, layer
 
 
     def inject_onehot2(self, params, enum_dict):
-        #print(params)
         mapping = {'PaddingMode': 4, 'UpsampleMode': 5, 'SkipMergeType': 2, 'ConvNeXtSize': 4, 'DenseNetSize': 4, 'EfficientNet_V2Size':3, 'MobileNet_V3Size': 2, 'RegNetSize': 7, 'ResNeXtSize': 2, 'ResNetSize': 3, 'ShuffleNet_V2Size': 4, 'Swin_V2Size': 3, 'ViTSize': 3, 'Wide_ResNetSize':2, 'Weights': 3, 'BoolWeight': 2, 'AnnealStrategy': 2, 'CyclicLRMode': 3, 'CyclicLRScaleMode': 2}
         #list of indices of enums
         vals = list(enum_dict.values())
         keys = list(enum_dict.keys())
-        #print(vals)
+        #injects one hot encoding of enums directly into params list in the same spot as original enum, only if the enum_dict has entries
         if len(vals) > 0:
             parts = []
             start = vals[0]
@@ -460,13 +458,12 @@ class Codec:
                 end = vals[i]
                 parts.extend(params[start+1:end])
                 inject = np.zeros(mapping[keys[i]])
-                #print(type(params[end]))
                 inject[int(params[end])] = 1
                 parts.extend(list(inject))
                 start = end
             parts.extend(params[start+1:])
-            #print('PARTS', parts)
         else:
+            # if enum_dict is empty, return the original list of params
             return params
 
         return parts
@@ -476,20 +473,17 @@ class Codec:
         name = layer_info[0]
         layer_type = -1
         params = layer_info[1:]
+        # changes any boolean values in params to an integer
         for i, param in enumerate(params):
             if isinstance(param, str):
                 if param.strip() == 'True' or param.strip() == 'False':
-                    #print(type(param))
                     params[i] = eval(param)
-                #print(type(param))
-        #print(params)
+
         current_param = 0
-        #params = list(map(float, params))
         enum_dict = {}
 
         layer_type = self.param_mapping[name]
         params = self.inject_onehot2(params, self.enum_dict[name])
-        #print('num', layer_type)
         layer = np.zeros(num_layer_types + len(params))
         layer[layer_type] = 1
 

@@ -220,7 +220,7 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
             #print('before')
             # if epoch == 8 and i == 94:
             #     breakpoint()
-            outputs = model(genomes, update_grid=True)
+            outputs = model(genomes, update_grid=False)
             # if torch.isnan(outputs).any():
             #     break
             #print('after')
