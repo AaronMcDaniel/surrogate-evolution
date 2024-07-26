@@ -128,9 +128,9 @@ def gen_plot(df_baseline_current, gen, path, objectives, directions, baseline_fr
     plt.plot(baseline_x_steps, baseline_y_steps, color='xkcd:blue')
     
     #UNCOMMENT WHEN WE HAVE SURROGATE
-    # plt.scatter(surrogate_front[metric_a], surrogate_front[metric_b], color='xkcd:orange', marker='^')
-    # plt.scatter(surrogate_front_top[metric_a], surrogate_front_top[metric_b], color='xkcd:red', marker='^')
-    # plt.plot(surrogate_x_steps, surrogate_y_steps, color='xkcd:red')
+    plt.scatter(surrogate_front[metric_a], surrogate_front[metric_b], color='xkcd:orange', marker='^')
+    plt.scatter(surrogate_front_top[metric_a], surrogate_front_top[metric_b], color='xkcd:red', marker='^')
+    plt.plot(surrogate_x_steps, surrogate_y_steps, color='xkcd:red')
     
     # plt.scatter(df_metric_a[metric_a], df_metric_a[metric_b], color='xkcd:pink', marker='X')
     # plt.scatter(df_metric_b[metric_a], df_metric_b[metric_b], color='xkcd:yellow', marker='X')
@@ -138,8 +138,8 @@ def gen_plot(df_baseline_current, gen, path, objectives, directions, baseline_fr
     plt.scatter(df_simple[metric_a], df_simple[metric_b], color='xkcd:purple', marker='X')
     plt.scatter(df_complex[metric_a], df_complex[metric_b], color='xkcd:green', marker='X')
     #UNCOMMENT WHEN WE HAVE SURROGATE
-    #plt.legend(['B: Overall Pareto Optimal', 'B: Recalculated Pareto Optimal', 'B: Pareto Frontier', 'S: Overall Pareto Optimal', 'S: Recalculated Pareto Optimal', 'S: Pareto Frontier', 'Reduced Dmytro', 'Full Dmytro'], loc='center left', bbox_to_anchor=(1, 0.5))
-    plt.legend(['Overall Pareto Optimal', 'Recalculated Pareto Optimal', 'Pareto Frontier', 'Reduced Dmytro', 'Full Dmytro'], loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.legend(['B: Overall Pareto Optimal', 'B: Recalculated Pareto Optimal', 'B: Pareto Frontier', 'S: Overall Pareto Optimal', 'S: Recalculated Pareto Optimal', 'S: Pareto Frontier', 'Reduced Dmytro', 'Full Dmytro'], loc='center left', bbox_to_anchor=(1, 0.5))
+    #plt.legend(['Overall Pareto Optimal', 'Recalculated Pareto Optimal', 'Pareto Frontier', 'Reduced Dmytro', 'Full Dmytro'], loc='center left', bbox_to_anchor=(1, 0.5))
 
     #PLOT 2
     plt.subplot(2, 1, 2)
@@ -160,9 +160,9 @@ def gen_plot(df_baseline_current, gen, path, objectives, directions, baseline_fr
     plt.scatter(baseline_front_bottom[metric_c], baseline_front_bottom[metric_b], color='xkcd:blue', marker='o')
     plt.plot(baseline_x_steps, baseline_y_steps, color='xkcd:blue')
 
-    # plt.scatter(surrogate_front[metric_c], surrogate_front[metric_b], color='xkcd:orange', marker='^')
-    # plt.scatter(surrogate_front_bottom[metric_c], surrogate_front_bottom[metric_b], color='xkcd:red', marker='^')
-    # plt.plot(surrogate_x_steps, surrogate_y_steps, color='xkcd:red')
+    plt.scatter(surrogate_front[metric_c], surrogate_front[metric_b], color='xkcd:orange', marker='^')
+    plt.scatter(surrogate_front_bottom[metric_c], surrogate_front_bottom[metric_b], color='xkcd:red', marker='^')
+    plt.plot(surrogate_x_steps, surrogate_y_steps, color='xkcd:red')
     
     #plt.legend(['Normal Individual', 'Overall Pareto Optimal', 'Pareto Frontier', 'Recalculated Pareto Optimal'], loc='center left', bbox_to_anchor=(1, 0.5))
     
@@ -171,8 +171,8 @@ def gen_plot(df_baseline_current, gen, path, objectives, directions, baseline_fr
     # plt.scatter(df_metric_c[metric_c], df_metric_c[metric_b], color='xkcd:grey', marker='X')
     plt.scatter(df_simple[metric_c], df_simple[metric_b], color='xkcd:purple', marker='X')
     plt.scatter(df_complex[metric_c], df_complex[metric_b], color='xkcd:green', marker='X')
-    #plt.legend(['B: Overall Pareto Optimal', 'B: Recalculated Pareto Optimal', 'B: Pareto Frontier', 'S: Overall Pareto Optimal', 'S: Recalculated Pareto Optimal', 'S: Pareto Frontier', 'Reduced Dmytro', 'Full Dmytro'], loc='center left', bbox_to_anchor=(1, 0.5))
-    plt.legend(['Overall Pareto Optimal', 'Recalculated Pareto Optimal', 'Pareto Frontier', 'Reduced Dmytro', 'Full Dmytro'], loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.legend(['B: Overall Pareto Optimal', 'B: Recalculated Pareto Optimal', 'B: Pareto Frontier', 'S: Overall Pareto Optimal', 'S: Recalculated Pareto Optimal', 'S: Pareto Frontier', 'Reduced Dmytro', 'Full Dmytro'], loc='center left', bbox_to_anchor=(1, 0.5))
+    #plt.legend(['Overall Pareto Optimal', 'Recalculated Pareto Optimal', 'Pareto Frontier', 'Reduced Dmytro', 'Full Dmytro'], loc='center left', bbox_to_anchor=(1, 0.5))
 
     plt.tight_layout()
     #plt.savefig('/gv1/projects/GRIP_Precog_Opt/data_loading/airborne-detection-starter-kit-master/graphs/pareto/pareto_gen' + str(gen) + '.jpg')
@@ -186,7 +186,7 @@ def gen_plot(df_baseline_current, gen, path, objectives, directions, baseline_fr
 
 if __name__ == "__main__":
     baseline_path = '/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv'
-    surrogate_path = '/gv1/projects/GRIP_Precog_Opt/baseline_evolution/out.csv'
+    surrogate_path = '/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv'
     simple_path = '/home/eharpster3/precog-opt-grip/dmytro_metrics/combined_metric.csv'
     complex_path = '/home/eharpster3/precog-opt-grip/dmytro_metrics/complex/metrics.csv'
 
@@ -283,8 +283,8 @@ if __name__ == "__main__":
     print('surrogate front')
     print(surrogate_front[['gen', 'hash']])
     plt.plot(baseline_hvs, marker='o')
-    #plt.plot(surrogate_hvs, marker='^')
-    #plt.legend(['Baseline', 'Surrogate'])
+    plt.plot(surrogate_hvs, marker='^')
+    plt.legend(['Baseline', 'Surrogate'])
     #plt.plot(hvs, marker='o')
     plt.xticks(range(len(gens)), gens)
     plt.title("Pareto Front Hypervolumes Per Generation")

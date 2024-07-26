@@ -17,3 +17,7 @@ test_genome_test.py
 targets.pkl
 dmytro_metrics/
 plots/
+conf_kan.toml
+kan/
+kaneffKAN/
+kanKAN

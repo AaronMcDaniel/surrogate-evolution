@@ -4,6 +4,8 @@ import math
 import torch
 import matplotlib.pyplot as plt
 import torchvision.ops as ops
+import numpy as np
+from scipy import linalg
 
 # mlp surrogate model
 class MLP(nn.Module):
@@ -66,6 +68,33 @@ def plot_model_weights(model):
             plt.ylabel('Frequency')
             plt.savefig(f'{name}_weight_distribution.png')
 
+def svd_lstsq(AA, BB, tol=1e-5):
+    U, S, Vh = torch.linalg.svd(AA, full_matrices=False)
+    Spinv = torch.zeros_like(S)
+    Spinv[S>tol] = 1/S[S>tol]
+    #print('HERE HERE HERE', 1/S[S>tol])
+    UhBB = U.adjoint() @ BB
+    if Spinv.ndim!=UhBB.ndim:
+      Spinv = Spinv.unsqueeze(-1)
+    SpinvUhBB = Spinv * UhBB
+    # if torch.isnan(Vh.adjoint() @ SpinvUhBB).any():
+    #     if torch.isnan(AA).any():
+    #         print('AA')
+    #     if torch.isnan(BB).any():
+    #         print('BB')
+    #     if torch.isnan(U).any():
+    #         print('U')
+    #     if torch.isnan(S).any():
+    #         print('S')
+    #     if torch.isnan(Vh).any():
+    #         print('Vh')
+    #     if torch.isnan(Spinv).any():
+    #         print('Spinv')
+    #     if torch.isnan(UhBB).any():
+    #         print('UhBB')
+    #     if torch.isnan(SpinvUhBB).any():
+    #         print('SpinvUhBB')
+    return Vh.adjoint() @ SpinvUhBB
 
 class KANLinear(torch.nn.Module):
     def __init__(
@@ -100,9 +129,11 @@ class KANLinear(torch.nn.Module):
         self.register_buffer("grid", grid)
 
         self.base_weight = torch.nn.Parameter(torch.Tensor(out_features, in_features))
+        print(out_features, in_features, grid_size, spline_order)
         self.spline_weight = torch.nn.Parameter(
             torch.Tensor(out_features, in_features, grid_size + spline_order)
         )
+        
         if enable_standalone_scale_spline:
             self.spline_scaler = torch.nn.Parameter(
                 torch.Tensor(out_features, in_features)
@@ -114,7 +145,11 @@ class KANLinear(torch.nn.Module):
         self.enable_standalone_scale_spline = enable_standalone_scale_spline
         self.base_activation = base_activation()
         self.grid_eps = grid_eps
-
+        self.spline_weight_copy = torch.nn.Parameter(
+            torch.Tensor(out_features, in_features, grid_size + spline_order)
+        )
+        # if torch.isnan(self.spline_weight).any():
+        #     print('uh oh')
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -128,6 +163,12 @@ class KANLinear(torch.nn.Module):
                 * self.scale_noise
                 / self.grid_size
             )
+            # if torch.isnan(
+            #     (self.scale_spline if not self.enable_standalone_scale_spline else 1.0)
+            #     * self.curve2coeff(
+            #         self.grid.T[self.spline_order : -self.spline_order],
+            #         noise,)).any():
+            #     print('copying in nan values :(')
             self.spline_weight.data.copy_(
                 (self.scale_spline if not self.enable_standalone_scale_spline else 1.0)
                 * self.curve2coeff(
@@ -174,7 +215,7 @@ class KANLinear(torch.nn.Module):
         )
         return bases.contiguous()
 
-    def curve2coeff(self, x: torch.Tensor, y: torch.Tensor):
+    def curve2coeff(self, x: torch.Tensor, y: torch.Tensor, isnan=False):
         """
         Compute the coefficients of the curve that interpolates the given points.
 
@@ -187,14 +228,41 @@ class KANLinear(torch.nn.Module):
         """
         assert x.dim() == 2 and x.size(1) == self.in_features
         assert y.size() == (x.size(0), self.in_features, self.out_features)
-
+        # if torch.isnan(y).any():
+        #     print('y')
+        # if isnan and torch.isnan(x).any():
+        #     print('x')
+        # if isnan and torch.isnan(y).any():
+        #     print('y')
         A = self.b_splines(x).transpose(
             0, 1
         )  # (in_features, batch_size, grid_size + spline_order)
         B = y.transpose(0, 1)  # (in_features, batch_size, out_features)
-        solution = torch.linalg.lstsq(
-            A, B
-        ).solution  # (in_features, grid_size + spline_order, out_features)
+        
+        # if not torch.isnan(x).any() and not torch.isnan(y).any():
+        #     if torch.isnan(A).any() or torch.isnan(B).any():
+        #         print('YUP')
+        #         breakpoint()
+        #print('actual TYPE', A.dtype, B.dtype)
+        #print('RANKS', torch.linalg.matrix_rank(A), A.shape, torch.linalg.matrix_rank(B), B.shape)
+        # b = B
+        # gram = np.dot(A.T,A)
+        # print(np.linalg.cond(gram))
+        # Q,R=np.linalg.qr(A)
+        # x_householder=linalg.solve_triangular(R,Q.T.dot(b))
+        # r_norm_householder = linalg.norm(np.dot(gram,x_householder)-np.dot(A.T,b))
+        # print(r_norm_householder)
+
+       
+        # solution = torch.linalg.lstsq(
+        #     A, B, driver='gelsd'
+        # ).solution  # (in_features, grid_size + spline_order, out_features)
+        solution = svd_lstsq(A, B)
+        # if torch.isnan(solution).any():
+        #     print('A:', A)
+        #     print()
+        #     print('B:', B)
+        #     print()
         result = solution.permute(
             2, 0, 1
         )  # (out_features, in_features, grid_size + spline_order)
@@ -208,6 +276,12 @@ class KANLinear(torch.nn.Module):
 
     @property
     def scaled_spline_weight(self):
+        if torch.equal(self.spline_weight, self.spline_weight_copy):
+            print('IT CHANGES')
+        # if torch.isnan(self.spline_weight).any():
+        #     print('spline_weight', self.spline_weight)
+        # if torch.isnan(self.spline_scaler.unsqueeze(-1)).any():
+        #     print('spline scaler')
         return self.spline_weight * (
             self.spline_scaler.unsqueeze(-1)
             if self.enable_standalone_scale_spline
@@ -233,16 +307,28 @@ class KANLinear(torch.nn.Module):
     def update_grid(self, x: torch.Tensor, margin=0.01):
         assert x.dim() == 2 and x.size(1) == self.in_features
         batch = x.size(0)
-
+        #print('INITIAL X', x.shape)
         splines = self.b_splines(x)  # (batch, in, coeff)
         splines = splines.permute(1, 0, 2)  # (in, batch, coeff)
+        # if torch.isnan(self.spline_weight).any():
+        #     print('spline_weight')
+        # if torch.equal(self.spline_weight, self.spline_weight_copy):
+        #     testtesttest=0
+        # else:
+        #    print('IT CHANGES')
         orig_coeff = self.scaled_spline_weight  # (out, in, coeff)
         orig_coeff = orig_coeff.permute(1, 2, 0)  # (in, coeff, out)
+        #print('size check', splines.shape, orig_coeff.shape)
+        # if torch.isnan(splines).any():
+        #     print('splines')
+        # if torch.isnan(orig_coeff).any():
+        #     print('orig_coeff')
         unreduced_spline_output = torch.bmm(splines, orig_coeff)  # (in, batch, out)
         unreduced_spline_output = unreduced_spline_output.permute(
             1, 0, 2
         )  # (batch, in, out)
-
+        # if torch.isnan(unreduced_spline_output).any():
+        #     breakpoint()
         # sort each channel individually to collect data distribution
         x_sorted = torch.sort(x, dim=0)[0]
         grid_adaptive = x_sorted[
@@ -276,7 +362,29 @@ class KANLinear(torch.nn.Module):
         )
 
         self.grid.copy_(grid.T)
+        # if torch.isnan(unreduced_spline_output).any():
+        #     print('unreduced spline output1')
+        
+        unreduced_spline_output = unreduced_spline_output.type(torch.float32)
+        
+        #print('TYPES', x.dtype, unreduced_spline_output.dtype)
+        # if torch.isnan(unreduced_spline_output).any():
+        #     print('unreduced spline output2')
+        # if torch.isnan(self.curve2coeff(x, unreduced_spline_output)).any():
+        #     if torch.isnan(unreduced_spline_output).any():
+        #         print(unreduced_spline_output)
+            #self.spline_weight.data.copy_(self.curve2coeff(x, unreduced_spline_output, isnan=True))
+        #else:
+        #breakpoint()
         self.spline_weight.data.copy_(self.curve2coeff(x, unreduced_spline_output))
+        # if torch.isnan(self.spline_weight).any():
+        #     if torch.isnan(x).any():
+        #         print('x')
+        #     if torch.isnan(unreduced_spline_output).any():
+        #         print('unreduced_spline_output')
+        #     breakpoint()
+       
+           
 
     def regularization_loss(self, regularize_activation=1.0, regularize_entropy=1.0):
         """
@@ -336,8 +444,11 @@ class KAN(torch.nn.Module):
             )
 
     def forward(self, x: torch.Tensor, update_grid=False):
+        x = torch.tanh(x)
+
         for layer in self.layers:
             if update_grid:
+                #print('WORKS')
                 layer.update_grid(x)
             x = layer(x)
         return x

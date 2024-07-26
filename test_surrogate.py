@@ -16,6 +16,7 @@ import eval as e
 from torch.utils.data import DataLoader
 import surrogate_dataset as sd
 import pickle
+#import kan as pykan
 
 
 def prepare_data(batch_size, metrics_subset):
@@ -36,25 +37,59 @@ def get_model(model_str, output_size=12):
         dropout = 0.0
         hidden_sizes = [512, 256]
         return sm.MLP(input_size=input_size, output_size=output_size, dropout=dropout, hidden_sizes=hidden_sizes)
+    if model_str == 'effKAN':
+        layers_hidden = [1021, 512, 256, 3]
+        grid_size=25
+        spline_order=5
+        scale_noise=0.1
+        scale_base=1.0
+        scale_spline=1.0
+        base_activation=torch.nn.SiLU
+        grid_eps=0.02
+        #grid_eps=1.0
+        grid_range=[-1, 1]
+        return sm.KAN(layers_hidden, grid_size=grid_size, spline_order=spline_order, scale_noise=scale_noise, scale_base=scale_base, scale_spline=scale_spline, base_activation=base_activation, grid_eps=grid_eps, grid_range=grid_range)
+    if model_str == 'pyKAN':
+        width=[1021, 2048, 512, 256, 3]
+        grid=3
+        k=3
+        noise_scale=0.1
+        scale_base_mu=0.0
+        scale_base_sigma=1.0
+        base_fun=torch.nn.SiLU()
+        symbolic_enabled=True
+        bias_trainable=False
+        grid_eps=1.0
+        grid_range=[-1, 1]
+        sp_trainable=True
+        sb_trainable=True
+        device='cuda'
+        seed=42
+        return pykan.KAN(width=width, grid=grid, k=k, noise_scale=noise_scale, scale_base_mu=scale_base_mu, scale_base_sigma=scale_base_sigma, base_fun=base_fun, symbolic_enabled=symbolic_enabled, grid_eps=grid_eps, grid_range=grid_range, sp_trainable=sp_trainable, sb_trainable=sb_trainable, device=device, seed=seed)
+        
     # TODO implement other surrogate models
 
 
 def get_optimizer(model_str, params):
-    if model_str == "MLP":
+    #if model_str == "MLP":
         # NOTE use sparse adam for actual surrogate encoding
         # return optim.RMSprop(params, lr=0.001)
         # baseline is Adam
         # return optim.RMSprop(params, lr=0.01)
-        return optim.Adam(params, 0.0001)
+    #return optim.Adam(params, 0.0001)
+    #if model_str == 'effKAN' or model_str == 'pyKAN':
+    return optim.AdamW(params, lr=5e-4, weight_decay=1e-4)
     # TODO implement other surrogate optimizers
 
 
 def get_scheduler(model_str, optimizer, num_epochs, batch_size):
-    if model_str == "MLP":
+    #if model_str == "MLP":
         # return lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1)
-        return lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+    return lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
         # return lr_scheduler.MultiStepLR(optimizer, milestones=[10, 20], gamma=0.1)
         # return lr_scheduler.CosineAnnealingLR(optimizer,T_max=10)
+    #if model_str == 'effKAN' or model_str == 'pyKAN':
+    #return optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
     # TODO implement other surrogate schedulers
 
 
@@ -105,13 +140,15 @@ def plot_preds(predictions, truths, metric_names, save_folder='plots'):
 
 
 def store_data(model_str, metrics_df):
-    metrics_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/surrogate_metrics.csv'
+    #metrics_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/surrogate_metrics.csv'
+    metrics_out = f'/home/eharpster3/precog-opt-grip/analysis/kan/{model_str}/surrogate_metrics.csv'
     os.makedirs(os.path.dirname(metrics_out), exist_ok=True)
     metrics_df.to_csv(metrics_out, index=False)
 
 
 def save_model_weights(model_str, model):
-    weights_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/weights.pth'
+    #weights_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/weights.pth'
+    weights_out = f'/home/eharpster3/precog-opt-grip/analysis/kan{model_str}/weights.pth'
     os.makedirs(os.path.dirname(weights_out), exist_ok=True)
     torch.save(model.state_dict(), weights_out)
 
@@ -146,7 +183,7 @@ def engine(cfg, metrics_subset=None):
         for epoch in range(1, num_epochs + 1):
 
             # train and validate for one epoch
-            train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics)
+            train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics, epoch)
             epoch_metrics = val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_metrics)
 
             # update metrics df
@@ -159,7 +196,7 @@ def engine(cfg, metrics_subset=None):
         save_model_weights(model_str, model)
 
 
-def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics):
+def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics, epoch):
     model.train()
 
     # actual surrogate training loss
@@ -169,7 +206,7 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
     criterion = nn.L1Loss()
 
     data_iter = tqdm(train_loader, desc='Training')
-    for genomes, metrics in data_iter:
+    for i, (genomes, metrics) in enumerate(data_iter):
 
         # genomes shape: (batch_size, 976)
         genomes = genomes.to(device)
@@ -179,10 +216,20 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
         # forwards with mixed precision
         with autocast():
             # outputs shape: (batch_size, 12)
-            outputs = model(genomes)
+            #print('before')
+            # if epoch == 8 and i == 94:
+            #     breakpoint()
+            outputs = model(genomes, update_grid=True)
+            # if torch.isnan(outputs).any():
+            #     break
+            #print('after')
+            #print(outputs.shape)
+            #print(metrics.shape)
             clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
             # metric regression loss is meaned, so is scalar tensor value
             loss = criterion(clamped_outputs, metrics)
+            
+            
         
         # backwards
         optimizer.zero_grad()
@@ -212,7 +259,7 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
     mse_metrics_per_batch = []
     # no mean taken for losses in validation 
     # criterion = nn.MSELoss(reduction='none')
-    criterion = nn.L1Loss(reduction='none')
+    criterion = nn.L1Loss()
     
     metric_names = [
         'mse_uw_val_loss', 'mse_iou_loss', 'mse_giou_loss', 'mse_diou_loss', 
@@ -237,6 +284,8 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
             with autocast():
                 # outputs shape: (batch_size, 12)
                 outputs = model(genomes)
+                # if torch.isnan(outputs).any():
+                #     break
                 clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
 
                 # scaled_outputs = torch.tensor(metrics_scaler.inverse_transform(clamped_outputs.cpu().numpy()), device=device, dtype=torch.float32)
@@ -268,12 +317,12 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
 
     # compute the mean of the mse losses for each metric based on num batches
     mse_metrics_per_batch = torch.stack(mse_metrics_per_batch)
-    mse_metrics_meaned = mse_metrics_per_batch.mean(dim=0)
+    mse_metrics_meaned = mse_metrics_per_batch #.mean(dim=0)
 
     epoch_metrics = {
         'val_loss': surrogate_val_loss
     }
-
+    print(surrogate_val_loss)
     epoch_metrics.update({
         selected_metric_names[i]: mse_metrics_meaned[i].item() for i in range(len(metrics_subset))
     })
@@ -284,7 +333,7 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # NOTE default config path should change later on
-    parser.add_argument('-c', '--config_path', required=False, default='conf.toml')
+    parser.add_argument('-c', '--config_path', required=False, default='conf_kan.toml')
     args = parser.parse_args()
     config_path = args.config_path
     configs = toml.load(config_path)

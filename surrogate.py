@@ -112,6 +112,24 @@ class Surrogate():
                 'metrics_subset': [11],
                 'validation_subset': [11],
                 'model': sm.MLP
+            },
+            {
+                'name': 'kan_test',
+                'layers_hidden': [1021, 2048, 512, 256, 12],
+                'grid_size': 5,
+                'spline_order': 3,
+                'scale_noise': 0.1,
+                'scale_base': 1.0,
+                'scale_spline': 1.0,
+                'base_activation': torch.nn.SiLU,
+                'grid_eps': 0.02,
+                'grid_range': [-1, 1],
+                'optimizer': optim.Adam,
+                'lr': 0.1,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                'validation_subset': [0, 4, 11],
+                'model': sm.KAN
             }            
         ]
         self.trust_calc_strategy = surrogate_config["trust_calc_strategy"]
