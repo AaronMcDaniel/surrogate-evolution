@@ -1,3 +1,9 @@
+"""
+Script that evaluates a single individual. 
+This script is normally sbatched, but can be used to evaluate a single individual if the appropriate command line arguments are provided.
+"""
+
+
 import itertools
 import sys
 import argparse

@@ -1,3 +1,10 @@
+"""
+Evolutionary pipeline. Deals with evolutionary processes like selection, mating, overpopulation.
+Makes calls to surrogate appropriately and 
+"""
+
+
+
 import copy
 import csv
 import hashlib
@@ -364,6 +371,8 @@ class Pipeline:
         return new_pop
     
     
+    # trains the surrogate (all sub-surrogates) and gets eval scores which are used to calculate a trustworthiness
+    # surrogate weights are stored to be used for inference when downselecting
     def prepare_surrogate(self):
         seen_gens = list(range(1, self.gen_count))
         if self.gen_count == 1:

@@ -1,3 +1,8 @@
+"""
+Surrogate class and related surrogate functions. This class is used in the pipeline.
+"""
+
+
 import copy
 import hashlib
 import inspect
@@ -35,15 +40,14 @@ def ensure_deap_classes(objectives, codec_config):
 
 
 class Surrogate():
-    def __init__(self, config_dir, weights_dir): # this config is the overall config
-        # Begin by loading config attributes
+    def __init__(self, config_dir, weights_dir): # this config is the overall config, not just the surrogate specific one
         configs = toml.load(config_dir)
         surrogate_config = configs["surrogate"]
         self.surrogate_config = surrogate_config
         pipeline_config = configs["pipeline"]
         codec_config = configs["codec"]
         model_config = configs["model"]
-        self.models = [
+        self.models = [ # these are the regressor models but are simply called 'models' for compatibility reasons with the pipeline
             {
                 'name': 'best_overall',
                 'dropout': 0.2,
@@ -172,6 +176,9 @@ class Surrogate():
         self.toolbox = base.Toolbox()
         
     
+    # takes in a list of deap individuals as the inference pool and then predicts fitnesses for them using the surrogate blend
+    # described by model_idxs. The fitnesses are then assigned to the deap individuals so they can be selected using a deap
+    # selection algorithm like SPEA2
     def set_inferred_fitness(self, model_idxs, genome_scaler, inference_pool):        
         unique_model_idxs = list(set(model_idxs))
         unique_inferences = []
@@ -205,6 +212,7 @@ class Surrogate():
             individual.fitness.values = constructed_inferences[i]
     
     
+    # Calculates trust from a blend of sub_surrogates represented by model_idxs
     # The calc_pool is a list of deap individuals with calculated fitnesses. The model infers the metrics and 
     # we see the intersection in selections
     def calc_ensemble_trust(self, model_idxs, genome_scaler, calc_pool, rand = False):        
@@ -235,43 +243,45 @@ class Surrogate():
         selected = set(selected)
         surrogate_selected = set(surrogate_selected)
         intersection = selected.intersection(surrogate_selected)
-        trust = len(intersection)/len(selected)   #len(selected.union(surrogate_selected))
+        trust = len(intersection)/len(selected)   #len(selected.union(surrogate_selected)) # for iou-based trust calculation
         return trust
 
-# The calc_pool is a list of deap individuals with calculated fitnesses. The model infers the metrics and 
-    # we see the intersection in selections
-    # def calc_trust(self, model_idx, genome_scaler, calc_pool):        
-    #     # create copy of calc_pool
-    #     surrogate_pool = copy.deepcopy(calc_pool)
+
+    # OUTDATED
+    # calculate trust for a single model (will still work, but only if the validation subset of the model used contains all optimization objectives)
+    def calc_trust(self, model_idx, genome_scaler, calc_pool):        
+        # create copy of calc_pool
+        surrogate_pool = copy.deepcopy(calc_pool)
         
-    #     # get inferences on copy of calc_pool and assign fitness to copy
-    #     inferences = self.get_surrogate_inferences(model_idx, genome_scaler, surrogate_pool)
-    #     for i, individual in enumerate(surrogate_pool):
-    #         individual.fitness.values = inferences[i]
+        # get inferences on copy of calc_pool and assign fitness to copy
+        inferences = self.get_surrogate_inferences(model_idx, genome_scaler, surrogate_pool)
+        for i, individual in enumerate(surrogate_pool):
+            individual.fitness.values = inferences[i]
         
-    #     # '''TESTING'''
-    #     # for i in range(len(calc_pool)):
-    #     #     print(calc_pool[i].fitness.values, surrogate_pool[i].fitness.values)
+        # '''TESTING'''
+        # for i in range(len(calc_pool)):
+        #     print(calc_pool[i].fitness.values, surrogate_pool[i].fitness.values)
         
-    #     # run trust-calc strategy to select trust_calc_ratio-based number of individuals for both calc_pool and its copy
-    #     # TODO: add other cases of trust_calc_strategy
-    #     match self.trust_calc_strategy.lower():
-    #         case 'spea2':
-    #             self.toolbox.register("select", tools.selSPEA2, k = int(len(calc_pool)*self.trust_calc_ratio))
+        # run trust-calc strategy to select trust_calc_ratio-based number of individuals for both calc_pool and its copy
+        # TODO: add other cases of trust_calc_strategy
+        match self.trust_calc_strategy.lower():
+            case 'spea2':
+                self.toolbox.register("select", tools.selSPEA2, k = int(len(calc_pool)*self.trust_calc_ratio))
         
-    #     selected = [self.__get_hash(str(g)) for g in self.toolbox.select(calc_pool)]
-    #     surrogate_selected = [self.__get_hash(str(g)) for g in self.toolbox.select(surrogate_pool)]
+        selected = [self.__get_hash(str(g)) for g in self.toolbox.select(calc_pool)]
+        surrogate_selected = [self.__get_hash(str(g)) for g in self.toolbox.select(surrogate_pool)]
         
-    #     # check intersection of selected individuals and return
-    #     selected = set(selected)
-    #     surrogate_selected = set(surrogate_selected)
-    #     intersection = selected.intersection(surrogate_selected)
-    #     trust = len(intersection)/len(selected)
-    #     return trust
+        # check intersection of selected individuals and return
+        selected = set(selected)
+        surrogate_selected = set(surrogate_selected)
+        intersection = selected.intersection(surrogate_selected)
+        trust = len(intersection)/len(selected)
+        return trust
     
     
-    # Get surrogate inferences on a list of deap individuals
-    # CLIPS ENCODED GENOME VALUES
+    # Get surrogate inferences on a list of deap individuals using a single model
+    # CLIPS ENCODED GENOME VALUES: any encoded genome array values are forced be in the range [-1000, 1000]
+    # so as to not cause issues when scaling the features for training/inference
     def get_surrogate_inferences(self, model_idx, genome_scaler: StandardScaler, inference_pool):
         encoded_genomes = []
     
@@ -348,9 +358,9 @@ class Surrogate():
     
     
     # This function converts string representations of genomes from a file like out.csv into deap individuals
-    # with fitness that can be used to either train on or calculate trust with
-    # parameter generations tells us what generations to get individuals from. Will use all individuals in a file if unspecified
-    # CLIPS TARGET VALUES
+    # with fitness that can be used to either train on or calculate trust with.
+    # The generations parameter tells us what generations to get individuals from. Will use all individuals in a file if unspecified
+    # CLIPS TARGET VALUES: values outside [-300, 300] will be clipped so metrics don't have abnormally large values for outliers
     def get_individuals_from_file(self, filepath, generations=None, hashes=None):
         # Read the CSV file into a DataFrame
         genomes_df = pd.read_csv(filepath)
@@ -401,6 +411,9 @@ class Surrogate():
     def __get_hash(self, s):
         return hashlib.shake_256(s.encode()).hexdigest(5)
     
+    '''
+    Section below is for two-stage surrogate implementation and is WOP.
+    '''
     
     # trains all the classifiers and regressors and stores their individual weights and metrics
     def train(self, classifier_train_df, classifier_val_df, regressor_train_df, regressor_val_df):
@@ -417,6 +430,7 @@ class Surrogate():
             scores['classifiers'][classifier_dict['name']] = metrics
         
         print('training regressor')
+        # loop through regressor models
         for regressor_dict in self.models:
             metrics, best_epoch_metrics, best_epoch_num, gs = rse.engine(self.surrogate_config, regressor_dict, regressor_train_df, regressor_val_df, self.weights_dir)
             if genome_scaler is None: genome_scaler = gs
@@ -426,7 +440,9 @@ class Surrogate():
     
     
     # inference models is a list of models where the first entry is the classifier model index to use and the
-    # rest are the indices of the 
+    # rest are the indices of the sub-surrogate regressor models 
+    #
+    # UNFINISHED!
     def get_inferences(self, inference_models, inference_df, genome_scaler):
         cls_model = inference_models[0]
         reg_models = inference_models[1:]

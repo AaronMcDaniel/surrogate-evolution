@@ -1,3 +1,10 @@
+"""
+Uses saved model predictions to re-evaluate a single individual.
+Overwrites old metrics.csv file and PR-curve plot.
+Normally sbatched by launcher script re_eval.py
+"""
+
+
 import argparse
 import itertools
 import os

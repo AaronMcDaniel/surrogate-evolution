@@ -1,3 +1,7 @@
+"""
+AOT dataset and sampler classes.
+"""
+
 import os
 import pickle
 import numpy as np

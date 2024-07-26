@@ -1,3 +1,8 @@
+"""
+List of Primitives and their restrictions defined here.
+"""
+
+
 from enum import Enum
 from functools import partial
 import itertools

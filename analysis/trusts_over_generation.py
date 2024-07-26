@@ -1,13 +1,12 @@
-'''
-Script to calculate surrogate trustworthiness over generation off of an existing run
-'''
+"""
+Script to calculate surrogate trustworthiness over generations off of an existing run
+"""
 
-import os
 import pickle
 import pandas as pd
 import toml
 from surrogate import Surrogate
-from surrogate_dataset import SurrogateDataset, build_dataset
+from surrogate_dataset import build_dataset
 from surrogate_eval import engine
 
 NUM_GENERATIONS = 20

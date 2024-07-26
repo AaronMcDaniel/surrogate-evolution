@@ -1,3 +1,9 @@
+"""
+Removes all NON-PARETO-OPTIMAL weights from a run directory.
+Will only work if you pass in an evolution run directory and it contains a hall_of_fame.csv
+"""
+
+
 import os
 import sys
 import pandas as pd

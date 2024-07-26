@@ -1,3 +1,8 @@
+"""
+Script to launch a re-evaluation process of a run.
+"""
+
+
 import re
 import argparse
 import os

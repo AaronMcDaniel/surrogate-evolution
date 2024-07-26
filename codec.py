@@ -1,5 +1,10 @@
-import re
+"""
+The Codec class is responsible for converting between DEAP PrimitiveTree string representations
+and pytorch models. It also converts the genome string representations to encoded versions for the surrogate to use.
+"""
 
+
+import re
 import torch
 import torch.nn as nn
 import torchvision
@@ -314,8 +319,6 @@ class Codec:
                         enum_dict[prim][val.annotation.__name__] = i
 
             counts[prim] = count
-        # print(counts)
-        # print(max(counts, key=counts.get))
         max_num  = counts[max(counts, key=counts.get)]
 
         mapping = {}
@@ -324,9 +327,6 @@ class Codec:
         return max_num, mapping, enum_dict
 
     def encode_surrogate(self, genome, epoch_num):
-        #print(genome)
-        #print()
-        #module_list = nn.ModuleList()
         if (self.surrogate_encoding_strat.lower() == 'string2vec'):
             # parse tree decoding into layer list
             expr = re.split(r'([(),])',genome)
@@ -334,7 +334,6 @@ class Codec:
             expr = [x for x in expr if x not in remove]
             stack = []
             idx = 0
-            #info = {}
             all_layers = []
             
             max_layers = 15
@@ -342,37 +341,25 @@ class Codec:
 
 
             for element in expr:
-                #print('ELEMENT:', element)
                 if element != ')':
-                    #print('ADDED TO STACK')
                     stack.append(element)
                 else:
                     arguments = []
                     while stack[-1] != '(':
                         arguments.insert(0, stack.pop())
-                        #print('ARGUMENTS:', arguments)
                     stack.pop()
                     function = stack.pop()
-                    #print('FUNCTION:', function)
                     try:
                         stack.append(str(eval(f'primitives.{function}({",".join(arguments)})')))
-                        #print('STACK:', stack)
                     except: # this is where we add the layers
                         layer_info = [function]+[self.__parse_arg(x) for x in arguments]
-                        #layer_vec = self.construct_vec(layer_info, )
                         all_layers.insert(0, layer_info)
                         #print('LAYER INFO:', layer_info)
                         #info = self.add_to_module_list(module_list, idx, layer_info, num_loss_components)
                         idx += 1
             
-            #print(all_layers)
-            #for layer in all_layers:
-                #layer_vec = self.construct_vec
-            #EVAL HEAD
-            #print(all_layers[-1][1])
             del all_layers[-1][1]
             optimizer_layer, scheduler_layer, head_layer = self.construct_head(all_layers[0], num_layer_types)
-            #print(all_layers[-1])
             
             del all_layers[0]
     
@@ -385,12 +372,10 @@ class Codec:
                 encoded_genome[0:len(layer),i + 2] = layer
             
             np.set_printoptions(threshold=encoded_genome.size)
-            #print(encoded_genome, encoded_genome.shape)
             flattened_encoding = encoded_genome.flatten()
             final_encoding = np.zeros(len(flattened_encoding) + 1)
             final_encoding[0] = epoch_num
             final_encoding[1:] = flattened_encoding
-            # return torch.tensor(final_encoding.flatten())
             return final_encoding.flatten()
     
     def construct_optimizer(self, layer_info, num_layer_types):
@@ -409,8 +394,6 @@ class Codec:
         return layer
     
     def construct_scheduler(self, layer_info, num_layer_types):
-        #name = layer_info['lr_scheduler']
-
         layer_vals = list(layer_info.values())
         name = layer_vals[0]
         layer_type = -1

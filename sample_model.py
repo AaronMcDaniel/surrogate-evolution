@@ -1,3 +1,11 @@
+"""
+OUTDATED AND CURRENTLY UNUSED
+
+Used to provide a dummy 'model_dict' for testing as returned by the codec upon decoding a string-represented genome.
+This 'model_dict' is DIFFERENT from the surrogate 'model_dicts'
+"""
+
+
 import torch
 import torchvision
 from custom_detectors.custom_rcnn import CustomFasterRCNN
@@ -66,8 +74,6 @@ def get_model_dict(model_type, num_classes, num_loss_components):
     else:
         raise ValueError('model_type bust be one of the following: "FasterRCNN", "FCOS", "RetinaNet"')
 
-    # weights = torch.rand_like(torch.ones(num_loss_components))
-    # weights /= weights.sum()
     weights = torch.full((num_loss_components, ), 1.0 / num_loss_components)
     optim_dict = {'optimizer': 'SGD', 'optimizer_lr': 0.1, 'optimizer_momentum': 0.9, 'optimizer_weight_decay': 0, 'optimizer_dampening': 0}
     scheduler_dict = {'lr_scheduler': 'StepLR', 'scheduler_step_size': 30, 'scheduler_gamma': 0.1}

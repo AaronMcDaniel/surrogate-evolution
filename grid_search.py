@@ -1,3 +1,8 @@
+"""
+Script to launch grid-search process for surrogates.
+"""
+
+
 import argparse
 import os
 import pickle

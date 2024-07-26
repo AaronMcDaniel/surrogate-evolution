@@ -1,3 +1,8 @@
+"""
+Utility functions mostly used by the criterion file.
+"""
+
+
 import copy
 import os
 import torch

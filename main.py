@@ -1,3 +1,8 @@
+"""
+Launches an evolution.
+"""
+
+
 import argparse
 from pipeline import Pipeline
 

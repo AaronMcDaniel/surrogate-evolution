@@ -1,3 +1,9 @@
+"""
+Defines all the surrogate models used and their architectures.
+architectures are customizeable and can be grid searched in terms of some parameters.
+"""
+
+
 import copy
 import torch.nn as nn
 import torch.nn.functional as F
@@ -437,7 +443,7 @@ class KAN(torch.nn.Module):
         )
     
 
-# potential classifier model
+# classifier model
 class BinaryClassifier(nn.Module):
     def __init__(
             self, 

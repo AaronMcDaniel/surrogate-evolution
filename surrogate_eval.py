@@ -1,3 +1,8 @@
+"""
+Train and Validate operations for the regressor surrogates. Called surrogate_eval for compatibility reasons.
+"""
+
+
 import inspect
 import toml
 from tqdm import tqdm
@@ -22,6 +27,7 @@ def prepare_data(model_dict, batch_size, train_df, val_df):
     return train_loader, val_loader, train_dataset, val_dataset
 
 
+# builds model, optimizer and scheduler from a 'model_dict' as defined in the 'Surrogate' class under models (see surrogate.py)
 def build_configuration(model_dict, device):
         # build model
         model = model_dict['model']
@@ -62,6 +68,11 @@ def create_metrics_df(cfg):
     ] + cfg['surrogate_metrics'])
 
 
+# used to train and evaluate a regressor surrogate
+# calling this function will train and validate the model represented by the passed-in model dict
+# the model dict includes a metrics_subset and a validation_subset which represent the metrics used to train the model
+# and the metrics on which the model makes inferences on respectively.
+# returns the genome scaler used (for getting inferences later) and saves best epoch weights by best sum of validation subset losses
 def engine(cfg, model_dict, train_df, val_df, weights_dir):
     best_loss_metric = np.inf
     best_epoch = None
@@ -234,6 +245,7 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
     return epoch_metrics
 
 
+# TESTING
 # config_path = 'conf.toml'
 # configs = toml.load(config_path)
 # cfg = configs['surrogate']
