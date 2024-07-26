@@ -39,9 +39,9 @@ def get_model(model_str, metric_subset):
     if model_str == 'effKAN':
         input_size = 1021
         output_size = 3
-        layers_hidden = [512, 256]
+        layers_hidden = [2048, 512, 256, 128]
         grid_size=25
-        spline_order=5
+        spline_order=3
         scale_noise=0.1
         scale_base=1.0
         scale_spline=1.0
@@ -79,7 +79,7 @@ def get_optimizer(model_str, params):
         # return optim.RMSprop(params, lr=0.01)
     #return optim.Adam(params, 0.0001)
     #if model_str == 'effKAN' or model_str == 'pyKAN':
-    return optim.AdamW(params, lr=5e-4, weight_decay=1e-4)
+    return optim.AdamW(params, lr=1e-4, weight_decay=1e-4)
     # TODO implement other surrogate optimizers
 
 
