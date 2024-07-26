@@ -1,3 +1,4 @@
+import copy
 import torch.nn as nn
 import torch.nn.functional as F
 import math
@@ -116,7 +117,6 @@ class KANLinear(torch.nn.Module):
         self.out_features = out_features
         self.grid_size = grid_size
         self.spline_order = spline_order
-
         h = (grid_range[1] - grid_range[0]) / grid_size
         grid = (
             (
@@ -215,7 +215,7 @@ class KANLinear(torch.nn.Module):
         )
         return bases.contiguous()
 
-    def curve2coeff(self, x: torch.Tensor, y: torch.Tensor, isnan=False):
+    def curve2coeff(self, x: torch.Tensor, y: torch.Tensor, regularization: float=1e-6):
         """
         Compute the coefficients of the curve that interpolates the given points.
 
@@ -228,44 +228,17 @@ class KANLinear(torch.nn.Module):
         """
         assert x.dim() == 2 and x.size(1) == self.in_features
         assert y.size() == (x.size(0), self.in_features, self.out_features)
-        # if torch.isnan(y).any():
-        #     print('y')
-        # if isnan and torch.isnan(x).any():
-        #     print('x')
-        # if isnan and torch.isnan(y).any():
-        #     print('y')
-        A = self.b_splines(x).transpose(
-            0, 1
-        )  # (in_features, batch_size, grid_size + spline_order)
-        B = y.transpose(0, 1)  # (in_features, batch_size, out_features)
-        
-        # if not torch.isnan(x).any() and not torch.isnan(y).any():
-        #     if torch.isnan(A).any() or torch.isnan(B).any():
-        #         print('YUP')
-        #         breakpoint()
-        #print('actual TYPE', A.dtype, B.dtype)
-        #print('RANKS', torch.linalg.matrix_rank(A), A.shape, torch.linalg.matrix_rank(B), B.shape)
-        # b = B
-        # gram = np.dot(A.T,A)
-        # print(np.linalg.cond(gram))
-        # Q,R=np.linalg.qr(A)
-        # x_householder=linalg.solve_triangular(R,Q.T.dot(b))
-        # r_norm_householder = linalg.norm(np.dot(gram,x_householder)-np.dot(A.T,b))
-        # print(r_norm_householder)
+        A = self.b_splines(x).transpose(0, 1).float()  # (in_features, batch_size, grid_size + spline_order)
+        B = y.transpose(0, 1).float()  # (in_features, batch_size, out_features)
 
-       
-        # solution = torch.linalg.lstsq(
-        #     A, B, driver='gelsd'
-        # ).solution  # (in_features, grid_size + spline_order, out_features)
-        solution = svd_lstsq(A, B)
-        # if torch.isnan(solution).any():
-        #     print('A:', A)
-        #     print()
-        #     print('B:', B)
-        #     print()
-        result = solution.permute(
-            2, 0, 1
-        )  # (out_features, in_features, grid_size + spline_order)
+        # apply ridge regularization to A
+        # breakpoint()
+        # I = torch.eye(A.size(-1), device=A.device, dtype=A.dtype)
+        # I = I.unsqueeze(0).unsqueeze(0)
+        # A_reg = A.permute(0, 2, 1) + regularization * I
+
+        solution = torch.linalg.lstsq(A, B).solution  # (in_features, grid_size + spline_order, out_features)
+        result = solution.permute(2, 0, 1)  # (out_features, in_features, grid_size + spline_order)
 
         assert result.size() == (
             self.out_features,
@@ -292,7 +265,6 @@ class KANLinear(torch.nn.Module):
         assert x.size(-1) == self.in_features
         original_shape = x.shape
         x = x.reshape(-1, self.in_features)
-
         base_output = F.linear(self.base_activation(x), self.base_weight)
         spline_output = F.linear(
             self.b_splines(x).view(x.size(0), -1),
@@ -412,7 +384,9 @@ class KANLinear(torch.nn.Module):
 class KAN(torch.nn.Module):
     def __init__(
         self,
-        layers_hidden,
+        input_size=1021,
+        output_size=12,
+        hidden_sizes=[512, 256],
         grid_size=5,
         spline_order=3,
         scale_noise=0.1,
@@ -421,13 +395,17 @@ class KAN(torch.nn.Module):
         base_activation=torch.nn.SiLU,
         grid_eps=0.02,
         grid_range=[-1, 1],
-    ):
+    ):  
         super(KAN, self).__init__()
         self.grid_size = grid_size
         self.spline_order = spline_order
 
+        hidden_sizes = copy.deepcopy(hidden_sizes)
+        hidden_sizes.append(output_size)
+        hidden_sizes.insert(0, input_size)
+
         self.layers = torch.nn.ModuleList()
-        for in_features, out_features in zip(layers_hidden, layers_hidden[1:]):
+        for in_features, out_features in zip(hidden_sizes, hidden_sizes[1:]):
             self.layers.append(
                 KANLinear(
                     in_features,
@@ -445,7 +423,6 @@ class KAN(torch.nn.Module):
 
     def forward(self, x: torch.Tensor, update_grid=False):
         x = torch.tanh(x)
-
         for layer in self.layers:
             if update_grid:
                 #print('WORKS')
@@ -458,21 +435,48 @@ class KAN(torch.nn.Module):
             layer.regularization_loss(regularize_activation, regularize_entropy)
             for layer in self.layers
         )
+    
 
+# potential classifier model
+class BinaryClassifier(nn.Module):
+    def __init__(
+            self, 
+            input_size=1021, 
+            hidden_sizes=[512, 256], 
+            activation_layer=nn.ReLU, 
+            norm_layer=nn.BatchNorm1d, 
+            bias=True, inplace=None, 
+            dropout=0.3
+    ):
+        super(BinaryClassifier, self).__init__()
+        self.activation_layer = activation_layer
+        params = {} if inplace is None else {"inplace": inplace}
+        layers = []
 
-model = KAN([1021, 2048, 512, 256, 12])
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-model.to(device)
-data = torch.randn((16, 1021), dtype=torch.float32, device=device)
-label = torch.randn((16, 12), dtype=torch.float32, device=device)
-model.train()
-output = model(data)
-train_criterion = nn.L1Loss()
-loss = train_criterion(output, label)
-print(loss)
-val_criterion = nn.L1Loss(reduction='none')
-# (16, 12) matrix of 12 mse losses for each image in batch of 16
-loss_matrix = val_criterion(output, label)
-# meaned losses per metric
-loss_means = torch.mean(loss_matrix, dim=0)
-print(loss_means)
+        # Build intermediate hidden layers, but not output layer
+        in_dim = input_size
+        for hidden_dim in hidden_sizes:
+            layers.append(nn.Linear(in_dim, hidden_dim, bias=bias))
+            if norm_layer is not None:
+                layers.append(norm_layer(hidden_dim))
+            layers.append(activation_layer(**params))
+            layers.append(nn.Dropout(dropout, **params))
+            in_dim = hidden_dim
+
+        # Build output layer for binary classification
+        layers.append(nn.Linear(in_dim, 1, bias=bias))
+        self.mlp = nn.Sequential(*layers)
+        self.apply(self._init_weights)
+
+    def forward(self, x):
+        y = self.mlp(x)
+        return y
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            if self.activation_layer in [nn.ReLU, nn.LeakyReLU]:
+                nn.init.kaiming_normal_(module.weight, nonlinearity='relu')
+            elif self.activation_layer in [nn.Sigmoid, nn.Tanh]:
+                nn.init.xavier_normal_(module.weight)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)

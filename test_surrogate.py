@@ -29,11 +29,10 @@ def prepare_data(batch_size, metrics_subset):
     return train_loader, val_loader, train_dataset
 
 
-def get_model(model_str, output_size=12):
+def get_model(model_str, metric_subset):
     if model_str == "MLP":
-        # NOTE mlp hyperparameters will be optimized with grid search in the future
-        # return sm.MLP(dropout=0.4, hidden_sizes=[2048, 1024, 512, 12])
         input_size = 1021
+        output_size = len(metrics_subset)
         dropout = 0.0
         hidden_sizes = [512, 256]
         return sm.MLP(input_size=input_size, output_size=output_size, dropout=dropout, hidden_sizes=hidden_sizes)
@@ -158,28 +157,28 @@ def engine(cfg, metrics_subset=None):
     models = cfg['models']
     num_epochs = cfg['surrogate_train_epochs']
     batch_size = cfg['surrogate_batch_size']
+    if metrics_subset is None:
+        metrics_subset = list(range(12))
     train_loader, val_loader, train_dataset = prepare_data(batch_size, metrics_subset=metrics_subset)
     max_metrics = train_dataset.max_metrics
     min_metrics = train_dataset.min_metrics
     genomes_scaler = train_dataset.genomes_scaler
     metrics_scaler = train_dataset.metrics_scaler
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    if metrics_subset is None:
-        metrics_subset = list(range(12))
 
     # perform training and validation for each surrogate model
     for model_str in models:
+        if model_str == "MLP":
+            continue
 
         # get surrogate model and specific optimizer, scheduler
-        output_size = len(metrics_subset)
-        model = get_model(model_str, output_size=output_size).to(device)
+        model = get_model(model_str, metric_subset=metrics_subset).to(device)
         params = model.parameters()
         optimizer = get_optimizer(model_str, params)
         scheduler = get_scheduler(model_str, optimizer, num_epochs, batch_size)
         scaler = GradScaler()
-
-        # NOTE metrics df for each surrogate must be stored in different directories
         metrics_df = create_metrics_df()
+
         for epoch in range(1, num_epochs + 1):
 
             # train and validate for one epoch
@@ -287,12 +286,6 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
                 # if torch.isnan(outputs).any():
                 #     break
                 clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
-
-                # scaled_outputs = torch.tensor(metrics_scaler.inverse_transform(clamped_outputs.cpu().numpy()), device=device, dtype=torch.float32)
-                # scaled_metrics = torch.tensor(metrics_scaler.inverse_transform(metrics.cpu().numpy()), device=device, dtype=torch.float32) 
-                # predictions = np.vstack([predictions, clamped_outputs.cpu().numpy()])
-                # loss_matrix shape: (batch_size, 12)
-                # loss_matrix = criterion(scaled_outputs, scaled_metrics)
                 loss_matrix = criterion(clamped_outputs, metrics)
 
                 # loss tensor shape: (12)
@@ -311,7 +304,6 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
     # if epoch==29:
     #     plot_preds(predictions, truths, ['mse_uw_val_loss', 'mse_ciou_loss', 'mse_average_precision'])
 
-    # calculate surrogate validation loss per batch (NOTE batch loss already meaned by batch size)
     num_batches = len(data_iter)
     surrogate_val_loss /= num_batches
 

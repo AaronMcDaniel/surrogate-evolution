@@ -21,3 +21,8 @@ conf_kan.toml
 kan/
 kaneffKAN/
 kanKAN
+*.job
+!main.job
+!grid_search.job
+!re_eval.job
+

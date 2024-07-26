@@ -62,10 +62,11 @@ def create_metrics_df(cfg):
     ] + cfg['surrogate_metrics'])
 
 
-def engine(cfg, model_dict, train_df, val_df):
+def engine(cfg, model_dict, train_df, val_df, weights_dir):
     best_loss_metric = np.inf
     best_epoch = None
     best_epoch_num = None
+    best_epoch_metrics = None
     # pull surrogate train/eval config attributes
     num_epochs = cfg['surrogate_train_epochs']
     batch_size = cfg['surrogate_batch_size']
@@ -101,6 +102,7 @@ def engine(cfg, model_dict, train_df, val_df):
             best_loss_metric = loss_metric
             best_epoch = model
             best_epoch_num = epoch
+            best_epoch_metrics = epoch_metrics
         # update metrics df
         epoch_metrics['epoch_num'] = epoch
         epoch_metrics['train_loss'] = train_epoch_loss
@@ -108,12 +110,27 @@ def engine(cfg, model_dict, train_df, val_df):
         metrics_df = pd.concat([metrics_df, epoch_metrics_df], ignore_index=True)
     
 
-    torch.save(best_epoch.state_dict(), '/gv1/projects/GRIP_Precog_Opt/surrogates/run_weights/' + model_dict['name'] + '.pth')
-    print('Save epoch #:', best_epoch_num)    
+    torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict['name']}.pth')
+    print('        Save epoch #:', best_epoch_num)    
 
-    return metrics_df, train_dataset.genomes_scaler
+    return metrics_df, best_epoch_metrics, best_epoch_num, train_dataset.genomes_scaler
 
-            
+
+def get_val_scores(cfg, model_dict, train_df, val_df, weights_dir):
+    # pull surrogate train/eval config attributes
+    batch_size = cfg['surrogate_batch_size']
+    # define subset of metrics to train on and prepare data accordingly
+    metrics_subset = model_dict['metrics_subset']
+    train_loader, val_loader, train_dataset, val_dataset = prepare_data(model_dict, batch_size, train_df, val_df)
+    max_metrics = train_dataset.max_metrics
+    min_metrics = train_dataset.min_metrics
+
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    model, optimizer, scheduler, scaler, val_subset = build_configuration(model_dict=model_dict, device=device)
+    model.load_state_dict(torch.load(f'{weights_dir}/{model_dict['name']}.pth', map_location=device)) 
+    epoch_metrics = val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, min_metrics)
+    return epoch_metrics               
+
 
 def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics):
     model.train()
@@ -188,12 +205,8 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
                 loss_matrix = criterion(clamped_outputs, metrics)
                 # loss tensor shape: (12)
                 loss_tensor = torch.mean(loss_matrix, dim=0)
-                #print('loss_tensor', loss_tensor, len(loss_tensor))
-                
                 # loss is meaned, so is scalar tensor value
                 loss = torch.mean(loss_tensor)
-            
-            
             
             # update validation loss
             surrogate_val_loss += loss.item()
@@ -219,3 +232,28 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
     })
 
     return epoch_metrics
+
+
+# config_path = 'conf.toml'
+# configs = toml.load(config_path)
+# cfg = configs['surrogate']
+
+# # FILTERED DATASET TESTING
+# filt_train_df = pd.read_pickle('surrogate_dataset/filtered_train_dataset.pkl')
+# filt_val_df = pd.read_pickle('surrogate_dataset/filtered_val_dataset.pkl')
+# model_dict1 = {'name': 'kan_experiment', 
+#               'model': sm.KAN, 
+#               'hidden_sizes': [], 
+#               'optimizer': torch.optim.AdamW, 
+#               'lr': 0.1, 
+#               'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR, 
+#               'metrics_subset': [11], 
+#               'validation_subset': [11], 
+#               'scale_noise': 0.01, 
+#               'spline_order': 1,
+#               'grid_size': 1000,
+#               'scale_base': 1.0,
+#               'scale_spline': 1.0
+#               }
+
+# print(engine(cfg, model_dict1, filt_train_df, filt_val_df, weights_dir='test'))

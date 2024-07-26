@@ -14,7 +14,7 @@ crossovers = {one_point = 0.5, one_point_leaf_biased = 0.3}
 # types of mutations and their probabilities
 mutations = {node_replacement = 0.2}
 # whether to use surrogate
-surrogate_enabled = false
+surrogate_enabled = true
 # GA objectives to optimize for and their weights (matter only relative to each other)
 objectives = {uw_val_epoch_loss = -1, ciou_loss = -1, average_precision = 1}
 # strategy for down selecting individuals trusted by the surrogate
@@ -64,7 +64,7 @@ surrogate_encoding_strat = "String2Vec"
 
 [surrogate]
 # surrogate models to be used
-models = ["MLP"]
+models = ["MLP", "KAN"]
 # surrogate metrics
 surrogate_metrics = ["mse_uw_val_loss", "mse_iou_loss", "mse_giou_loss", "mse_diou_loss", "mse_ciou_loss", "mse_center_loss", "mse_size_loss", "mse_obj_loss", "mse_precision", "mse_recall", "mse_f1_score", "mse_average_precision"]
 # optimization directions of the genome metrics
@@ -77,13 +77,10 @@ surrogate_batch_size = 16
 trust_calc_strategy = "SPEA2"
 # ratio of population to check intersection on
 trust_calc_ratio = 0.3
-# whether to use pretrained surrogate
-pretrained = true
-# path to external dataset
-surrogate_dataset_path = "surrogate_dataset"
 
 [data]
 # time in hours the dataset cache is valid for
 cache_thresh = 1
 # size of the dataset
 max_size = 1000
+
