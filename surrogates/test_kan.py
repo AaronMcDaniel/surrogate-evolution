@@ -309,4 +309,3 @@ if __name__ == '__main__':
     metrics_df = create_metrics_df()
     model.load_state_dict(torch.load(f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/weights.pth', map_location=device))
     print(val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_metrics))
-

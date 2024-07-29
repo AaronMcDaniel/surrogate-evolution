@@ -113,36 +113,36 @@ class Surrogate():
             {'name': 'kan_best_uwvl', 
               'model': sm.KAN, 
               'hidden_sizes': [512, 256], 
-              'optimizer': torch.optim.SGD, 
-              'lr': 0.001, 
+              'optimizer': torch.optim.AdamW, 
+              'lr': 0.01, 
               'scheduler': torch.optim.lr_scheduler.StepLR, 
               'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 
               'validation_subset': [0], 
-              'scale_noise': 0.1, 
-              'spline_order': 2
+              'grid_size': 25, 
+              'spline_order': 5
             },
-            {'name': 'kan_best_ciou', 
+            {'name': 'kan_best_cioul', 
               'model': sm.KAN, 
-              'hidden_sizes': [512, 256], 
-              'optimizer': torch.optim.SGD, 
+              'hidden_sizes': [2048, 1024, 512], 
+              'optimizer': torch.optim.AdamW, 
               'lr': 0.001, 
-              'scheduler': torch.optim.lr_scheduler.StepLR, 
+              'scheduler': torch.optim.lr_scheduler.CosineAnnealingWarmRestarts, 
               'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 
               'validation_subset': [4], 
-              'scale_noise': 0.1, 
-              'spline_order': 2
+              'grid_size': 10,
+              'spline_order': 1
             },
             {
                 'name': 'kan_best_ap',
-                'hidden_sizes': [512, 256],
-                'optimizer': optim.SGD,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.AdamW,
                 'lr': 0.001,
                 'scheduler': optim.lr_scheduler.StepLR,
-                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                'metrics_subset': [11],
                 'validation_subset': [11],
                 'model': sm.KAN,
-                'scale_noise': 0.1,
-                'spline_order': 2
+                'spline_order': 1,
+                'grid_size': 25
             }
         ]
         self.classifier_models = [

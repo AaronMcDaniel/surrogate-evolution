@@ -16,7 +16,6 @@ import eval as e
 from torch.utils.data import DataLoader
 from surrogates import surrogate_dataset as sd
 import pickle
-#import kan as pykan
 
 
 def prepare_data(batch_size, metrics_subset):
@@ -50,25 +49,6 @@ def get_model(model_str, metric_subset):
         #grid_eps=1.0
         grid_range=[-1, 1]
         return sm.KAN(input_size, output_size, layers_hidden, grid_size=grid_size, spline_order=spline_order, scale_noise=scale_noise, scale_base=scale_base, scale_spline=scale_spline, base_activation=base_activation, grid_eps=grid_eps, grid_range=grid_range)
-    if model_str == 'pyKAN':
-        width=[1021, 2048, 512, 256, 3]
-        grid=3
-        k=3
-        noise_scale=0.1
-        scale_base_mu=0.0
-        scale_base_sigma=1.0
-        base_fun=torch.nn.SiLU()
-        symbolic_enabled=True
-        bias_trainable=False
-        grid_eps=1.0
-        grid_range=[-1, 1]
-        sp_trainable=True
-        sb_trainable=True
-        device='cuda'
-        seed=42
-        return pykan.KAN(width=width, grid=grid, k=k, noise_scale=noise_scale, scale_base_mu=scale_base_mu, scale_base_sigma=scale_base_sigma, base_fun=base_fun, symbolic_enabled=symbolic_enabled, grid_eps=grid_eps, grid_range=grid_range, sp_trainable=sp_trainable, sb_trainable=sb_trainable, device=device, seed=seed)
-        
-    # TODO implement other surrogate models
 
 
 def get_optimizer(model_str, params):
@@ -301,11 +281,7 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
             mse_metrics_per_batch.append(loss_tensor)
             data_iter.set_postfix(loss=loss)
             torch.cuda.empty_cache()
-
-    
-    # if epoch==29:
-    #     plot_preds(predictions, truths, ['mse_uw_val_loss', 'mse_ciou_loss', 'mse_average_precision'])
-
+            
     num_batches = len(data_iter)
     surrogate_val_loss /= num_batches
 

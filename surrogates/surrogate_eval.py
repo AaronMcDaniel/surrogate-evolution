@@ -52,8 +52,8 @@ def build_configuration(model_dict, device):
             scheduler = scheduler_func(optimizer=optimizer, T_max=10)
         elif scheduler_func == optim.lr_scheduler.ReduceLROnPlateau:
             scheduler = scheduler_func(optimizer=optimizer, mode='min', factor=0.1, patience=5)
-        else:
-            scheduler = scheduler_func(optimizer=optimizer)
+        elif scheduler_func == optim.lr_scheduler.CosineAnnealingWarmRestarts:
+            scheduler = scheduler_func(optimizer=optimizer, T_0=10, T_mult=2)
         scaler = GradScaler()
         
         val_subset = model_dict['validation_subset']
@@ -149,7 +149,8 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
     # actual surrogate training loss
     surrogate_train_loss = 0.0
     # mean taken for metric regression losses in train
-    criterion = nn.L1Loss()
+    # criterion = nn.L1Loss()
+    criterion = nn.MSELoss()
 
     data_iter = tqdm(train_loader, desc='Training')
     for genomes, metrics in data_iter:
@@ -194,7 +195,8 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
     # mse loss matrx for each metric, where rows = num batches and cols = 12 for all predicted metrics
     mse_metrics_per_batch = []
     # no mean taken for losses in validation 
-    criterion = nn.L1Loss(reduction='none')
+    # criterion = nn.L1Loss(reduction='none')
+    criterion = nn.MSELoss(reduction='none')
     
     metric_names = cfg['surrogate_metrics']
     selected_metric_names = [metric_names[i] for i in metrics_subset]
@@ -250,22 +252,19 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
 # configs = toml.load(config_path)
 # cfg = configs['surrogate']
 
-# # FILTERED DATASET TESTING
-# filt_train_df = pd.read_pickle('surrogate_dataset/filtered_train_dataset.pkl')
-# filt_val_df = pd.read_pickle('surrogate_dataset/filtered_val_dataset.pkl')
-# model_dict1 = {'name': 'kan_experiment', 
-#               'model': sm.KAN, 
-#               'hidden_sizes': [], 
-#               'optimizer': torch.optim.AdamW, 
-#               'lr': 0.1, 
-#               'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR, 
-#               'metrics_subset': [11], 
-#               'validation_subset': [11], 
-#               'scale_noise': 0.01, 
-#               'spline_order': 1,
-#               'grid_size': 1000,
-#               'scale_base': 1.0,
-#               'scale_spline': 1.0
-#               }
+# FILTERED DATASET TESTING
+reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
+reg_val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
+model_dict1 = {'name': 'kan_mse_best_uwvl', 
+              'model': sm.KAN, 
+              'hidden_sizes': [512, 256], 
+              'optimizer': torch.optim.AdamW, 
+              'lr': 0.01, 
+              'scheduler': torch.optim.lr_scheduler.StepLR, 
+              'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 
+              'validation_subset': [0], 
+              'grid_size': 25, 
+              'spline_order': 5
+            }
 
-# print(engine(cfg, model_dict1, filt_train_df, filt_val_df, weights_dir='test'))
+print(engine(cfg, model_dict1, reg_train_df, reg_val_df, weights_dir='test'))
