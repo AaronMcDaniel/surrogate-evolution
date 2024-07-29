@@ -256,11 +256,7 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
             mse_metrics_per_batch.append(loss_tensor)
             data_iter.set_postfix(loss=loss)
             torch.cuda.empty_cache()
-
-    
-    # if epoch==29:
-    #     plot_preds(predictions, truths, ['mse_uw_val_loss', 'mse_ciou_loss', 'mse_average_precision'])
-
+            
     num_batches = len(data_iter)
     surrogate_val_loss /= num_batches
 

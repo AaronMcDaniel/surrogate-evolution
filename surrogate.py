@@ -85,117 +85,39 @@ class Surrogate():
                 'validation_subset': [11],
                 'model': sm.MLP
             },
-            # {
-            #     'name': 'kan_best_uw_val',
-            #     'hidden_sizes': [2048, 1024, 512],
-            #     'optimizer': optim.SGD,
-            #     'lr': 0.01,
-            #     'scheduler': optim.lr_scheduler.StepLR,
-            #     'metrics_subset': [0, 4, 11],
-            #     'validation_subset': [0, 4, 11],
-            #     'model': sm.KAN,
-            #     'scale_spline': 1.0,
-            #     'scale_noise': 0.25,
-            #     'spline_order': 4
-            # },
-            # {
-            #     'name': 'kan_best_ciou',
-            #     'hidden_sizes': [2048, 512],
-            #     'optimizer': optim.AdamW,
-            #     'lr': 0.01,
-            #     'scheduler': optim.lr_scheduler.StepLR,
-            #     'metrics_subset': [0, 4, 11],
-            #     'validation_subset': [0, 4, 11],
-            #     'model': sm.KAN,
-            #     'scale_spline': 2.0,
-            #     'scale_noise': 0.25,
-            #     'spline_order': 4
-            # },  
-            # {
-            #     'name': 'kan_best_ap',
-            #     'hidden_sizes': [512, 256],
-            #     'optimizer': optim.AdamW,
-            #     'lr': 0.01,
-            #     'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
-            #     'metrics_subset': [11],
-            #     'validation_subset': [11],
-            #     'model': sm.KAN,
-            #     'scale_spline': 2.0,
-            #     'scale_noise': 0.25,
-            #     'spline_order': 4
-            # },
-            # kan trained on outlier-filtered dataset of uw_val_loss
-            # {'name': 'filtered_kan_uwv', 
-            # 'model': sm.KAN, 
-            # 'hidden_sizes': [], 
-            # 'optimizer': torch.optim.AdamW, 
-            # 'lr': 0.001, 
-            # 'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR, 
-            # 'metrics_subset': [0], 
-            # 'validation_subset': [0], 
-            # 'scale_noise': 0.1, 
-            # 'spline_order': 2,
-            # 'grid_size': 1000
-            # },
-            # # kan trained on outlier-filtered dataset of ciou_loss
-            # {'name': 'filtered_kan_ciou', 
-            # 'model': sm.KAN, 
-            # 'hidden_sizes': [], 
-            # 'optimizer': torch.optim.AdamW, 
-            # 'lr': 0.001, 
-            # 'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR, 
-            # 'metrics_subset': [4], 
-            # 'validation_subset': [4], 
-            # 'scale_noise': 0.1, 
-            # 'spline_order': 2,
-            # 'grid_size': 1000
-            # },
-            # # kan trained on outlier-filtered dataset of ap
-            # {'name': 'filtered_kan_ap', 
-            # 'model': sm.KAN, 
-            # 'hidden_sizes': [], 
-            # 'optimizer': torch.optim.AdamW, 
-            # 'lr': 0.001, 
-            # 'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR, 
-            # 'metrics_subset': [11], 
-            # 'validation_subset': [11], 
-            # 'scale_noise': 0.1, 
-            # 'spline_order': 2,
-            # 'grid_size': 1000
-            # },
             {'name': 'kan_best_uwvl', 
               'model': sm.KAN, 
               'hidden_sizes': [512, 256], 
-              'optimizer': torch.optim.SGD, 
-              'lr': 0.001, 
+              'optimizer': torch.optim.AdamW, 
+              'lr': 0.01, 
               'scheduler': torch.optim.lr_scheduler.StepLR, 
               'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 
               'validation_subset': [0], 
-              'scale_noise': 0.1, 
-              'spline_order': 2
+              'grid_size': 25, 
+              'spline_order': 5
             },
-            {'name': 'kan_best_ciou', 
+            {'name': 'kan_best_cioul', 
               'model': sm.KAN, 
-              'hidden_sizes': [512, 256], 
-              'optimizer': torch.optim.SGD, 
+              'hidden_sizes': [2048, 1024, 512], 
+              'optimizer': torch.optim.AdamW, 
               'lr': 0.001, 
-              'scheduler': torch.optim.lr_scheduler.StepLR, 
+              'scheduler': torch.optim.lr_scheduler.CosineAnnealingWarmRestarts, 
               'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 
               'validation_subset': [4], 
-              'scale_noise': 0.1, 
-              'spline_order': 2
+              'grid_size': 10,
+              'spline_order': 1
             },
             {
                 'name': 'kan_best_ap',
-                'hidden_sizes': [512, 256],
-                'optimizer': optim.SGD,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.AdamW,
                 'lr': 0.001,
                 'scheduler': optim.lr_scheduler.StepLR,
-                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                'metrics_subset': [11],
                 'validation_subset': [11],
                 'model': sm.KAN,
-                'scale_noise': 0.1,
-                'spline_order': 2
+                'spline_order': 1,
+                'grid_size': 25
             }
         ]
         self.classifier_models = [
@@ -455,10 +377,10 @@ class Surrogate():
     
     def __get_hash(self, s):
         return hashlib.shake_256(s.encode()).hexdigest(5)
-# surrogate = Surrogate('conf.toml')
-# individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv", generations=[21, 22, 23, 24])
-# train_df = pd.read_pickle('surrogate_dataset/train_dataset.pkl')
-# train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=[0, 4, 11])
-# genome_scaler = train_dataset.genomes_scaler
-# print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
-# print(surrogate.calc_trust(-2, genome_scaler, individuals))
+    
+surrogate = Surrogate('conf.toml', 'test')
+individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv", generations=[23, 24, 25, 26, 1])
+train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
+train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=[0, 4, 11])
+genome_scaler = train_dataset.genomes_scaler
+print(surrogate.calc_ensemble_trust([-3, -2, -1], genome_scaler, individuals))
