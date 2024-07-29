@@ -26,12 +26,12 @@ from surrogates.surrogate_eval import engine, get_val_scores
 from surrogates.surrogate_dataset import build_dataset
 
 # job file params
-JOB_NAME = 'test_eval'
+JOB_NAME = 'precog_eval'
 NODES = 1
 CORES = 8
 MEM = '32GB'
 JOB_TIME = '08:00:00'
-SCRIPT = 'test/dummy_eval.py'
+SCRIPT = 'eval.py'
 ENV_NAME = 'myenv'
 EXCEPTED_NODES = ['ice109', 'ice111', 'ice161', 'ice113', 'ice116', 'ice114', 'ice170', 'ice149', 'ice158', 'ice177', 'ice178', 'ice120']
 GPUS = ["TeslaV100-PCIE-32GB", "TeslaV100S-PCIE-32GB", "NVIDIAA100-SXM4-80GB", "NVIDIAA10080GBPCIe", "TeslaP100-SXM2-16GB", "TeslaK80"]
