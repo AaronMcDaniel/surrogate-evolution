@@ -1,3 +1,8 @@
+"""
+Monkey-patched PrimitiveTree allowing us to convert string representations of genomes to DEAP individuals.
+"""
+
+
 from collections import deque
 import re
 from deap import gp  

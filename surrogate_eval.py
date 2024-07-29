@@ -1,3 +1,8 @@
+"""
+Train and Validate operations for the regressor surrogates. Called surrogate_eval for compatibility reasons.
+"""
+
+
 import inspect
 import toml
 from tqdm import tqdm
@@ -22,6 +27,7 @@ def prepare_data(model_dict, batch_size, train_df, val_df):
     return train_loader, val_loader, train_dataset, val_dataset
 
 
+# builds model, optimizer and scheduler from a 'model_dict' as defined in the 'Surrogate' class under models (see surrogate.py)
 def build_configuration(model_dict, device):
         # build model
         model = model_dict['model']
@@ -62,10 +68,16 @@ def create_metrics_df(cfg):
     ] + cfg['surrogate_metrics'])
 
 
+# used to train and evaluate a regressor surrogate
+# calling this function will train and validate the model represented by the passed-in model dict
+# the model dict includes a metrics_subset and a validation_subset which represent the metrics used to train the model
+# and the metrics on which the model makes inferences on respectively.
+# returns the genome scaler used (for getting inferences later) and saves best epoch weights by best sum of validation subset losses
 def engine(cfg, model_dict, train_df, val_df, weights_dir):
     best_loss_metric = np.inf
     best_epoch = None
     best_epoch_num = None
+    best_epoch_metrics = None
     # pull surrogate train/eval config attributes
     num_epochs = cfg['surrogate_train_epochs']
     batch_size = cfg['surrogate_batch_size']
@@ -101,6 +113,7 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
             best_loss_metric = loss_metric
             best_epoch = model
             best_epoch_num = epoch
+            best_epoch_metrics = epoch_metrics
         # update metrics df
         epoch_metrics['epoch_num'] = epoch
         epoch_metrics['train_loss'] = train_epoch_loss
@@ -111,7 +124,7 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
     torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict['name']}.pth')
     print('        Save epoch #:', best_epoch_num)    
 
-    return metrics_df, best_epoch_num, train_dataset.genomes_scaler
+    return metrics_df, best_epoch_metrics, best_epoch_num, train_dataset.genomes_scaler
 
 
 def get_val_scores(cfg, model_dict, train_df, val_df, weights_dir):
@@ -234,9 +247,10 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
     return epoch_metrics
 
 
-config_path = 'conf.toml'
-configs = toml.load(config_path)
-cfg = configs['surrogate']
+# TESTING
+# config_path = 'conf.toml'
+# configs = toml.load(config_path)
+# cfg = configs['surrogate']
 
 # FILTERED DATASET TESTING
 reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')

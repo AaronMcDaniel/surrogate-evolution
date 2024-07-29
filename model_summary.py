@@ -1,3 +1,8 @@
+"""
+Contains functions to visualize genome architecture for string representations and constructed models.
+"""
+
+
 import re
 import torch
 import primitives

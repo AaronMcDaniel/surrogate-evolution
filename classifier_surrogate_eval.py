@@ -1,3 +1,7 @@
+"""
+Train and Validate operations for the classifier surrogate.
+"""
+
 import inspect
 import toml
 from tqdm import tqdm
@@ -23,6 +27,7 @@ def prepare_data(batch_size, train_df, val_df):
     return train_loader, val_loader, train_dataset, val_dataset
 
 
+# builds model, optimizer and scheduler from a 'model_dict' as defined in the 'Surrogate' class under models (see surrogate.py)
 def build_configuration(model_dict, device):
         # build model
         model = model_dict['model']
@@ -53,18 +58,14 @@ def build_configuration(model_dict, device):
         return model, optimizer, scheduler, scaler
 
 
-def create_metrics_df(cfg):
-    return pd.DataFrame(columns=[
-        'epoch_num',
-        'train_loss',
-        'val_loss',
-    ] + cfg['surrogate_metrics'])
-
-
+# used to train and evaluate a classifier surrogate
+# calling this function will train and validate the model represented by the passed-in model dict
+# returns the genome scaler used (for getting inferences later) and saves best epoch weights by best accuracy
 def engine(cfg, model_dict, train_df, val_df, weights_dir):
     best_acc = 0
     best_epoch = None
     best_epoch_num = None
+    best_epoch_metrics = None
     # pull surrogate train/eval config attributes
     num_epochs = cfg['surrogate_train_epochs']
     batch_size = cfg['surrogate_batch_size']
@@ -86,27 +87,12 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
             best_acc = val_metrics['acc']
             best_epoch = model
             best_epoch_num = epoch
+            best_epoch_metrics = val_metrics
     
     torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict['name']}.pth')
     print('        Save epoch #:', best_epoch_num)    
 
-    return best_epoch_num, train_dataset.genomes_scaler
-
-
-# def get_val_scores(cfg, model_dict, train_df, val_df, weights_dir):
-#     # pull surrogate train/eval config attributes
-#     batch_size = cfg['surrogate_batch_size']
-#     # define subset of metrics to train on and prepare data accordingly
-#     metrics_subset = model_dict['metrics_subset']
-#     train_loader, val_loader, train_dataset, val_dataset = prepare_data(model_dict, batch_size, train_df, val_df)
-#     max_metrics = train_dataset.max_metrics
-#     min_metrics = train_dataset.min_metrics
-
-#     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-#     model, optimizer, scheduler, scaler, val_subset = build_configuration(model_dict=model_dict, device=device)
-#     model.load_state_dict(torch.load(f'{weights_dir}/{model_dict['name']}.pth', map_location=device)) 
-#     epoch_metrics = val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, min_metrics)
-#     return epoch_metrics               
+    return best_epoch_metrics, train_dataset.genomes_scaler             
 
 
 def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
@@ -169,6 +155,7 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
 
     return epoch_metrics
 
+
 def val_one_epoch(model, device, val_loader):
     model.eval()
 
@@ -223,24 +210,39 @@ def val_one_epoch(model, device, val_loader):
     return epoch_metrics
 
 
+# gets a list of inferences of either ones or zeros on an inference df (needs to have a genome column with encoded genome)
+# inference of 1 means genome is predicted to fail, 0 means good genome
+def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir):
+    # construct model
+    model, optimizer, scheduler, scaler = build_configuration(model_dict=model_dict, device=device)
+    model.load_state_dict(torch.load(f'{weights_dir}/{model_dict["name"]}.pth', map_location=device))
+    encoded_genomes = np.stack(inference_df['genome'].values)
+    genomes = torch.tensor(encoded_genomes, dtype=torch.float32, device=device)
+    with torch.no_grad():
+        inferences = model(genomes)
+    inferences = inferences.sigmoid().cpu().detach().numpy()
+    inferences = (inferences.flatten() > 0.5).astype(int)
+    return inferences
+    
 
-configs = toml.load('conf.toml')
-surrogate_config = configs['surrogate']
-binary_train_df = pd.read_pickle('surrogate_dataset/train_binary_dataset.pkl')
-binary_val_df = pd.read_pickle('surrogate_dataset/val_binary_dataset.pkl')
-# # Count the number of 1s and 0s in the 'label' column of the training DataFrame
-# train_label_counts = binary_train_df['label'].value_counts()
-# print(f"Training DataFrame label counts:\n{train_label_counts}")
-# # Count the number of 1s and 0s in the 'label' column of the validation DataFrame
-# val_label_counts = binary_val_df['label'].value_counts()
-# print(f"Validation DataFrame label counts:\n{val_label_counts}")
-model_dict = {
-                'name': 'fail_predictor_3000',
-                'dropout': 0.2,
-                'hidden_sizes': [1024, 512],
-                'optimizer': optim.AdamW,
-                'lr': 0.01,
-                'scheduler': optim.lr_scheduler.CosineAnnealingLR,
-                'model': sm.BinaryClassifier
-            }
-engine(surrogate_config, model_dict, binary_train_df, binary_val_df, 'test/weights')
+# TESTING SCRIPT
+# configs = toml.load('conf.toml')
+# surrogate_config = configs['surrogate']
+# binary_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')
+# binary_val_df = pd.read_pickle('surrogate_dataset/cls_val_dataset.pkl')
+# # # Count the number of 1s and 0s in the 'label' column of the training DataFrame
+# # train_label_counts = binary_train_df['label'].value_counts()
+# # print(f"Training DataFrame label counts:\n{train_label_counts}")
+# # # Count the number of 1s and 0s in the 'label' column of the validation DataFrame
+# # val_label_counts = binary_val_df['label'].value_counts()
+# # print(f"Validation DataFrame label counts:\n{val_label_counts}")
+# model_dict = {
+#                 'name': 'fail_predictor_3000',
+#                 'dropout': 0.2,
+#                 'hidden_sizes': [1024, 512],
+#                 'optimizer': optim.AdamW,
+#                 'lr': 0.01,
+#                 'scheduler': optim.lr_scheduler.CosineAnnealingLR,
+#                 'model': sm.BinaryClassifier
+#             }
+# engine(surrogate_config, model_dict, binary_train_df, binary_val_df, 'test/weights/surrogate_weights')

@@ -1,3 +1,10 @@
+"""
+Evolutionary pipeline. Deals with evolutionary processes like selection, mating, overpopulation.
+Makes calls to surrogate appropriately and 
+"""
+
+
+
 import copy
 import csv
 import hashlib
@@ -364,6 +371,8 @@ class Pipeline:
         return new_pop
     
     
+    # trains the surrogate (all sub-surrogates) and gets eval scores which are used to calculate a trustworthiness
+    # surrogate weights are stored to be used for inference when downselecting
     def prepare_surrogate(self):
         seen_gens = list(range(1, self.gen_count))
         if self.gen_count == 1:
@@ -405,7 +414,7 @@ class Pipeline:
         val_subsets = []
         for model_dict in model_dicts:
             print(f'        Training {model_dict['name']}...')
-            metrics, best_epoch, genome_scaler = engine(self.surrogate_config, model_dict, train_df, val_df, self.surrogate_weights_dir) # we want mse scores on a subset of this
+            metrics, best_epoch_metrics, best_epoch, genome_scaler = engine(self.surrogate_config, model_dict, train_df, val_df, self.surrogate_weights_dir) # we want mse scores on a subset of this
             all_model_metrics.append(metrics)
             best_epochs.append(best_epoch)
             val_subsets.append(model_dict['validation_subset'])    

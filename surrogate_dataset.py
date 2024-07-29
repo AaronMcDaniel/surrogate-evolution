@@ -1,3 +1,8 @@
+"""
+Functions for building surrogate datasets and dataset classes used for surrogate train/eval.
+"""
+
+
 import argparse
 import math
 import os
@@ -85,6 +90,10 @@ class ClassifierSurrogateDataset(Dataset):
         label = torch.tensor(self.labels[i], dtype=torch.float32)
         return genome, label
 
+
+# builds classifier and regressor datasets by scraping through a run directory and looking at metric.csv files
+# 
+# WORKS BUT SHOULD BE PROOFREAD
 def build_dataset(
         infile='/gv1/projects/GRIP_Precog_Opt/outputs/out.csv',
         working_dir='/gv1/projects/GRIP_Precog_Opt/outputs', 
@@ -242,6 +251,7 @@ def build_dataset(
 
     return reg_train_set, reg_val_set, cls_train_set, cls_val_set
 
+
 def merge_dfs_to_dataset(df1: pd.DataFrame, df2: pd.DataFrame, outdir):
     merged_df = pd.concat([df1, df2])
     merged_df.to_pickle(outdir)
@@ -272,9 +282,11 @@ def merge_csv_to_dataset(
     comb_df.to_pickle(output_file)
 
 
-# # build_dataset(infile='/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv', working_dir='/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution', val_ratio=0.3)
+# TESTING SCRIPT
+# build_dataset(infile='/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv', working_dir='/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution', val_ratio=0.3)
 # reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
 # reg_val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
 # cls_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')
 # cls_val_df = pd.read_pickle('surrogate_dataset/cls_val_dataset.pkl')
+# breakpoint()
 

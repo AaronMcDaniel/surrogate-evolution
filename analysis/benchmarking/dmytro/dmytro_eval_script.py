@@ -6,6 +6,8 @@ import toml
 import numpy
 import torch
 import tqdm
+import sys
+sys.path.insert(0, '/home/eharpster3/precog-opt-grip')
 import aot_dataset as data
 from torch.utils.data import DataLoader
 import numpy as np
@@ -27,7 +29,8 @@ args = parser.parse_args()
 outdir = args.outdir
 genome_folder = args.genomedir
 job_id = args.job_id
-
+if job_id == 11:
+    genome_folder = '/home/eharpster3/precog-opt-grip/dmytro_metrics/complex'
 genome_hash = os.path.basename(genome_folder)
 print('Genome hash: ', genome_hash)
 print('--------------------')
@@ -35,10 +38,10 @@ print('--------------------')
 if job_id is not None:
     if job_id < 10:
         predictions_path = '/gv1/projects/GRIP_Precog_Opt/data_loading/dmytro-airborne-detection-starter-kit-master/data/results/run0/result0' + str(job_id) + '.pkl'
-    else:
+    elif job_id == 10:
         predictions_path = '/gv1/projects/GRIP_Precog_Opt/data_loading/dmytro-airborne-detection-starter-kit-master/data/results/run0/result' + str(job_id) + '.pkl'
-else:
-    predictions_path = '/gv1/projects/GRIP_Precog_Opt/data_loading/dmytro-airborne-detection-starter-kit-master/data/results/run0/result.pkl'
+    else:
+        predictions_path = '/gv1/projects/GRIP_Precog_Opt/data_loading/dmytro-airborne-detection-starter-kit-master/data/results/run0/result.pkl'
 #os.path.join(genome_folder, 'predictions.pkl')
 
 # load config attributes
@@ -131,12 +134,20 @@ def val_one_epoch(predictions, device, val_loader, iou_thresh, conf_thresh, loss
             size_loss += loss_tensor[5]
             obj_loss += loss_tensor[6]
 
-            for _, (true_pos, _) in matches.items():
+            curve_matches, curve_fp, _ = u.match_boxes(pred_boxes, true_boxes, iou_thresh, 0.00, 'val', iou_type)
+
+            for _, (true_pos, _) in curve_matches.items():
                 confidences.append(true_pos[4].item())
                 confusion_status.append(True)
-            for false_pos in fp:
+            for false_pos in curve_fp:
                 confidences.append(false_pos[4].item())
                 confusion_status.append(False)
+            # for _, (true_pos, _) in matches.items():
+            #     confidences.append(true_pos[4].item())
+            #     confusion_status.append(True)
+            # for false_pos in fp:
+            #     confidences.append(false_pos[4].item())
+            #     confusion_status.append(False)
 
             #data_iter.set_postfix(loss=val_batch_loss)
 
@@ -152,7 +163,23 @@ def val_one_epoch(predictions, device, val_loader, iou_thresh, conf_thresh, loss
     epoch_f1, epoch_pre, epoch_rec = u.f1_score(total_tp, total_fn, total_fp)
     pre_curve, rec_curve = u.precision_recall_curve(confidences, confusion_status, num_labels)
     epoch_avg_pre = u.AP(pre_curve, rec_curve)
-    u.plot_PR_curve(pre_curve, rec_curve, epoch_avg_pre, folder)
+    
+    pr_curve_metrics = {}
+    pr_curve_metrics['pre_curve'] = pre_curve
+    pr_curve_metrics['rec_curve'] = rec_curve
+    pr_curve_metrics['epoch_avg_pre'] = epoch_avg_pre
+    base_path = '/home/eharpster3/precog-opt-grip/dmytro_metrics'
+    print(job_id)
+    if job_id < 11:
+        path = base_path + '/epochs/' + str(job_id)
+    elif job_id == 11:
+        path = base_path + '/complex'
+    else:
+        path = base_path + '/' + str(job_id)
+    with open(path + '/pr_curve_metrics.pkl', 'wb') as f:
+        pickle.dump(pr_curve_metrics, f)
+
+    u.plot_PR_curve(pre_curve, rec_curve, epoch_avg_pre, path)
 
     epoch_metrics = {
         'uw_val_epoch_loss': uw_val_epoch_loss.item(),
