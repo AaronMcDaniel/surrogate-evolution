@@ -19,18 +19,19 @@ import pandas as pd
 from deap import creator, gp, base, tools
 
 import primitives
+from codec import Codec
 from surrogates.surrogate import Surrogate
 from primitive_tree import CustomPrimitiveTree
 from surrogates.surrogate_eval import engine, get_val_scores
 from surrogates.surrogate_dataset import build_dataset
 
 # job file params
-JOB_NAME = 'precog_eval'
+JOB_NAME = 'test_eval'
 NODES = 1
 CORES = 8
 MEM = '32GB'
 JOB_TIME = '08:00:00'
-SCRIPT = 'eval.py'
+SCRIPT = 'test/dummy_eval.py'
 ENV_NAME = 'myenv'
 EXCEPTED_NODES = ['ice109', 'ice111', 'ice161', 'ice113', 'ice116', 'ice114', 'ice170', 'ice149', 'ice158', 'ice177', 'ice178', 'ice120']
 GPUS = ["TeslaV100-PCIE-32GB", "TeslaV100S-PCIE-32GB", "NVIDIAA100-SXM4-80GB", "NVIDIAA10080GBPCIe", "TeslaP100-SXM2-16GB", "TeslaK80"]
@@ -111,6 +112,7 @@ class Pipeline:
         self.elite_pool_history = {} # dict keeping track of elite pool through generations
         self.hall_of_fame = tools.ParetoFront() # hall of fame as a ParetoFront object
         self.hof_history = {} # dict keeping track of hall of fame through generations
+        self.codec = Codec(0, genome_encoding_strat=codec_config['genome_encoding_strat']) # only used for getting hash, so initialization values don't matter
         self.surrogate = Surrogate(config_dir, self.surrogate_weights_dir) # Surrogate class to be defined
         self.genome_scaler = None # scaler used to transform genomes on training and inference
         self.sub_surrogates = [0, 0, 0] # list of sub-surrogate indices to use (SHOULD BE SAVED)
@@ -607,7 +609,8 @@ class Pipeline:
 
 
     def __get_hash(self, s):
-        return hashlib.shake_256(s.encode()).hexdigest(5)
+        layer_list = self.codec.get_layer_list(s)
+        return hashlib.shake_256(str(layer_list).encode()).hexdigest(5)
     
 
     def clear_outputs(self):

@@ -409,7 +409,8 @@ class Surrogate():
     
     
     def __get_hash(self, s):
-        return hashlib.shake_256(s.encode()).hexdigest(5)
+        layer_list = self.codec.get_layer_list(s)
+        return hashlib.shake_256(str(layer_list).encode()).hexdigest(5)
     
     '''
     Section below is for two-stage surrogate implementation and is WOP.
