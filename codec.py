@@ -306,13 +306,18 @@ class Codec:
             count = 0
             tensor_exists = False
             enum_dict[prim] = {}
+            # loops through every parameter of primitive function
             for i, (key, val) in enumerate(eval(f'inspect.signature(primitives.{prim}).parameters.items()')):
+                # adds to the count as long as key is not tensor
                 if key not in ['tensor']:
                     count += 1
                 else:
                     tensor_exists = True
+                
                 if type(val.annotation) is enum.EnumType:
+                    # if parameter is an enum, add the number of enum options
                     count += len(eval(f'primitives.{val.annotation.__name__}')) - 1
+                    # change the position in the enum_dict depending on if there was a filtered out tensor parameter
                     if tensor_exists:
                         enum_dict[prim][val.annotation.__name__] = i - 1
                     else:
