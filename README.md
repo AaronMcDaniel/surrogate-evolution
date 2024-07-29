@@ -8,9 +8,6 @@ Our NAS consists of a surrogate evaluator to predict model performance and reduc
 
 ![Approach](https://wiki.gtri.gatech.edu/download/attachments/330374279/image-2024-7-17_11-43-40.png?version=1&modificationDate=1721231020000&api=v2)
 
-## Visuals
-Some poster images can go here
-
 ## Usage
 Usage instructions can be found [here](https://wiki.gtri.gatech.edu/display/EMADE/Evolution+Instructions?src=contextnavpagetreemode)
 
