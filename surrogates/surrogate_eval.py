@@ -253,18 +253,18 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
 # cfg = configs['surrogate']
 
 # FILTERED DATASET TESTING
-reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
-reg_val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
-model_dict1 = {'name': 'kan_mse_best_uwvl', 
-              'model': sm.KAN, 
-              'hidden_sizes': [512, 256], 
-              'optimizer': torch.optim.AdamW, 
-              'lr': 0.01, 
-              'scheduler': torch.optim.lr_scheduler.StepLR, 
-              'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 
-              'validation_subset': [0], 
-              'grid_size': 25, 
-              'spline_order': 5
-            }
+# reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
+# reg_val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
+# model_dict1 = {'name': 'kan_mse_best_uwvl', 
+#               'model': sm.KAN, 
+#               'hidden_sizes': [512, 256], 
+#               'optimizer': torch.optim.AdamW, 
+#               'lr': 0.01, 
+#               'scheduler': torch.optim.lr_scheduler.StepLR, 
+#               'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 
+#               'validation_subset': [0], 
+#               'grid_size': 25, 
+#               'spline_order': 5
+#             }
 
-print(engine(cfg, model_dict1, reg_train_df, reg_val_df, weights_dir='test'))
+# print(engine(cfg, model_dict1, reg_train_df, reg_val_df, weights_dir='test'))
