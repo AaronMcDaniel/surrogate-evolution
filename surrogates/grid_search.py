@@ -7,12 +7,8 @@ import argparse
 import os
 import pickle
 import toml
-<<<<<<< HEAD:grid_search.py
 import tqdm
-import surrogate_models as sm
-=======
 from surrogates import surrogate_models as sm
->>>>>>> 7526d2bd2c7fe33e0ed22081d782988274a45549:surrogate_grid_search/grid_search.py
 import pandas as pd
 import numpy as np
 import torch
@@ -22,12 +18,8 @@ import torch.nn as nn
 from torch.optim import lr_scheduler as lr
 from sklearn.preprocessing import StandardScaler
 import itertools
-<<<<<<< HEAD:grid_search.py
-=======
-from surrogates import test_surrogate as ts
->>>>>>> 7526d2bd2c7fe33e0ed22081d782988274a45549:surrogate_grid_search/grid_search.py
 from functools import partial
-import surrogate_dataset as sd
+from surrogates import surrogate_dataset as sd
 from torch.utils.data import DataLoader
 from torch.cuda.amp import autocast, GradScaler
 
