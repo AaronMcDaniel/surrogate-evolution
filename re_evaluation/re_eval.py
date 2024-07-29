@@ -41,7 +41,7 @@ def engine(outdir, excluded_gens):
             print(f'Evaluating individual {os.path.basename(genome_folder)}...')
 
             # dispatch stuff here (give outdir, and genome_folder)
-            os.popen(f"sbatch re_eval.job -o {outdir} -g {genome_folder}" )
+            os.popen(f"sbatch re_evaluation/re_eval.job -o {outdir} -g {genome_folder}" )
         
         # wait for job to finish here
         while True:
