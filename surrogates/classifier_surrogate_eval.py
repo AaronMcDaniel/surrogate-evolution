@@ -78,7 +78,7 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
     for epoch in range(1, num_epochs + 1):
         # train and validate for one epoch
         train_metrics = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler)
-        val_metrics = val_one_epoch(model, device, val_loader)
+        val_metrics = val_one_epoch(model, device, val_loader, scheduler)
         # print(f"---- Epoch {epoch} ----")
         # print(f"train : loss = {train_metrics['loss']:.4f} | accuracy = {train_metrics['acc']:.4f} | precision = {train_metrics['prec']:.4f} | recall = {train_metrics['rec']:.4f}")
         # print(f"val   : loss = {val_metrics['loss']:.4f} | accuracy = {val_metrics['acc']:.4f} | precision = {val_metrics['prec']:.4f} | recall = {val_metrics['rec']:.4f}")
@@ -129,9 +129,6 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
         data_iter.set_postfix(loss=loss.item())
         torch.cuda.empty_cache()
 
-    # Step scheduler
-    scheduler.step()
-
     # Convert lists to numpy arrays for metric calculation
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
@@ -156,7 +153,7 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
     return epoch_metrics
 
 
-def val_one_epoch(model, device, val_loader):
+def val_one_epoch(model, device, val_loader, scheduler):
     model.eval()
 
     # Initialize variables
@@ -185,6 +182,12 @@ def val_one_epoch(model, device, val_loader):
             surrogate_val_loss += loss.item()
             data_iter.set_postfix(loss=loss.item())
             torch.cuda.empty_cache()
+
+    # Step scheduler
+    if type(scheduler) is optim.lr_scheduler.ReduceLROnPlateau:
+        scheduler.step(surrogate_val_loss)
+    else:
+        scheduler.step()
 
     # Convert lists to numpy arrays for metric calculation
     y_true = np.array(y_true)
@@ -239,10 +242,10 @@ def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir)
 # model_dict = {
 #                 'name': 'fail_predictor_3000',
 #                 'dropout': 0.2,
-#                 'hidden_sizes': [1024, 512],
-#                 'optimizer': optim.AdamW,
-#                 'lr': 0.01,
-#                 'scheduler': optim.lr_scheduler.CosineAnnealingLR,
+#                 'hidden_sizes': [1024, 512, 256, 128],
+#                 'optimizer': optim.Adam,
+#                 'lr': 0.001,
+#                 'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
 #                 'model': sm.BinaryClassifier
 #             }
 # engine(surrogate_config, model_dict, binary_train_df, binary_val_df, 'test/weights/surrogate_weights')
