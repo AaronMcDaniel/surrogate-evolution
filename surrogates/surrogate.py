@@ -12,14 +12,14 @@ import numpy as np
 import pandas as pd
 from primitive_tree import CustomPrimitiveTree
 import primitives
-import surrogate_models as sm
+from surrogates import surrogate_models as sm
 import toml
 import torch
 import torch.optim as optim
 from sklearn.preprocessing import StandardScaler
-import surrogate_dataset as sd
-import classifier_surrogate_eval as cse
-import surrogate_eval as rse
+from surrogates import surrogate_dataset as sd
+from surrogates import classifier_surrogate_eval as cse
+from surrogates import surrogate_eval as rse
 import random
 
 

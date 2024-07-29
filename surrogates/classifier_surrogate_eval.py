@@ -5,7 +5,7 @@ Train and Validate operations for the classifier surrogate.
 import inspect
 import toml
 from tqdm import tqdm
-import surrogate_dataset as sd
+from surrogates import surrogate_dataset as sd
 import pandas as pd
 import torch
 import torch.optim as optim
@@ -13,7 +13,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from functools import partial
 import eval as e
-import surrogate_models as sm
+from surrogates import surrogate_models as sm
 from torch.cuda.amp import autocast, GradScaler
 from sklearn.metrics import precision_score, recall_score, accuracy_score
 import numpy as np

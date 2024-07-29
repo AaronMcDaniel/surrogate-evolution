@@ -7,7 +7,7 @@ import argparse
 import os
 import pickle
 import toml
-import surrogate_models as sm
+from surrogates import surrogate_models as sm
 import pandas as pd
 import numpy as np
 import torch
@@ -16,7 +16,7 @@ import torch.nn as nn
 from torch.optim import lr_scheduler as lr
 from sklearn.preprocessing import StandardScaler
 import itertools
-import test_surrogate as ts
+from surrogates import test_surrogate as ts
 from functools import partial
 
 def engine(cfg, model_str, param_combo, combo_num):

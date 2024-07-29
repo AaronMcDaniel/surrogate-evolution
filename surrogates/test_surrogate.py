@@ -7,21 +7,21 @@ import torch
 import torch.optim as optim
 from torch.optim import lr_scheduler
 from tqdm import tqdm
-import surrogate_models as sm
+from surrogates import surrogate_models as sm
 from torch.cuda.amp import autocast, GradScaler
 import pandas as pd
 import torch.nn as nn
 import itertools
 import eval as e
 from torch.utils.data import DataLoader
-import surrogate_dataset as sd
+from surrogates import surrogate_dataset as sd
 import pickle
+#import kan as pykan
 
 
 def prepare_data(batch_size, metrics_subset):
-    train_df = pd.read_pickle('surrogate_dataset/merged_train_dataset.pkl')
-    breakpoint()
-    val_df = pd.read_pickle('surrogate_dataset/val_dataset.pkl')
+    train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
+    val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
     train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=metrics_subset)
     val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=metrics_subset, metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
@@ -35,34 +35,64 @@ def get_model(model_str, metric_subset):
         output_size = len(metrics_subset)
         dropout = 0.0
         hidden_sizes = [512, 256]
-        return sm.MLP(input_size, output_size, hidden_sizes, dropout=dropout)
-    
-    elif model_str == "KAN":
+        return sm.MLP(input_size=input_size, output_size=output_size, dropout=dropout, hidden_sizes=hidden_sizes)
+    if model_str == 'effKAN':
         input_size = 1021
-        output_size = len(metric_subset)
-        hidden_sizes = [2048, 1024, 512]
-        scale_noise = 0.25
-        scale_spline = 1.0
-        spline_order = 4
-        return sm.KAN(input_size, output_size, hidden_sizes, scale_spline=scale_spline, scale_noise=scale_noise, spline_order=spline_order)
+        output_size = 3
+        layers_hidden = [2048, 512, 256, 128]
+        grid_size=25
+        spline_order=3
+        scale_noise=0.1
+        scale_base=1.0
+        scale_spline=1.0
+        base_activation=torch.nn.SiLU
+        grid_eps=0.02
+        #grid_eps=1.0
+        grid_range=[-1, 1]
+        return sm.KAN(input_size, output_size, layers_hidden, grid_size=grid_size, spline_order=spline_order, scale_noise=scale_noise, scale_base=scale_base, scale_spline=scale_spline, base_activation=base_activation, grid_eps=grid_eps, grid_range=grid_range)
+    if model_str == 'pyKAN':
+        width=[1021, 2048, 512, 256, 3]
+        grid=3
+        k=3
+        noise_scale=0.1
+        scale_base_mu=0.0
+        scale_base_sigma=1.0
+        base_fun=torch.nn.SiLU()
+        symbolic_enabled=True
+        bias_trainable=False
+        grid_eps=1.0
+        grid_range=[-1, 1]
+        sp_trainable=True
+        sb_trainable=True
+        device='cuda'
+        seed=42
+        return pykan.KAN(width=width, grid=grid, k=k, noise_scale=noise_scale, scale_base_mu=scale_base_mu, scale_base_sigma=scale_base_sigma, base_fun=base_fun, symbolic_enabled=symbolic_enabled, grid_eps=grid_eps, grid_range=grid_range, sp_trainable=sp_trainable, sb_trainable=sb_trainable, device=device, seed=seed)
+        
+    # TODO implement other surrogate models
 
 
 def get_optimizer(model_str, params):
-    if model_str == "MLP":
-        return optim.Adam(params, 0.0001)
-    
-    elif model_str == "KAN":
-        # return optim.AdamW(params, 0.01)
-        return optim.SGD(params, lr=0.01)
+    #if model_str == "MLP":
+        # NOTE use sparse adam for actual surrogate encoding
+        # return optim.RMSprop(params, lr=0.001)
+        # baseline is Adam
+        # return optim.RMSprop(params, lr=0.01)
+    #return optim.Adam(params, 0.0001)
+    #if model_str == 'effKAN' or model_str == 'pyKAN':
+    return optim.AdamW(params, lr=1e-4, weight_decay=1e-4)
+    # TODO implement other surrogate optimizers
 
 
 def get_scheduler(model_str, optimizer, num_epochs, batch_size):
-    if model_str == "MLP":
-        return lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
-        
-    elif model_str == "KAN":
-        # return lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, mode='min', factor=0.1, patience=5)
-        return lr_scheduler.StepLR(optimizer=optimizer, step_size=10, gamma=0.1)
+    #if model_str == "MLP":
+        # return lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1)
+    return lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+        # return lr_scheduler.MultiStepLR(optimizer, milestones=[10, 20], gamma=0.1)
+        # return lr_scheduler.CosineAnnealingLR(optimizer,T_max=10)
+    #if model_str == 'effKAN' or model_str == 'pyKAN':
+    #return optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
+    # TODO implement other surrogate schedulers
+
 
 def create_metrics_df():
     return pd.DataFrame(columns=[
@@ -111,13 +141,15 @@ def plot_preds(predictions, truths, metric_names, save_folder='plots'):
 
 
 def store_data(model_str, metrics_df):
-    metrics_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/surrogate_metrics.csv'
+    #metrics_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/surrogate_metrics.csv'
+    metrics_out = f'/home/eharpster3/precog-opt-grip/analysis/kan/{model_str}/surrogate_metrics.csv'
     os.makedirs(os.path.dirname(metrics_out), exist_ok=True)
     metrics_df.to_csv(metrics_out, index=False)
 
 
 def save_model_weights(model_str, model):
-    weights_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/weights.pth'
+    #weights_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/weights.pth'
+    weights_out = f'/home/eharpster3/precog-opt-grip/analysis/kan{model_str}/weights.pth'
     os.makedirs(os.path.dirname(weights_out), exist_ok=True)
     torch.save(model.state_dict(), weights_out)
 
@@ -152,7 +184,7 @@ def engine(cfg, metrics_subset=None):
         for epoch in range(1, num_epochs + 1):
 
             # train and validate for one epoch
-            train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics)
+            train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics, epoch)
             epoch_metrics = val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_metrics)
 
             # update metrics df
@@ -165,7 +197,7 @@ def engine(cfg, metrics_subset=None):
         save_model_weights(model_str, model)
 
 
-def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics):
+def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics, epoch):
     model.train()
 
     # actual surrogate training loss
@@ -175,7 +207,7 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
     criterion = nn.L1Loss()
 
     data_iter = tqdm(train_loader, desc='Training')
-    for genomes, metrics in data_iter:
+    for i, (genomes, metrics) in enumerate(data_iter):
 
         # genomes shape: (batch_size, 976)
         genomes = genomes.to(device)
@@ -185,10 +217,20 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
         # forwards with mixed precision
         with autocast():
             # outputs shape: (batch_size, 12)
-            outputs = model(genomes)
-            # clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
+            #print('before')
+            # if epoch == 8 and i == 94:
+            #     breakpoint()
+            outputs = model(genomes, update_grid=False)
+            # if torch.isnan(outputs).any():
+            #     break
+            #print('after')
+            #print(outputs.shape)
+            #print(metrics.shape)
+            clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
             # metric regression loss is meaned, so is scalar tensor value
-            loss = criterion(outputs, metrics)
+            loss = criterion(clamped_outputs, metrics)
+            
+            
         
         # backwards
         optimizer.zero_grad()
@@ -218,7 +260,7 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
     mse_metrics_per_batch = []
     # no mean taken for losses in validation 
     # criterion = nn.MSELoss(reduction='none')
-    criterion = nn.L1Loss(reduction='none')
+    criterion = nn.L1Loss()
     
     metric_names = [
         'mse_uw_val_loss', 'mse_iou_loss', 'mse_giou_loss', 'mse_diou_loss', 
@@ -243,9 +285,10 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
             with autocast():
                 # outputs shape: (batch_size, 12)
                 outputs = model(genomes)
-                # clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
-                loss_matrix = criterion(outputs, metrics)
-                breakpoint()
+                # if torch.isnan(outputs).any():
+                #     break
+                clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
+                loss_matrix = criterion(clamped_outputs, metrics)
 
                 # loss tensor shape: (12)
                 loss_tensor = torch.mean(loss_matrix, dim=0)
@@ -268,12 +311,12 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
 
     # compute the mean of the mse losses for each metric based on num batches
     mse_metrics_per_batch = torch.stack(mse_metrics_per_batch)
-    mse_metrics_meaned = mse_metrics_per_batch.mean(dim=0)
+    mse_metrics_meaned = mse_metrics_per_batch #.mean(dim=0)
 
     epoch_metrics = {
         'val_loss': surrogate_val_loss
     }
-
+    print(surrogate_val_loss)
     epoch_metrics.update({
         selected_metric_names[i]: mse_metrics_meaned[i].item() for i in range(len(metrics_subset))
     })
@@ -284,29 +327,11 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # NOTE default config path should change later on
-    parser.add_argument('-c', '--config_path', required=False, default='conf.toml')
+    parser.add_argument('-c', '--config_path', required=False, default='conf_kan.toml')
     args = parser.parse_args()
     config_path = args.config_path
     configs = toml.load(config_path)
-    cfg = configs['surrogate']
+    surrogate_config = configs['surrogate']
     metrics_subset = [0, 4, 11]
-    # engine(cfg, metrics_subset=metrics_subset)
-    models = cfg['models']
-    num_epochs = cfg['surrogate_train_epochs']
-    batch_size = cfg['surrogate_batch_size']
-    train_loader, val_loader, train_dataset = prepare_data(batch_size, metrics_subset=metrics_subset)
-    max_metrics = train_dataset.max_metrics
-    min_metrics = train_dataset.min_metrics
-    genomes_scaler = train_dataset.genomes_scaler
-    metrics_scaler = train_dataset.metrics_scaler
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    model_str ="KAN"
-    model = get_model(model_str, metric_subset=metrics_subset).to(device)
-    params = model.parameters()
-    optimizer = get_optimizer(model_str, params)
-    scheduler = get_scheduler(model_str, optimizer, num_epochs, batch_size)
-    scaler = GradScaler()
-    metrics_df = create_metrics_df()
-    model.load_state_dict(torch.load(f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/weights.pth', map_location=device))
-    print(val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_metrics))
+    engine(surrogate_config, metrics_subset=metrics_subset)
 

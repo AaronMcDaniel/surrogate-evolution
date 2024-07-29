@@ -1,8 +1,7 @@
 """
 Evolutionary pipeline. Deals with evolutionary processes like selection, mating, overpopulation.
-Makes calls to surrogate appropriately and 
+Makes calls to surrogate appropriately to train/validate and use for downselection.
 """
-
 
 
 import copy
@@ -20,10 +19,10 @@ import pandas as pd
 from deap import creator, gp, base, tools
 
 import primitives
-from surrogate import Surrogate
+from surrogates.surrogate import Surrogate
 from primitive_tree import CustomPrimitiveTree
-from surrogate_eval import engine, get_val_scores
-from surrogate_dataset import build_dataset
+from surrogates.surrogate_eval import engine, get_val_scores
+from surrogates.surrogate_dataset import build_dataset
 
 # job file params
 JOB_NAME = 'precog_eval'
