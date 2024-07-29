@@ -43,7 +43,7 @@ def delete_pth_files(directory, hashes_to_keep):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python script.py <directory>")
+        print("Usage: python purge_all_weights.py <directory>")
         sys.exit(1)
 
     directory = sys.argv[1]
