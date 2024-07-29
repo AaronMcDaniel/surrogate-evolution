@@ -24,4 +24,11 @@ kanKAN
 !main.job
 !grid_search.job
 !re_eval.job
-
+dmytro_repo/data/models/*.pth
+dmytro_repo/data/models/custom/
+dmytro_repo/data/results/
+dmytro_repo/logs/
+dmytro_repo/old_logs/
+dmytro_repo/output/checkpoints/
+dmytro_repo/output/models/
+dmytro_repo/predictions.pkl

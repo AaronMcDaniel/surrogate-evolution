@@ -1,0 +1,70 @@
+###################
+## Model options
+model_params:
+  model_type: "models_segmentation"
+  model_cls: "HRNetSegmentation"
+  base_model_name: "hrnet_w32"
+  input_frames: 2
+  feature_location: ''
+  combine_outputs_dim: 512
+  combine_outputs_kernel: 1
+  output_binary_mask: True
+  output_above_horizon: True
+  pred_scale: 8
+
+dataset_params:
+  scale: 1
+  back_steps: [1]
+  crop_size: [512, 512]
+  crop_with_plane_ratio: 0.25
+  pred_scale: 8
+  train_on_all_samples: True
+
+###################
+## Data loader options
+train_data_loader:
+  batch_size: 16
+  num_workers: 16
+
+val_data_loader:
+  batch_size: 16
+  num_workers: 8
+
+test_data_loader:
+  batch_size: 16
+  num_workers: 16
+
+###################
+## Train params
+train_params:
+  nb_samples_per_epoch: 1000 #2000
+  nb_samples_valid: 1000 #500
+  nb_epochs: 10 #50 #2222
+  optimizer: madgrad
+  scheduler: CosineAnnealingWarmRestarts
+  scheduler_period: 16
+  scheduler_t_mult: 1.41421
+  initial_lr: 2.5e-5
+  save_period: 5
+  grad_clip: 16
+  mask_loss: fl
+
+  tracking_samples_share: 0.25
+  fp_samples_share: 0.25
+
+  fpm_batch_size: 4
+  fpm_epochs:
+    251: 77
+    371: 49
+    536: 37
+    771: 27
+    1101: 17
+    1536: 13
+
+  loss_scale:
+    cls: 10000
+    size: 1
+    offset: 0.25
+    distance: 1
+    tracking: 1
+    above_horizon: 0.1
