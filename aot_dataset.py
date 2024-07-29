@@ -50,12 +50,15 @@ class AOTDataset(Dataset):
             self.labels = pickle.load(f)
         
         print(f'{mode} LABELS LOADED!')
-       
+        # initialize a random generator
         self.np_gen = np.random.default_rng(seed)
+        # a cache to store faulty filenames and the time threshold they are valid for
         self.flight_mapping = {}
+        self.cache_thresh = cache_thresh
+
         self.class_mapping_all = {'Airborne1': 0, 'Airborne2': 1, 'Airborne3': 2, 'Airborne4': 3, 'Airborne5': 4, 'Airborne6': 5, 'Airborne7': 6, 'Airborne9': 7, 'Airborne10': 8, 'Airborne11': 9, 'Airborne12': 10, 'Airborne14': 11, 'Airborne16': 12, 'Airborne17': 13, 'Airborne18': 14, 'Airplane1': 15, 'Airplane2': 16, 'Airplane3': 17, 'Airplane4': 18, 'Airplane5': 19, 'Airplane6': 20, 'Airplane7': 21, 'Airplane8': 22, 'Airplane10': 23, 'Bird1': 24, 'Bird2': 25, 'Bird3': 26, 'Bird4': 27, 'Bird5': 28, 'Bird6': 29, 'Bird7': 30, 'Bird8': 31, 'Bird9': 32, 'Bird10': 33, 'Bird15': 34, 'Bird23': 35, 'Drone1': 36, 'Flock1': 37, 'Flock2': 38, 'Flock3': 39, 'Helicopter1': 40, 'Helicopter2': 41, 'Helicopter3': 42}
         self.class_mapping = {'Airborne' : 0, 'Airplane' : 1, 'Bird' : 2, 'Drone' : 3, 'Flock' : 4, 'Helicopter' : 5}
-        self.cache_thresh = cache_thresh
+        
         # if max size is set, take a subset of the labels 
         if max_size is not None and max_size < self.__len__():
             labels_subset = self.labels[:]
@@ -87,6 +90,7 @@ class AOTDataset(Dataset):
         return label
 
     def find_image(self, frame_id, flight_id):
+        # returns the image when given frame_id and flight_id
         for label in self.labels:
             if self.string is not None:
                 label = eval_label(label)
@@ -169,9 +173,11 @@ class AOTSampler(Sampler):
         sampler_iter = iter(self.sampler)
         while True:
             try:
+                # constructs a batch of only valid images
                 batch = []
                 while len(batch) < self.batch_size:
                     test = next(sampler_iter)
+                    # keeps gathering samples until it finds a valid one to add to the batch
                     while self.eval_idx(test) == False:
                         test = next(sampler_iter) 
                     batch.append(test)
@@ -184,12 +190,13 @@ class AOTSampler(Sampler):
         flight_id = label['flight_id']
         img_name = label['path'].split('/')[2]
        
+        # checks cache first to see if the cached flight is still valid based on time threshold
         if flight_id in self.dataset.flight_mapping:
             old_time = self.dataset.flight_mapping[flight_id][1]
             new_time = time.perf_counter()
             if (new_time - old_time) / 60 / 60 >= self.dataset.cache_thresh:
                 del self.dataset.flight_mapping[flight_id]
-
+        # if flight is not in cache, create a list of all non-unique files and add them to dict
         if flight_id not in self.dataset.flight_mapping:
             root_dir = self.dataset.image_folder + '/Images/'
             files = os.listdir(root_dir + flight_id)
@@ -202,7 +209,7 @@ class AOTSampler(Sampler):
             non_unique_mask = counts > 1
             non_unique_files = unique_files[non_unique_mask]
             self.dataset.flight_mapping[flight_id] = (non_unique_files, time.perf_counter())
-
+        #m checks if specific image is in cache to verify it
         if img_name in self.dataset.flight_mapping[flight_id][0]:
             return False
         else:
