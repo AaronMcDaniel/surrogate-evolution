@@ -188,7 +188,7 @@ if __name__ == "__main__":
     baseline_path = '/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv'
     surrogate_path = '/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv'
     simple_path = '/home/eharpster3/precog-opt-grip/dmytro_metrics/combined_metric.csv'
-    complex_path = '/home/eharpster3/precog-opt-grip/dmytro_metrics/complex/metrics.csv'
+    complex_path = '/home/eharpster3/precog-opt-grip/dmytro_metrics/metrics.csv'
 
     objectives = ['uw_val_epoch_loss', 'ciou_loss', 'average_precision']
     #True if minimized, False if maximized
@@ -286,7 +286,7 @@ if __name__ == "__main__":
     plt.plot(surrogate_hvs, marker='^')
     plt.legend(['Baseline', 'Surrogate'])
     #plt.plot(hvs, marker='o')
-    plt.xticks(range(len(gens)), gens)
+    #plt.xticks(range(len(gens)), gens)
     plt.title("Pareto Front Hypervolumes Per Generation")
     plt.xlabel('Generation')
     plt.ylabel('Hypervolume')

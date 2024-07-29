@@ -1,0 +1,8 @@
+{
+  "challenge_id": "evaluations-api-airborne",
+  "grader_id": "evaluations-api-airborne",
+  "authors": ["dmytro"],
+  "tags": "pipeline_test_submission",
+  "description": "Simple detection only submission to test the submission pipeline",
+  "gpu": true
+}

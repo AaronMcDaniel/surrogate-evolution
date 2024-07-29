@@ -10,9 +10,9 @@ from pipeline import Pipeline
 parser = argparse.ArgumentParser()
     
 parser.add_argument('-o', '--outputs', type=str, required=True, help='The output directory')
-parser.add_argument('-f', '--force', action='store_true', help='Force overwrite if output directory exists')
+parser.add_argument('-f', '--force', action='store_true', help='Force overwrite if output directory exists. Will attempt to resume run without this flag')
 parser.add_argument('-n', '--num_generations', type=int, required=True, help='The number of generations to run the evolution for')
-parser.add_argument('-r', '--remove', action='store_true', help='Cleans output directory of non-pareto-optimal individuals')
+parser.add_argument('-r', '--remove', action='store_true', help='Cleans output directory of non-pareto-optimal individual weights')
 parser.add_argument('-conf', '--configuration', type=str, required=True, help='The path to the configuration file')
 
 args = parser.parse_args()

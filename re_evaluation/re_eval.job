@@ -1,0 +1,33 @@
+#!/bin/bash
+#SBATCH --job-name=precog_re_eval
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32GB
+#SBATCH --time=08:00:00
+#SBATCH -G 1
+#SBATCH --output="/gv1/projects/GRIP_Precog_Opt/evolution_logs/re_evals/eval.%A.%a.log"
+#SBATCH --error="/gv1/projects/GRIP_Precog_Opt/evolution_logs/re_evals/eval_error.%A.%a.log"
+
+# Parse command line arguments
+output_dir=""
+genome_path=""
+
+while getopts ":o:c:g:" opt; do
+  case $opt in
+    o) output_dir="$OPTARG"
+    ;;
+    g) genome_path="$OPTARG"
+    ;;
+    \?) echo "Invalid option -$OPTARG" >&2
+        exit 1
+    ;;
+  esac
+done
+
+module load anaconda3/2023.07
+module load cuda/12.1.1
+
+export PYTHONPATH=/gv1/projects/GRIP_Precog_Opt/precog-opt-grip
+
+# Run the Python script with the parsed arguments
+conda run -n myenv --no-capture-output python -u re_evaluation/re_eval_script.py -o "$output_dir" -g "$genome_path"
