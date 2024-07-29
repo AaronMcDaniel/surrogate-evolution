@@ -14,7 +14,7 @@ crossovers = {one_point = 0.5, one_point_leaf_biased = 0.3}
 # types of mutations and their probabilities
 mutations = {node_replacement = 0.2}
 # whether to use surrogate
-surrogate_enabled = true
+surrogate_enabled = false
 # GA objectives to optimize for and their weights (matter only relative to each other)
 objectives = {uw_val_epoch_loss = -1, ciou_loss = -1, average_precision = 1}
 # strategy for down selecting individuals trusted by the surrogate
