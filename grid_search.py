@@ -2,24 +2,26 @@
 Script to launch grid-search process for surrogates.
 """
 
-
+import itertools
 import argparse
 import os
 import pickle
 import toml
+import tqdm
 import surrogate_models as sm
 import pandas as pd
 import numpy as np
 import torch
 import torch.optim as optim
+import eval as e
 import torch.nn as nn
 from torch.optim import lr_scheduler as lr
 from sklearn.preprocessing import StandardScaler
 import itertools
-import test_surrogate as ts
 from functools import partial
 import surrogate_dataset as sd
 from torch.utils.data import DataLoader
+from torch.cuda.amp import autocast, GradScaler
 
 def engine(cfg, model_str, param_combo, combo_num):
 
@@ -38,12 +40,12 @@ def engine(cfg, model_str, param_combo, combo_num):
     model, optimizer, scheduler, scaler = build_configuration(model_str=model_str, device=device, param_combo=param_combo)
 
     # create metrics_df
-    metrics_df = ts.create_metrics_df()
+    metrics_df = create_metrics_df()
     for epoch in range(1, num_epochs + 1):
 
             # train and validate for one epoch
-            train_epoch_loss = ts.train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics=max_metrics, min_metrics=min_metrics)
-            epoch_metrics = ts.val_one_epoch(model, device, val_loader, metrics_subset=metrics_subset, max_metrics=max_metrics, min_metrics=min_metrics)
+            train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics=max_metrics, min_metrics=min_metrics)
+            epoch_metrics = val_one_epoch(model, device, val_loader, metrics_subset=metrics_subset, max_metrics=max_metrics, min_metrics=min_metrics)
 
             # update metrics df
             epoch_metrics['param_combo'] = str(param_combo)
@@ -55,6 +57,7 @@ def engine(cfg, model_str, param_combo, combo_num):
     # store data
     store_data(model_str=model_str, combo_num=combo_num, metrics_df=metrics_df)
 
+
 # prepare data for grid search
 def prepare_data(batch_size, metrics_subset):
     train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
@@ -64,6 +67,7 @@ def prepare_data(batch_size, metrics_subset):
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=True)
     return train_loader, val_loader, train_dataset       
+
 
 # build model, optimizer, scheduler, and scaler
 def build_configuration(model_str, device, param_combo):
@@ -108,14 +112,16 @@ def build_configuration(model_str, device, param_combo):
     else:
         scheduler = scheduler_func(optimizer=optimizer)
 
-    scaler = torch.GradScaler()
+    scaler = GradScaler()
     return model, optimizer, scheduler, scaler
+
 
 # stores metrics csv file 
 def store_data(model_str, combo_num, metrics_df):
     metrics_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/gs_combos/combo{combo_num}_metrics.csv'
     os.makedirs(os.path.dirname(metrics_out), exist_ok=True)
     metrics_df.to_csv(metrics_out, index=False)
+
 
 # creates metrics dataframe with appropriate rows
 def create_metrics_df():
@@ -137,6 +143,114 @@ def create_metrics_df():
         'mse_average_precision',
         'param_combo'
     ])
+
+
+def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics):
+    model.train()
+
+    # actual surrogate training loss
+    surrogate_train_loss = 0.0
+    # mean taken for metric regression losses in train
+    # criterion = nn.MSELoss()
+    criterion = nn.L1Loss()
+
+    data_iter = tqdm(train_loader, desc='Training')
+    for i, (genomes, metrics) in enumerate(data_iter):
+
+        # genomes shape: (batch_size, 976)
+        genomes = genomes.to(device)
+        # metrics shape: (batch_size, 12)
+        metrics = metrics.to(device)
+
+        # forwards with mixed precision
+        with autocast():
+            # outputs shape: (batch_size, 12)
+            outputs = model(genomes, update_grid=False)
+            clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
+            # metric regression loss is meaned, so is scalar tensor value
+            loss = criterion(clamped_outputs, metrics)
+                   
+        # backwards
+        optimizer.zero_grad()
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
+        surrogate_train_loss += loss.item()
+        data_iter.set_postfix(loss=loss.item())
+        torch.cuda.empty_cache()
+    
+    # step scheduler
+    e.step_scheduler(scheduler, loss)
+
+    # calculate surrogate training loss per batch (NOTE batch loss already meaned by batch size)
+    num_batches = len(data_iter)
+    surrogate_train_loss /= num_batches
+
+    return surrogate_train_loss
+
+
+def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_metrics):
+    model.eval()
+
+    # actual surrogate validation loss
+    surrogate_val_loss = 0.0
+    # mse loss matrx for each metric, where rows = num batches and cols = 12 for all predicted metrics
+    mse_metrics_per_batch = []
+    # no mean taken for losses in validation 
+    # criterion = nn.MSELoss(reduction='none')
+    criterion = nn.L1Loss()
+    
+    metric_names = [
+        'mse_uw_val_loss', 'mse_iou_loss', 'mse_giou_loss', 'mse_diou_loss', 
+        'mse_ciou_loss', 'mse_center_loss', 'mse_size_loss', 'mse_obj_loss', 
+        'mse_precision', 'mse_recall', 'mse_f1_score', 'mse_average_precision'
+    ]
+    selected_metric_names = [metric_names[i] for i in metrics_subset]
+
+    data_iter = tqdm(val_loader, 'Evaluating')
+    with torch.no_grad():
+        for genomes, metrics in data_iter:
+            # genomes shape: (batch_size, 976)
+            genomes = genomes.to(device)
+            # metrics shape: (batch_size, 12)
+            metrics = metrics.to(device)
+
+            # forwards with mixed precision
+            with autocast():
+                # outputs shape: (batch_size, 12)
+                outputs = model(genomes)
+                clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
+                loss_matrix = criterion(clamped_outputs, metrics)
+
+                # loss tensor shape: (12)
+                loss_tensor = torch.mean(loss_matrix, dim=0)
+                # loss is meaned, so is scalar tensor value
+                loss = torch.mean(loss_tensor)
+            
+            # update validation loss
+            surrogate_val_loss += loss.item()
+            # update matrix storing mse loss for each metric for each batch
+            mse_metrics_per_batch.append(loss_tensor)
+            data_iter.set_postfix(loss=loss)
+            torch.cuda.empty_cache()
+            
+    num_batches = len(data_iter)
+    surrogate_val_loss /= num_batches
+
+    # compute the mean of the mse losses for each metric based on num batches
+    mse_metrics_per_batch = torch.stack(mse_metrics_per_batch)
+    mse_metrics_meaned = mse_metrics_per_batch #.mean(dim=0)
+
+    epoch_metrics = {
+        'val_loss': surrogate_val_loss
+    }
+    print(surrogate_val_loss)
+    epoch_metrics.update({
+        selected_metric_names[i]: mse_metrics_meaned[i].item() for i in range(len(metrics_subset))
+    })
+
+    return epoch_metrics
+
 
 # uses model string to concatenate grid search resulting metric csvs to one master file
 def cat_results(model_str='KAN'):
