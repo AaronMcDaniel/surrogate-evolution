@@ -127,7 +127,6 @@ class KANLinear(torch.nn.Module):
         self.register_buffer("grid", grid)
 
         self.base_weight = torch.nn.Parameter(torch.Tensor(out_features, in_features))
-        print(out_features, in_features, grid_size, spline_order)
         self.spline_weight = torch.nn.Parameter(
             torch.Tensor(out_features, in_features, grid_size + spline_order)
         )
@@ -143,9 +142,6 @@ class KANLinear(torch.nn.Module):
         self.enable_standalone_scale_spline = enable_standalone_scale_spline
         self.base_activation = base_activation()
         self.grid_eps = grid_eps
-        self.spline_weight_copy = torch.nn.Parameter(
-            torch.Tensor(out_features, in_features, grid_size + spline_order)
-        )
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -218,10 +214,16 @@ class KANLinear(torch.nn.Module):
         """
         assert x.dim() == 2 and x.size(1) == self.in_features
         assert y.size() == (x.size(0), self.in_features, self.out_features)
-        A = self.b_splines(x).transpose(0, 1).float()  # (in_features, batch_size, grid_size + spline_order)
-        B = y.transpose(0, 1).float()  # (in_features, batch_size, out_features)
-        solution = svd_lstsq(A, B)
-        result = solution.permute(2, 0, 1)  # (out_features, in_features, grid_size + spline_order)
+        A = self.b_splines(x).transpose(
+            0, 1
+        )  # (in_features, batch_size, grid_size + spline_order)
+        B = y.transpose(0, 1)  # (in_features, batch_size, out_features)
+        solution = torch.linalg.lstsq(
+            A, B
+        ).solution  # (in_features, grid_size + spline_order, out_features)
+        result = solution.permute(
+            2, 0, 1
+        )
 
         assert result.size() == (
             self.out_features,
@@ -232,8 +234,6 @@ class KANLinear(torch.nn.Module):
 
     @property
     def scaled_spline_weight(self):
-        if torch.equal(self.spline_weight, self.spline_weight_copy):
-            print('IT CHANGES')
         return self.spline_weight * (
             self.spline_scaler.unsqueeze(-1)
             if self.enable_standalone_scale_spline
@@ -296,7 +296,7 @@ class KANLinear(torch.nn.Module):
         )
 
         self.grid.copy_(grid.T)
-        unreduced_spline_output = unreduced_spline_output.type(torch.float32)
+        # unreduced_spline_output = unreduced_spline_output.type(torch.float32)
         self.spline_weight.data.copy_(self.curve2coeff(x, unreduced_spline_output))
            
 
