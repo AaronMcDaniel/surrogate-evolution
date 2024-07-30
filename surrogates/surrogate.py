@@ -364,7 +364,6 @@ class Surrogate():
             inferred_individuals.append(individual)
         
         # step 4: select down using trust_calc_strategy
-        print('    Calculating trust...')
         match self.trust_calc_strategy.lower():
             case 'spea2':
                 self.toolbox.register("select", tools.selSPEA2, k = int(len(true_individuals)*self.trust_calc_ratio))
