@@ -1,7 +1,10 @@
+"""
+Generates hypervolume and pareto front plots given out.csv's from evolutions
+"""
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-#from deap.benchmarks.tools import hypervolume
 from pymoo.indicators.hv import HV, Hypervolume
 
 def stepify_pareto_points_2d(x, y, metric_directions):
@@ -35,11 +38,7 @@ def stepify_pareto_points_2d(x, y, metric_directions):
             # add the stair step
             y_steps.append(last_y)
             x_steps.append(x_val)
-            # if is_x_minimized:
-            # else:
-            #     y_steps.append(y_val)
-            #     x_steps.append(last_x)
-            # # add the point
+            # add the point
         y_steps.append(y_val)
         x_steps.append(x_val)
         last_x, last_y = x_val, y_val
@@ -52,16 +51,9 @@ def find_pareto_indices(df, objectives, directions):
     for i, point_a in front.iterrows():
         for j, point_b in front.iterrows():
             if (not point_a.equals(point_b)) and dominates(point_a, point_b, objectives, directions):
-            #if check_unique(point_a, point_b, objectives) and dominates(point_a, point_b, objectives, directions):
                 front = front.drop(index=j)
                 dominated.append(j)
     return front, dominated
-
-# def find_pareto_top(df, objectives, directions):
-
-
-# def find_pareto_bottom(df, objectives, directions):
-
 
 def dominates(point_a, point_b, objectives, directions):
     count = 0
@@ -73,225 +65,249 @@ def dominates(point_a, point_b, objectives, directions):
         return True
     else:
         return False
-    # if (point_a[objectives[0]] < point_b[objectives[0]]) and (point_a[objectives[1]] < point_b[objectives[1]]) and (point_a[objectives[2]] > point_b[objectives[2]]):
-    #     return True
-    # else:
-    #     return False
 
-# def recalc_doms(front, objectives, directions):
-#     dominated = []
-#     new_front = front.copy()
-#     for i, point_a in new_front.iterrows():
-#         for j, point_b in new_front.iterrows():
-#             if (not point_a.equals(point_b)) and dominates(point_a, point_b, objectives, directions):
-#             # if check_unique(point_a, point_b, objectives) and dominates(point_a, point_b, objectives, directions):
-#                 front = front.drop(index=j)
-#                 dominated.append(j)
-#     return new_front, dominated
-
-# def check_unique(point_a, point_b, objectives):
-#     if (not point_a.equals(point_b)):
-#         count = 0
-#         for objective in objectives:
-#             if point_a[objective] != point_b[objective]:
-#                 count += 1
-#         if count == len(objectives):
-#             return True
-#     return False
-
-def gen_plot(df_baseline_current, gen, path, objectives, directions, baseline_front, baseline_front_top, baseline_front_bottom, surrogate_path, surrogate_front, surrogate_front_top, surrogate_front_bottom, bounds, df_simple, df_complex):
+def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch):
     metric_a = objectives[0]
     metric_b = objectives[1]
     metric_c = objectives[2]
 
-    #plt.figure(figsize=(5, 8))
     #PLOT 1
     plt.subplot(2, 1, 1)
-    plt.xlim(0, 60)
-    #plt.xlim(1, 1.1 * bounds[1])
-    #plt.xscale('log')
-    #plt.xlim(0.8 * 1.989222, 1.2 * 8568.095703)
-    plt.ylim(0.9 * bounds[2], 2.1) #1.1 * bounds[3])
-    #plt.scatter(df_surrogate_current[metric_a], df_surrogate_current[metric_b], color='xkcd:orange')
-    #plt.scatter(df_surrogate_current[metric_a], df_surrogate_current[metric_b], color='xkcd:orange')
+    xrange = bounds[1] - bounds[0]
+    yrange = bounds[3] - bounds[2]
+    plt.xlim(bounds[0] -  (bounds_margin * xrange), bounds[1] + (bounds_margin * xrange))
+    plt.ylim(bounds[2] - (bounds_margin * yrange), bounds[3] + (bounds_margin * yrange))
     plt.title("Pareto Front Generation " + str(gen))
     plt.xlabel(metric_a)
     plt.ylabel(metric_b)
     
-    plt.scatter(baseline_front[metric_a], baseline_front[metric_b], color='xkcd:lightblue', marker='o')
+    for one_front in all_fronts:
+        front = one_front['front']
+        front_top = one_front['front_top']
+        colors = one_front['colors']
+        marker = one_front['marker']
+        name = one_front['name']
+        x_steps, y_steps = stepify_pareto_points_2d(front_top[metric_a].to_numpy(), front_top[metric_b].to_numpy(), [directions[0], directions[1]])
+        if one_front['reached_max']:
+            color1 = one_front['colors'][2]
+            color2 = one_front['colors'][3]
+        else:
+            color1 = one_front['colors'][0]
+            color2 = one_front['colors'][1]
+        plt.scatter(front[metric_a], front[metric_b], color=color1, marker=marker, label=name[0] + ': Overall Pareto Optimal')
+        plt.scatter(front_top[metric_a], front_top[metric_b], color=color2, marker=marker, label=name[0] + ': Recalculated Pareto Optimal')
+        plt.plot(x_steps, y_steps, color=color2, label='_' + name[0] + ': Pareto Frontier')
     
-    #front1, dominated1 = find_pareto_indices(front, objectives[:2], directions[:2])
-    baseline_x_steps, baseline_y_steps = stepify_pareto_points_2d(baseline_front_top[metric_a].to_numpy(), baseline_front_top[metric_b].to_numpy(), [directions[0], directions[1]])
-    surrogate_x_steps, surrogate_y_steps = stepify_pareto_points_2d(surrogate_front_top[metric_a].to_numpy(), surrogate_front_top[metric_b].to_numpy(), [directions[0], directions[1]])
-    
-    plt.scatter(baseline_front_top[metric_a], baseline_front_top[metric_b], color='xkcd:blue', marker='o')
-    plt.plot(baseline_x_steps, baseline_y_steps, color='xkcd:blue')
-    
-    #UNCOMMENT WHEN WE HAVE SURROGATE
-    plt.scatter(surrogate_front[metric_a], surrogate_front[metric_b], color='xkcd:orange', marker='^')
-    plt.scatter(surrogate_front_top[metric_a], surrogate_front_top[metric_b], color='xkcd:red', marker='^')
-    plt.plot(surrogate_x_steps, surrogate_y_steps, color='xkcd:red')
-    
-    # plt.scatter(df_metric_a[metric_a], df_metric_a[metric_b], color='xkcd:pink', marker='X')
-    # plt.scatter(df_metric_b[metric_a], df_metric_b[metric_b], color='xkcd:yellow', marker='X')
-    # plt.scatter(df_metric_c[metric_a], df_metric_c[metric_b], color='xkcd:grey', marker='X')
-    plt.scatter(df_simple[metric_a], df_simple[metric_b], color='xkcd:purple', marker='X')
-    plt.scatter(df_complex[metric_a], df_complex[metric_b], color='xkcd:green', marker='X')
-    #UNCOMMENT WHEN WE HAVE SURROGATE
-    plt.legend(['B: Overall Pareto Optimal', 'B: Recalculated Pareto Optimal', 'B: Pareto Frontier', 'S: Overall Pareto Optimal', 'S: Recalculated Pareto Optimal', 'S: Pareto Frontier', 'Reduced Dmytro', 'Full Dmytro'], loc='center left', bbox_to_anchor=(1, 0.5))
-    #plt.legend(['Overall Pareto Optimal', 'Recalculated Pareto Optimal', 'Pareto Frontier', 'Reduced Dmytro', 'Full Dmytro'], loc='center left', bbox_to_anchor=(1, 0.5))
+    for benchmark in benchmarks:
+        benchmark_df = benchmark['df']
+        df_metric_a = benchmark_df.loc[benchmark_df[objectives[0]].idxmin()]
+        df_metric_b = benchmark_df.loc[benchmark_df[objectives[1]].idxmin()]
+        df_metric_c = benchmark_df.loc[benchmark_df[objectives[2]].idxmax()]
+        benchmark_df = benchmark_df.loc[benchmark_df[best_epoch].idxmin()]
+        benchmark_df = pd.concat([benchmark_df, df_metric_a, df_metric_b, df_metric_c], axis=1).transpose()
+        benchmark_df = benchmark_df.reset_index(drop=True)
+        plt.scatter(benchmark_df[metric_a], benchmark_df[metric_b], color=benchmark['color'], marker=benchmark['marker'], label=benchmark['name'])
+
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
     #PLOT 2
     plt.subplot(2, 1, 2)
-    plt.xlim(bounds[4] - 0.01, 1.8 * bounds[5])
-    #plt.xscale('symlog')
-    plt.ylim(0.9 * bounds[2], 2.1) #1.1 * bounds[3])
-    #plt.scatter(df_baseline_current[metric_c], df_baseline_current[metric_b], color='xkcd:orange')
+    xrange = bounds[5] - bounds[4]
+    yrange = bounds[3] - bounds[2]
+    plt.xlim(bounds[4] -  (bounds_margin * xrange), bounds[5] + (bounds_margin * xrange))
+    plt.ylim(bounds[2] - (bounds_margin * yrange), bounds[3] + (bounds_margin * yrange))
     plt.title("Pareto Front Generation " + str(gen))
     plt.xlabel(metric_c)
     plt.ylabel(metric_b)
     
-    plt.scatter(baseline_front[metric_c], baseline_front[metric_b], color='xkcd:lightblue', marker='o')
-    
-    #front2, dominated2 = find_pareto_indices(front, objectives[1:], directions[1:])
-    baseline_x_steps, baseline_y_steps = stepify_pareto_points_2d(baseline_front_bottom[metric_c].to_numpy(), baseline_front_bottom[metric_b].to_numpy(), [directions[2], directions[1]])
-    surrogate_x_steps, surrogate_y_steps = stepify_pareto_points_2d(surrogate_front_bottom[metric_c].to_numpy(), surrogate_front_bottom[metric_b].to_numpy(), [directions[2], directions[1]])
-    
-    plt.scatter(baseline_front_bottom[metric_c], baseline_front_bottom[metric_b], color='xkcd:blue', marker='o')
-    plt.plot(baseline_x_steps, baseline_y_steps, color='xkcd:blue')
+    for one_front in all_fronts:
+        front = one_front['front']
+        front_bottom = one_front['front_bottom']
+        colors = one_front['colors']
+        marker = one_front['marker']
+        name = one_front['name']
+        x_steps, y_steps = stepify_pareto_points_2d(front_bottom[metric_c].to_numpy(), front_bottom[metric_b].to_numpy(), [directions[2], directions[1]])
+        if one_front['reached_max']:
+            color1 = one_front['colors'][2]
+            color2 = one_front['colors'][3]
+        else:
+            color1 = one_front['colors'][0]
+            color2 = one_front['colors'][1]
+        plt.scatter(front[metric_c], front[metric_b], color=color1, marker=marker, label=name[0] + ': Overall Pareto Optimal')
+        plt.scatter(front_bottom[metric_c], front_bottom[metric_b], color=color2, marker=marker, label=name[0] + ': Recalculated Pareto Optimal')
+        plt.plot(x_steps, y_steps, color=color2, label='_' + name[0] + ': Pareto Frontier')
 
-    plt.scatter(surrogate_front[metric_c], surrogate_front[metric_b], color='xkcd:orange', marker='^')
-    plt.scatter(surrogate_front_bottom[metric_c], surrogate_front_bottom[metric_b], color='xkcd:red', marker='^')
-    plt.plot(surrogate_x_steps, surrogate_y_steps, color='xkcd:red')
-    
-    #plt.legend(['Normal Individual', 'Overall Pareto Optimal', 'Pareto Frontier', 'Recalculated Pareto Optimal'], loc='center left', bbox_to_anchor=(1, 0.5))
-    
-    # plt.scatter(df_metric_a[metric_c], df_metric_a[metric_b], color='xkcd:pink', marker='X')
-    # plt.scatter(df_metric_b[metric_c], df_metric_b[metric_b], color='xkcd:yellow', marker='X')
-    # plt.scatter(df_metric_c[metric_c], df_metric_c[metric_b], color='xkcd:grey', marker='X')
-    plt.scatter(df_simple[metric_c], df_simple[metric_b], color='xkcd:purple', marker='X')
-    plt.scatter(df_complex[metric_c], df_complex[metric_b], color='xkcd:green', marker='X')
-    plt.legend(['B: Overall Pareto Optimal', 'B: Recalculated Pareto Optimal', 'B: Pareto Frontier', 'S: Overall Pareto Optimal', 'S: Recalculated Pareto Optimal', 'S: Pareto Frontier', 'Reduced Dmytro', 'Full Dmytro'], loc='center left', bbox_to_anchor=(1, 0.5))
-    #plt.legend(['Overall Pareto Optimal', 'Recalculated Pareto Optimal', 'Pareto Frontier', 'Reduced Dmytro', 'Full Dmytro'], loc='center left', bbox_to_anchor=(1, 0.5))
+
+    for benchmark in benchmarks:
+        benchmark_df = benchmark['df']
+        df_metric_a = benchmark_df.loc[benchmark_df[objectives[0]].idxmin()]
+        df_metric_b = benchmark_df.loc[benchmark_df[objectives[1]].idxmin()]
+        df_metric_c = benchmark_df.loc[benchmark_df[objectives[2]].idxmax()]
+        benchmark_df = benchmark_df.loc[benchmark_df[best_epoch].idxmin()]
+        benchmark_df = pd.concat([benchmark_df, df_metric_a, df_metric_b, df_metric_c], axis=1).transpose()
+        benchmark_df = benchmark_df.reset_index(drop=True)
+        plt.scatter(benchmark_df[metric_c], benchmark_df[metric_b], color=benchmark['color'], marker=benchmark['marker'], label=benchmark['name'])
+
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
     plt.tight_layout()
-    #plt.savefig('/gv1/projects/GRIP_Precog_Opt/data_loading/airborne-detection-starter-kit-master/graphs/pareto/pareto_gen' + str(gen) + '.jpg')
     plt.savefig('graphs/pareto/pareto_gen' + str(gen) + '.jpg')
     plt.close()
     print('plot ' + str(gen) + ' done')
 
-# def calc_hypervolume(front, ref):
-#     hv = hypervolume(front, ref)
-#     return hv
+def generate_fronts(df, objectives, directions, name, gen, colors, marker, reached_max):
+    df_current = df[(df['gen'] <= gen)]
+    
+    front, dominated = find_pareto_indices(df_current, objectives, directions)
+    front_top, dominated_top = find_pareto_indices(df_current, objectives[:2], directions[:2])
+    front_bottom, dominated_bottom = find_pareto_indices(df_current, objectives[1:], directions[1:])
+    
+    all_fronts = {}
+    all_fronts['name'] = name
+    all_fronts['colors'] = colors
+    all_fronts['marker'] = marker
+    all_fronts['front'] = front
+    all_fronts['df'] = df_current
+    all_fronts['dominated'] = dominated
+    all_fronts['front_top'] = front_top
+    all_fronts['dominated_top'] = dominated_top
+    all_fronts['front_bottom'] = front_bottom
+    all_fronts['dominated_bottom'] = dominated_bottom
+    all_fronts['reached_max'] = reached_max
+    
+    return all_fronts
+
 
 if __name__ == "__main__":
+    # HERE IS WHERE YOU ADD FRONTS
+    # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
     baseline_path = '/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv'
+    df_baseline = pd.read_csv(baseline_path)
     surrogate_path = '/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv'
-    simple_path = '/home/eharpster3/precog-opt-grip/dmytro_metrics/combined_metric.csv'
-    complex_path = '/home/eharpster3/precog-opt-grip/dmytro_metrics/metrics.csv'
+    df_surrogate = pd.read_csv(surrogate_path)
+    effective_path = '/gv1/projects/GRIP_Precog_Opt/effective_hash_evolution/out.csv'
+    df_effective = pd.read_csv(effective_path)
+    # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
+    dataframes = [
+        {'df': df_baseline, 'name': 'Baseline', 'colors': ['xkcd:lightblue', 'xkcd:blue', 'xkcd:grey', 'xkcd:charcoal'], 'marker': 'o'}, 
+        {'df': df_surrogate, 'name': 'Surrogate', 'colors': ['xkcd:orange', 'xkcd:dark orange', 'xkcd:grey', 'xkcd:charcoal'], 'marker': '^'},
+        {'df': df_effective, 'name': 'Effective Hash', 'colors': ['xkcd:bright red', 'xkcd:red', 'xkcd:grey', 'xkcd:charcoal'], 'marker': 'P'}
+    ]
 
     objectives = ['uw_val_epoch_loss', 'ciou_loss', 'average_precision']
     #True if minimized, False if maximized
     directions = [True, True, False]
-    df_baseline = pd.read_csv(baseline_path)
-    df_baseline = df_baseline[['gen', 'hash', 'genome', 'uw_val_epoch_loss', 'ciou_loss', 'average_precision']]
+    best_epoch = 'val_epoch_loss'
 
-    df_surrogate = pd.read_csv(surrogate_path)
-    df_surrogate = df_surrogate[['gen', 'hash', 'genome', 'uw_val_epoch_loss', 'ciou_loss', 'average_precision']]
-
-    df_simple = pd.read_csv(simple_path)
-    df_complex = pd.read_csv(complex_path)
-
-    df_metric_a = df_simple.loc[df_simple['uw_val_epoch_loss'].idxmin()]
-    df_metric_b = df_simple.loc[df_simple['ciou_loss'].idxmin()]
-    df_metric_c = df_simple.loc[df_simple['average_precision'].idxmax()]
-    df_simple = df_simple.loc[df_simple['val_epoch_loss'].idxmin()]
-    df_simple = pd.concat([df_simple, df_metric_a, df_metric_b, df_metric_c], axis=1).transpose()
-    df_simple = df_simple.reset_index(drop=True)
-    df_simple = df_simple[['uw_val_epoch_loss', 'ciou_loss', 'average_precision']]
-    df_complex = df_complex[['uw_val_epoch_loss', 'ciou_loss', 'average_precision']]
-    # df_metric_a = df_metric_a[['uw_val_epoch_loss', 'ciou_loss', 'average_precision']]
-    # df_metric_b = df_metric_b[['uw_val_epoch_loss', 'ciou_loss', 'average_precision']]
-    # df_metric_c = df_metric_c[['uw_val_epoch_loss', 'ciou_loss', 'average_precision']]
-    #df = df.drop(df['uw_val_epoch_loss'].max())
-    #df = df[(df['uw_val_epoch_loss'] != 1000000) & (df['ciou_loss'] != 1000000) & (df['average_precision'] != -1000000)]
-    df_baseline = df_baseline.dropna()
-    df_surrogate = df_surrogate.dropna()
-
-    df_baseline = df_baseline.drop_duplicates(subset=['uw_val_epoch_loss', 'ciou_loss', 'average_precision'])
-    df_surrogate = df_surrogate.drop_duplicates(subset=['uw_val_epoch_loss', 'ciou_loss', 'average_precision'])
-    #print(df[df['uw_val_epoch_loss'] == df['uw_val_epoch_loss'].max()])
-    bounds = [df_baseline['uw_val_epoch_loss'].min(), df_baseline[df_baseline['uw_val_epoch_loss'] <= 200]['uw_val_epoch_loss'].max(), df_baseline['ciou_loss'].min(), df_baseline[df_baseline['ciou_loss'] < 1000000]['ciou_loss'].max(), df_baseline[df_baseline['average_precision'] > -1000000]['average_precision'].min(), df_baseline['average_precision'].max()]
-    print(bounds)
-    #need a list of all individuals, list of pareto front individuals, then 2 lists of pareto per graph
-    baseline_hvs = []
-    surrogate_hvs = []
-    gens = []
-    print('newgen')
-    #print(df[df['ciou_loss'] == df['ciou_loss'].max()])
-    min_gen = min(df_baseline['gen'].min(), df_surrogate['gen'].min())
-    max_gen = max(df_baseline['gen'].max(), df_surrogate['gen'].max())
-    for gen in range(min_gen, max_gen + 1): #also 6, 12, and beyond, basically skip 7-11
-        #if gen >= 7 and gen <= 11:
-        #    continue
-        df_baseline_current = df_baseline[(df_baseline['gen'] <= gen)] #& (~df.gen.isin([7, 8, 9, 10, 11]))]
-        df_surrogate_current = df_surrogate[(df_surrogate['gen'] <= gen)]
-        #print(objectives, directions)
-        baseline_front, baseline_dominated = find_pareto_indices(df_baseline_current, objectives, directions)
-        baseline_front_top, baseline_dominated_top = find_pareto_indices(df_baseline_current, objectives[:2], directions[:2])
-        baseline_front_bottom, baseline_dominated_bottom = find_pareto_indices(df_baseline_current, objectives[1:], directions[1:])
-
-        surrogate_front, surrogate_dominated = find_pareto_indices(df_surrogate_current, objectives, directions)
-        surrogate_front_top, surrogate_dominated_top = find_pareto_indices(df_surrogate_current, objectives[:2], directions[:2])
-        surrogate_front_bottom, surrogate_dominated_bottom = find_pareto_indices(df_surrogate_current, objectives[1:], directions[1:])
-
-        gen_plot(df_baseline_current, gen, baseline_path, objectives, directions, baseline_front, baseline_front_top, baseline_front_bottom, surrogate_path, surrogate_front, surrogate_front_top, surrogate_front_bottom, bounds, df_simple, df_complex)
-        print('GEN:', gen)
-        print('length of baseline fronts:', len(df_baseline_current), len(baseline_front), len(baseline_front_top), len(baseline_front_bottom))
-        print('length of surrogate fronts:', len(df_surrogate_current), len(surrogate_front), len(surrogate_front_top), len(surrogate_front_bottom))
-        #front[['uw_val_epoch_loss', 'ciou_loss', 'average_precision']]
-        #rows_set = set(map(tuple, baseline_front.values))
-        print(baseline_front[['uw_val_epoch_loss', 'ciou_loss', 'average_precision']].drop_duplicates().shape)
-        print(surrogate_front[['uw_val_epoch_loss', 'ciou_loss', 'average_precision']].drop_duplicates().shape)
-        baseline_hv_front = baseline_front[['uw_val_epoch_loss', 'ciou_loss', 'average_precision']].to_numpy()
-        surrogate_hv_front = surrogate_front[['uw_val_epoch_loss', 'ciou_loss', 'average_precision']].to_numpy()
+    min_gens = []
+    max_gens = []
+    # here are the limits for setting the effective max in the dataset for graphing purposes
+    bounds_limits = [-np.inf, 60, -np.inf, 2.1, -1000000, np.inf]
+    bounds_margin = 0.1
+    bounds = {'min_objective_1': [], 'max_objective_1': [], 'min_objective_2': [], 'max_objective_2': [], 'min_objective_3': [], 'max_objective_3': []}
+    #bounds = {'min_uw_val_epoch_loss': [], 'max_uw_val_epoch_loss': [], 'min_ciou_loss': [], 'max_ciou_loss': [], 'min_average_precision': [], 'max_average_precision': []}
+    for dataframe in dataframes:
+        df = dataframe['df']
+        df = df[['gen', 'hash', 'genome', objectives[0], objectives[1], objectives[2]]]
+        df = df.dropna()
+        df = df.drop_duplicates(subset=[objectives[0], objectives[1], objectives[2]])
+        min_gens.append(df['gen'].min())
+        max_gens.append(df['gen'].max())
         
-        baseline_hv_front[:, 2] = baseline_hv_front[:, 2] * -1
-        surrogate_hv_front[:, 2] = surrogate_hv_front[:, 2] * -1
-        #[1000000, 2, 1]
-        #[0, 0, 0]
-        hv_max = np.array([1000000, 2, 0]) #hv_front.max(axis=0)
-        hv_min = np.array([0, 0, -1]) #hv_front.min(axis=0)
-        baseline_hv_front = (baseline_hv_front - hv_min) / (hv_max - hv_min)
-        surrogate_hv_front = (surrogate_hv_front - hv_min) / (hv_max - hv_min)
-        #print(hv_front)
-        #ref_point = np.array([np.max(hv_front[:, 0]) + 1, np.max(hv_front[:, 1]) + 1, np.max(hv_front[:, 2]) + 1])
-        #ref_point = np.array([-10,-10,-10])
-        ref_point = np.array([1, 1, 1])
-        #print('refpoint', ref_point)
-        baseline_hv = Hypervolume(ref_point=ref_point)
-        baseline_hvs.append(baseline_hv(baseline_hv_front))
-        surrogate_hv = Hypervolume(ref_point=ref_point)
-        surrogate_hvs.append(surrogate_hv(surrogate_hv_front))
-        gens.append(gen)
-        print('baseline hypervolume:', baseline_hv(baseline_hv_front))
-        print('surrogate hypervolume:', surrogate_hv(surrogate_hv_front))
-        print()
+        bounds['min_objective_1'].append(df[df[objectives[0]] > bounds_limits[0]][objectives[0]].min())
+        bounds['max_objective_1'].append(df[df[objectives[0]] < bounds_limits[1]][objectives[0]].max())
+        bounds['min_objective_2'].append(df[df[objectives[1]] > bounds_limits[2]][objectives[1]].min())
+        bounds['max_objective_2'].append(df[df[objectives[1]] < bounds_limits[3]][objectives[1]].max())
+        bounds['min_objective_3'].append(df[df[objectives[2]] > bounds_limits[4]][objectives[2]].min())
+        bounds['max_objective_3'].append(df[df[objectives[2]] < bounds_limits[5]][objectives[2]].max())
+        
+        dataframe['df'] = df
+
+
+
     
-    print('baseline front')
-    print(baseline_front[['gen', 'hash']])
-    print('surrogate front')
-    print(surrogate_front[['gen', 'hash']])
-    plt.plot(baseline_hvs, marker='o')
-    plt.plot(surrogate_hvs, marker='^')
-    plt.legend(['Baseline', 'Surrogate'])
-    #plt.plot(hvs, marker='o')
-    #plt.xticks(range(len(gens)), gens)
+    
+    # HERE IS WHERE YOU ADD BENCHMARKS THAT HAVE NO FRONTS
+    # same process as adding a front except it only takes in one color instead of a list of colors
+    reduced_path = '/home/eharpster3/precog-opt-grip/dmytro_metrics/combined_metric.csv'
+    full_path = '/home/eharpster3/precog-opt-grip/dmytro_metrics/metrics.csv'
+    df_simple = pd.read_csv(reduced_path)
+    df_complex = pd.read_csv(full_path)
+    
+    benchmarks = [
+        {'df': df_simple, 'name': 'Reduced Dmytro',  'color': 'xkcd:purple', 'marker': 'X'}, 
+        {'df': df_complex,'name': 'Full Dmytro', 'color': 'xkcd:green', 'marker': 'X'}
+    ]
+
+    for benchmark in benchmarks:
+        if best_epoch in objectives:
+            benchmark['df'] = benchmark['df'][[objectives[0], objectives[1], objectives[2]]]
+        else:
+            benchmark['df'] = benchmark['df'][[objectives[0], objectives[1], objectives[2], best_epoch]]
+        df = benchmark['df']
+        bounds['min_objective_1'].append(df[df[objectives[0]] > bounds_limits[0]][objectives[0]].min())
+        bounds['max_objective_1'].append(df[df[objectives[0]] < bounds_limits[1]][objectives[0]].max())
+        bounds['min_objective_2'].append(df[df[objectives[1]] > bounds_limits[2]][objectives[1]].min())
+        bounds['max_objective_2'].append(df[df[objectives[1]] < bounds_limits[3]][objectives[1]].max())
+        bounds['min_objective_3'].append(df[df[objectives[2]] > bounds_limits[4]][objectives[2]].min())
+        bounds['max_objective_3'].append(df[df[objectives[2]] < bounds_limits[5]][objectives[2]].max())
+
+    
+    bounds = [min(bounds['min_objective_1']), max(bounds['max_objective_1']), min(bounds['min_objective_2']), max(bounds['max_objective_2']), min(bounds['min_objective_3']), max(bounds['max_objective_3'])]
+    print(bounds)
+ 
+    gens = []
+    min_gen = min(min_gens)
+    max_gen = max(max_gens)
+    all_hvs = {}
+
+    for gen in range(min_gen, max_gen + 1): 
+        all_fronts = []
+        
+        for dataframe in dataframes:
+            if gen <= dataframe['df']['gen'].max():
+                reached_max = False
+            else:
+                reached_max = True    
+            all_fronts.append(generate_fronts(dataframe['df'], objectives, directions, dataframe['name'], gen, dataframe['colors'], dataframe['marker'], reached_max))
+
+        gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch)
+        
+        print('GEN:', gen)
+        for one_front in all_fronts:
+            if not one_front['reached_max']:
+                df_current = one_front['df']
+                front = one_front['front']
+                front_top = one_front['front_top']
+                front_bottom = one_front['front_bottom']
+                name = one_front['name']
+                print('length of ' + name.lower() + ' fronts:', len(df_current), len(front), len(front_top), len(front_bottom))   
+
+                hv_front = front[[objectives[0], objectives[1], objectives[2]]].to_numpy() 
+                hv_front[:, 2] = hv_front[:, 2] * -1
+                hv_max = np.array([1000000, 2, 0]) #hv_front.max(axis=0)
+                hv_min = np.array([0, 0, -1]) #hv_front.min(axis=0)
+                hv_front = (hv_front - hv_min) / (hv_max - hv_min)
+                ref_point = np.array([1, 1, 1])
+                hv = Hypervolume(ref_point=ref_point)
+                if name not in list(all_hvs.keys()):
+                    all_hvs[name] = []
+                all_hvs[name].append(hv(hv_front))
+                print(name + ' hypervolume:', hv(hv_front))
+
+        print()
+
+        gens.append(gen)
+
+    for dataframe in dataframes:
+        name = dataframe['name']
+        plt.plot(all_hvs[name], marker=dataframe['marker'], color=dataframe['colors'][1], label=name)
+
+    plt.legend()
     plt.title("Pareto Front Hypervolumes Per Generation")
     plt.xlabel('Generation')
     plt.ylabel('Hypervolume')
     plt.tight_layout()
-    #plt.savefig('/home/eharpster3/precog-opt-grip/analysis/graphs/pareto/pareto_hypervolume.jpg')
     plt.savefig('graphs/pareto/pareto_hypervolume.jpg')
     plt.close()
         

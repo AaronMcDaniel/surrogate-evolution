@@ -9,7 +9,8 @@
 #SBATCH -x ice109,ice111,ice161,ice113,ice116,ice114,ice170,ice149,ice158,ice177,ice178,ice120
 
 module load anaconda3/2023.07
-cd /gv1/projects/GRIP_Precog_Opt/data_loading/dmytro-airborne-detection-starter-kit-master/seg_tracker
+# cd /gv1/projects/GRIP_Precog_Opt/data_loading/dmytro-airborne-detection-starter-kit-master/seg_tracker
+cd seg_tracker
 nvidia-smi
 #four scripts for each model
 #python train.py train experiments/120_gernet_m_b2_all.yaml

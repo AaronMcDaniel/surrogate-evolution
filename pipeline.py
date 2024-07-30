@@ -406,7 +406,7 @@ class Pipeline:
         calc_pool = self.surrogate.get_individuals_from_file(os.path.join(self.output_dir, 'out.csv'), hashes=val_df['hash'].to_list())
         print('    Done!')
         
-        print('    Training surrogate ensenble...')
+        print('    Training surrogate ensemble...')
         model_dicts = self.surrogate.models
         all_model_metrics = []
         best_epochs = []
