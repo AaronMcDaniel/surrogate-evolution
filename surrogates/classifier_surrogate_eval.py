@@ -235,14 +235,14 @@ def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir)
 # # TESTING SCRIPT
 # configs = toml.load('conf.toml')
 # surrogate_config = configs['surrogate']
-# binary_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')
-# binary_val_df = pd.read_pickle('surrogate_dataset/cls_val_dataset.pkl')
-# # # Count the number of 1s and 0s in the 'label' column of the training DataFrame
-# # train_label_counts = binary_train_df['label'].value_counts()
-# # print(f"Training DataFrame label counts:\n{train_label_counts}")
-# # # Count the number of 1s and 0s in the 'label' column of the validation DataFrame
-# # val_label_counts = binary_val_df['label'].value_counts()
-# # print(f"Validation DataFrame label counts:\n{val_label_counts}")
+# binary_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_cls_train.pkl')
+# binary_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_cls_val.pkl')
+# # Count the number of 1s and 0s in the 'label' column of the training DataFrame
+# train_label_counts = binary_train_df['label'].value_counts()
+# print(f"Training DataFrame label counts:\n{train_label_counts}")
+# # Count the number of 1s and 0s in the 'label' column of the validation DataFrame
+# val_label_counts = binary_val_df['label'].value_counts()
+# print(f"Validation DataFrame label counts:\n{val_label_counts}")
 # model_dict = {
 #                 'name': 'fail_predictor_3000',
 #                 'dropout': 0.2,
@@ -252,4 +252,4 @@ def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir)
 #                 'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
 #                 'model': sm.BinaryClassifier
 #             }
-# engine(surrogate_config, model_dict, binary_train_df, binary_val_df, 'test/weights/surrogate_weights')
+# engine(surrogate_config, model_dict, binary_train_df, binary_val_df, '/home/tthakur9/precog-opt-grip/test')

@@ -277,20 +277,18 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
 # config_path = '/home/tthakur9/precog-opt-grip/conf.toml'
 # configs = toml.load(config_path)
 # cfg = configs['surrogate']
-
-# # FILTERED DATASET TESTING
 # reg_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_train.pkl')
 # reg_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_val.pkl')
-# model_dict1 = {'name': 'kan_best_uwvl', 
-#               'model': sm.KAN, 
-#               'hidden_sizes': [512, 256], 
-#               'optimizer': torch.optim.AdamW, 
-#               'lr': 0.01, 
-#               'scheduler': torch.optim.lr_scheduler.StepLR, 
-#               'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 
-#               'validation_subset': [0], 
-#               'grid_size': 25, 
-#               'spline_order': 5
+# model_dict1 = {
+#                 'name': 'mlp_best_overall',
+#                 'dropout': 0.2,
+#                 'hidden_sizes': [2048, 1024, 512],
+#                 'optimizer': optim.Adam,
+#                 'lr': 0.1,
+#                 'scheduler': optim.lr_scheduler.StepLR,
+#                 'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+#                 'validation_subset': [0, 4, 11],
+#                 'model': sm.MLP
 #             }
 
 # print(engine(cfg, model_dict1, reg_train_df, reg_val_df, weights_dir='/home/tthakur9/precog-opt-grip/test'))

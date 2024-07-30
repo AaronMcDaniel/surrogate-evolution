@@ -6,6 +6,7 @@ Surrogate class and related surrogate functions. This class is used in the pipel
 import copy
 import hashlib
 import inspect
+import itertools
 
 from sklearn.metrics import accuracy_score
 from codec import Codec
@@ -40,6 +41,8 @@ def ensure_deap_classes(objectives, codec_config):
     # Check if the 'Individual' class exists, if not, create it
     if not hasattr(creator, 'Individual'):
         creator.create("Individual", genome_type, fitness=creator.FitnessMulti)
+    
+    creator.create("TrustIndividual", str, fitness=creator.FitnessMulti)
 
 
 class Surrogate():
@@ -52,7 +55,7 @@ class Surrogate():
         model_config = configs["model"]
         self.models = [ # these are the regressor models but are simply called 'models' for compatibility reasons with the pipeline
             {
-                'name': 'best_overall',
+                'name': 'mlp_best_overall',
                 'dropout': 0.2,
                 'hidden_sizes': [2048, 1024, 512],
                 'optimizer': optim.Adam,
@@ -63,7 +66,7 @@ class Surrogate():
                 'model': sm.MLP
             },
             {
-                'name': 'best_mse_uw_val_loss',
+                'name': 'mlp_best_uwvl',
                 'dropout': 0.2,
                 'hidden_sizes': [2048, 1024, 512],
                 'optimizer': optim.Adam,
@@ -74,7 +77,7 @@ class Surrogate():
                 'model': sm.MLP
             },
             {
-                'name': 'best_mse_ciou_loss',
+                'name': 'mlp_best_cioul',
                 'dropout': 0.4,
                 'hidden_sizes': [1024, 512],
                 'optimizer': optim.Adam,
@@ -85,35 +88,18 @@ class Surrogate():
                 'model': sm.MLP
             },
             {
-                'name': 'best_mse_average_precision',
-                'dropout': 0.0,
-                'hidden_sizes': [512, 256],
-                'optimizer': optim.Adam,
-                'lr': 0.1,
-                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
-                'metrics_subset': [11],
-                'validation_subset': [11],
-                'model': sm.MLP
-            },
+              'name': 'mlp_best_ap',
+              'dropout': 0.0,
+              'hidden_sizes': [512, 256],
+              'optimizer': optim.Adam,
+              'lr': 0.1,
+              'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+              'metrics_subset': [11],
+              'validation_subset': [11],
+              'model': sm.MLP
+            },   
             {
-                'name': 'kan_test',
-                'layers_hidden': [1021, 2048, 512, 256, 12],
-                'grid_size': 5,
-                'spline_order': 3,
-                'scale_noise': 0.1,
-                'scale_base': 1.0,
-                'scale_spline': 1.0,
-                'base_activation': torch.nn.SiLU,
-                'grid_eps': 0.02,
-                'grid_range': [-1, 1],
-                'optimizer': optim.Adam,
-                'lr': 0.1,
-                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
-                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-                'validation_subset': [0, 4, 11],
-                'model': sm.KAN
-            },      
-            {'name': 'kan_best_uwvl', 
+              'name': 'kan_best_uwvl', 
               'model': sm.KAN, 
               'hidden_sizes': [512, 256], 
               'optimizer': torch.optim.AdamW, 
@@ -124,7 +110,8 @@ class Surrogate():
               'grid_size': 25, 
               'spline_order': 5
             },
-            {'name': 'kan_best_cioul', 
+            { 
+              'name': 'kan_best_cioul', 
               'model': sm.KAN, 
               'hidden_sizes': [2048, 1024, 512], 
               'optimizer': torch.optim.AdamW, 
@@ -136,16 +123,16 @@ class Surrogate():
               'spline_order': 1
             },
             {
-                'name': 'kan_best_ap',
-                'hidden_sizes': [2048, 1024, 512],
-                'optimizer': optim.AdamW,
-                'lr': 0.001,
-                'scheduler': optim.lr_scheduler.StepLR,
-                'metrics_subset': [11],
-                'validation_subset': [11],
-                'model': sm.KAN,
-                'spline_order': 1,
-                'grid_size': 25
+              'name': 'kan_best_ap',
+              'hidden_sizes': [2048, 1024, 512],
+              'optimizer': optim.AdamW,
+              'lr': 0.001,
+              'scheduler': optim.lr_scheduler.StepLR,
+              'metrics_subset': [11],
+              'validation_subset': [11],
+              'model': sm.KAN,
+              'spline_order': 1,
+              'grid_size': 25
             }
         ]
         self.classifier_models = [
@@ -493,7 +480,7 @@ class Surrogate():
         return reg_infs
     
 
-        # takes in a list of deap individuals and assigns them inferred fitnesses 
+    # takes in a list of deap individuals and assigns them inferred fitnesses 
     def set_fitnesses(self, inference_models, cls_genome_scaler, reg_genome_scaler, deap_list):
         deap_list = copy.deepcopy(deap_list)
         # step 1: encode the genomes to create an inference df
@@ -532,46 +519,105 @@ class Surrogate():
     
     
     def calc_trust(self, inference_models, cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df):
+        reg_val_df = reg_val_df.drop_duplicates(subset='hash') # get rid of duplicate individuals for trust calc
+        cls_val_df = cls_val_df.drop_duplicates(subset='hash')
         # step 1: get classifier accuracy
         cls_dict = self.classifier_models[inference_models[0]]
         cls_inferences = cse.get_inferences(cls_dict, self.device, cls_val_df, cls_genome_scaler, self.weights_dir)
         truths = cls_val_df['label'].to_list()
         accuracy = accuracy_score(np.array(truths), np.array(cls_inferences))
         cls_trust = accuracy
-        print(cls_trust)
+        # step 2: get reg inferences
+        reg_inferences_df = self.get_reg_inferences(inference_models[1:], reg_val_df, reg_genome_scaler)
+        # step 3: assign fitness
+        objective_keys = list(self.objectives.keys())
+        true_individuals = []
+        for row in reg_val_df.to_dict('records'):
+            individual = creator.TrustIndividual(row['hash'])
+            individual.fitness.values = tuple([row[x] for x in objective_keys])
+            true_individuals.append(individual)
+        inferred_individuals = []
+        for row in reg_inferences_df.to_dict('records'):
+            individual = creator.TrustIndividual(row['hash'])
+            individual.fitness.values = tuple([row[x] for x in objective_keys])
+            inferred_individuals.append(individual)
+        
+        # step 4: select down using trust_calc_strategy
+        print('    Calculating trust...')
+        match self.trust_calc_strategy.lower():
+            case 'spea2':
+                self.toolbox.register("select", tools.selSPEA2, k = int(len(true_individuals)*self.trust_calc_ratio))
+        
+        selected = [str(g) for g in self.toolbox.select(true_individuals)]
+        surrogate_selected = [str(g) for g in self.toolbox.select(inferred_individuals)]
+        
+        # step 5: check intersection of selected individuals and return
+        selected = set(selected)
+        surrogate_selected = set(surrogate_selected)
+        intersection = selected.intersection(surrogate_selected)
+        reg_trust = len(intersection)/len(selected)
+        return cls_trust, reg_trust
+        
+
+    def optimize_trust(self, reg_genome_scaler, calc_pool):
+        objectives_indices = []
+        for i, metric in enumerate(self.METRICS):
+            if metric == 'mse_uw_val_loss':
+                metric = 'mse_uw_val_epoch_loss'
+            name = metric.replace('mse_', '')
+            if name in list(self.objectives.keys()):
+                objectives_indices.append(i)
+
+        grid = {}
+        for i, objective in enumerate(objectives_indices):
+            for j, m in enumerate(self.models):
+                if objective in m['validation_subset']:
+                    if i not in grid:
+                        grid[i] = []
+                    grid[i].append(j)
+
+        compatible_models = grid.values()
+        combos = [list(c) for c in list(itertools.product(*compatible_models))]
+        max_trust = [float('-inf'), None]
+        for c in combos:
+            trust = self.calc_ensemble_trust(c, reg_genome_scaler, calc_pool)
+            print(trust)
+            if trust > max_trust[0]:
+                max_trust[0] = trust
+                max_trust[1] = c
+        return max_trust
         
     
-    
-# TESTING SCRIPT
-# surrogate = Surrogate('/home/tthakur9/precog-opt-grip/conf.toml', '/home/tthakur9/precog-opt-grip/test')
-# reg_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_train.pkl')
-# reg_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_val.pkl')
-# cls_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_cls_train.pkl')
-# cls_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_cls_val.pkl')
-# # inference_models = [0, 5, 6, 7]
-# cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
-# reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train')
-# cls_genome_scaler = cls_train_dataset.genomes_scaler
-# reg_genome_scaler = reg_train_dataset.genomes_scaler
-# individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv", hashes=reg_val_df['hash'].to_list())
+# # TESTING SCRIPT
+surrogate = Surrogate('/home/tthakur9/precog-opt-grip/conf.toml', '/home/tthakur9/precog-opt-grip/test')
+reg_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_train.pkl')
+reg_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_val.pkl')
+cls_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_cls_train.pkl')
+cls_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_cls_val.pkl')
+# inference_models = [0, 5, 6, 7]
+cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
+reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train')
+cls_genome_scaler = cls_train_dataset.genomes_scaler
+reg_genome_scaler = reg_train_dataset.genomes_scaler
+individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv", hashes=reg_val_df['hash'].to_list())
+print(surrogate.optimize_trust(reg_genome_scaler, individuals))
 # # print(surrogate.set_fitnesses(inference_models, cls_genome_scaler, reg_genome_scaler, individuals))
 
+# print(surrogate.calc_ensemble_trust([4, 5, 6], reg_genome_scaler, individuals))
 # print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
 # print(surrogate.calc_trust(-2, genome_scaler, individuals))
 
-surrogate = Surrogate('conf.toml', 'test/weights/surrogate_weights')
-individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv", generations=[21, 22, 23, 24])
-cls_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')
-cls_val_df = pd.read_pickle('surrogate_dataset/cls_val_dataset.pkl')
-reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
-reg_val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
-cls_train_dataset = sd.SurrogateDataset(cls_train_df, mode='train', metrics_subset=[0, 4, 11])
-reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
-cls_genome_scaler = cls_train_dataset.genomes_scaler
-reg_genome_scaler = reg_train_dataset.genomes_scaler
-scores, genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df)
-print(scores)
-# surrogate.calc_trust([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
+# surrogate = Surrogate('conf.toml', 'test/weights/surrogate_weights')
+# individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv", generations=[21, 22, 23, 24])
+# cls_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')
+# cls_val_df = pd.read_pickle('surrogate_dataset/cls_val_dataset.pkl')
+# reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
+# reg_val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
+# cls_train_dataset = sd.SurrogateDataset(cls_train_df, mode='train', metrics_subset=[0, 4, 11])
+# reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
+# cls_genome_scaler = cls_train_dataset.genomes_scaler
+# reg_genome_scaler = reg_train_dataset.genomes_scaler
+# print(surrogate.calc_trust([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df))
 # print(surrogate.set_fitnesses([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, individuals))
 # print(surrogate.calc_ensemble_trust([5, 6, 7], reg_genome_scaler, individuals))
 # print(surrogate.calc_trust(-2, genome_scaler, individuals))
