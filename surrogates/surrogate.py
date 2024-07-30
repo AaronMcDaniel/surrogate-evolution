@@ -445,22 +445,29 @@ class Surrogate():
     # inference models is a list of models where the first entry is the classifier model index to use and the
     # rest are the indices of the sub-surrogate regressor models 
     def get_inferences(self, inference_models, inference_df, cls_genome_scaler, reg_genome_scaler):
-        # get classifier model and unique regression model dicts
+        # inference with cls model
         cls_model = inference_models[0]
-        unique_reg_models = list(set(inference_models[1:]))
         cls_dict = self.classifier_models[cls_model]
-        reg_dicts = [self.models[x] for x in unique_reg_models]
-
-        # get classifier inferences
         cls_infs = cse.get_inferences(cls_dict, self.device, inference_df, cls_genome_scaler, self.weights_dir) # list of inferences. status of 1 means failed 0 means not
 
         # make df with successful individuals
         success_indices = [i for i, status in enumerate(cls_infs) if status == 0]
         reg_inf_df = inference_df.iloc[success_indices]
-        
+
+        # inference with reg models
+        reg_infs = self.get_reg_inferences(inference_models[1:], reg_inf_df, reg_genome_scaler)
+
+        return cls_infs, reg_infs
+    
+
+    def get_reg_inferences(self, model_idxs, inf_df, genome_scaler):
+        # only inference with unique models
+        unique_reg_models = list(set(model_idxs))
+        reg_dicts = [self.models[x] for x in unique_reg_models]
+
         # create returned dataframe and populate hash column
         reg_infs = pd.DataFrame(columns=['hash'] + list(self.objectives.keys()))
-        reg_infs['hash'] = reg_inf_df['hash']
+        reg_infs['hash'] = inf_df['hash']
 
         # dynamically create column mapping using metrics list indices
         col_mapping = {}
@@ -474,14 +481,14 @@ class Surrogate():
         # get regression inferences
         for reg_dict in reg_dicts:
             val_subset = reg_dict['validation_subset']
-            inf = se.get_inferences(reg_dict, self.device, reg_inf_df, reg_genome_scaler, self.weights_dir)
+            inf = se.get_inferences(reg_dict, self.device, inf_df, genome_scaler, self.weights_dir)
 
             # use val_subset to map inferences to correct df cols
             for i, col_name in col_mapping.items():
                 if i in val_subset:
                     reg_infs[col_name] = inf[:, val_subset.index(i)]
 
-        return cls_infs, reg_infs
+        return reg_infs
     
 
         # takes in a list of deap individuals and assigns them inferred fitnesses 
@@ -523,18 +530,18 @@ class Surrogate():
     
 
 # TESTING SCRIPT
-surrogate = Surrogate('/home/tthakur9/precog-opt-grip/conf.toml', '/home/tthakur9/precog-opt-grip/test')
-individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv", generations=[21, 22, 23, 24])
-reg_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/reg_train_dataset.pkl')
-reg_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/reg_val_dataset.pkl')
-cls_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/cls_train_dataset.pkl')
-cls_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/cls_val_dataset.pkl')
-inference_models = [0, 5, 6, 7]
-cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
-reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train')
-cls_genome_scaler = cls_train_dataset.genomes_scaler
-reg_genome_scaler = reg_train_dataset.genomes_scaler
-print(surrogate.set_fitnesses(inference_models, cls_genome_scaler, reg_genome_scaler, individuals))
+# surrogate = Surrogate('/home/tthakur9/precog-opt-grip/conf.toml', '/home/tthakur9/precog-opt-grip/test')
+# reg_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_train.pkl')
+# reg_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_val.pkl')
+# cls_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_cls_train.pkl')
+# cls_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_cls_val.pkl')
+# # inference_models = [0, 5, 6, 7]
+# cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
+# reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train')
+# cls_genome_scaler = cls_train_dataset.genomes_scaler
+# reg_genome_scaler = reg_train_dataset.genomes_scaler
+# individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv", hashes=reg_val_df['hash'].to_list())
+# # print(surrogate.set_fitnesses(inference_models, cls_genome_scaler, reg_genome_scaler, individuals))
 
-# print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
+# print(surrogate.calc_ensemble_trust([5, 6, 7], reg_genome_scaler, individuals))
 # print(surrogate.calc_trust(-2, genome_scaler, individuals))
