@@ -217,22 +217,25 @@ def val_one_epoch(model, device, val_loader, scheduler):
 # inference of 1 means genome is predicted to fail, 0 means good genome
 def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir):
     # construct model
-    model, optimizer, scheduler, scaler = build_configuration(model_dict=model_dict, device=device)
+    model, _, _, _ = build_configuration(model_dict=model_dict, device=device)
     model.load_state_dict(torch.load(f'{weights_dir}/{model_dict["name"]}.pth', map_location=device))
-    encoded_genomes = np.stack(inference_df['genome'].values)
-    genomes = torch.tensor(encoded_genomes, dtype=torch.float32, device=device)
+    genomes = np.stack(inference_df['genome'].values)
+    genomes = genome_scaler.transform(genomes)
+    genomes = torch.tensor(genomes, dtype=torch.float32, device=device)
+    model.eval()
     with torch.no_grad():
-        inferences = model(genomes)
+        with autocast():
+            inferences = model(genomes)
     inferences = inferences.sigmoid().cpu().detach().numpy()
     inferences = (inferences.flatten() > 0.5).astype(int)
     return inferences
     
 
-# TESTING SCRIPT
-# configs = toml.load('conf.toml')
+# # TESTING SCRIPT
+# configs = toml.load('/home/tthakur9/precog-opt-grip/conf.toml')
 # surrogate_config = configs['surrogate']
-# binary_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')
-# binary_val_df = pd.read_pickle('surrogate_dataset/cls_val_dataset.pkl')
+# binary_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/cls_train_dataset.pkl')
+# binary_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/cls_val_dataset.pkl')
 # # # Count the number of 1s and 0s in the 'label' column of the training DataFrame
 # # train_label_counts = binary_train_df['label'].value_counts()
 # # print(f"Training DataFrame label counts:\n{train_label_counts}")
@@ -241,11 +244,11 @@ def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir)
 # # print(f"Validation DataFrame label counts:\n{val_label_counts}")
 # model_dict = {
 #                 'name': 'fail_predictor_3000',
-#                 'dropout': 0.2,
-#                 'hidden_sizes': [1024, 512, 256, 128],
+#                 'dropout': 0.3,
+#                 'hidden_sizes': [2048],
 #                 'optimizer': optim.Adam,
-#                 'lr': 0.001,
+#                 'lr': 0.0005,
 #                 'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
 #                 'model': sm.BinaryClassifier
 #             }
-# engine(surrogate_config, model_dict, binary_train_df, binary_val_df, 'test/weights/surrogate_weights')
+# engine(surrogate_config, model_dict, binary_train_df, binary_val_df, '/home/tthakur9/precog-opt-grip/test')
