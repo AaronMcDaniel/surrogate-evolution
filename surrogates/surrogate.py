@@ -485,18 +485,18 @@ class Surrogate():
     
 
 # TESTING SCRIPT
-surrogate = Surrogate('/home/tthakur9/precog-opt-grip/conf.toml', '/home/tthakur9/precog-opt-grip/test')
-# individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv", generations=[21, 22, 23, 24])
-reg_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/reg_train_dataset.pkl')
-reg_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/reg_val_dataset.pkl')
-cls_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/cls_train_dataset.pkl')
-cls_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/cls_val_dataset.pkl')
-inference_models = [0, 5, 6, 7]
-cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
-reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train')
-cls_genome_scaler = cls_train_dataset.genomes_scaler
-reg_genome_scaler = reg_train_dataset.genomes_scaler
-print(surrogate.get_inferences(inference_models, cls_val_df, cls_genome_scaler, reg_genome_scaler))
+# surrogate = Surrogate('/home/tthakur9/precog-opt-grip/conf.toml', '/home/tthakur9/precog-opt-grip/test')
+# # individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv", generations=[21, 22, 23, 24])
+# reg_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/reg_train_dataset.pkl')
+# reg_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/reg_val_dataset.pkl')
+# cls_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/cls_train_dataset.pkl')
+# cls_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/cls_val_dataset.pkl')
+# inference_models = [0, 5, 6, 7]
+# cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
+# reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train')
+# cls_genome_scaler = cls_train_dataset.genomes_scaler
+# reg_genome_scaler = reg_train_dataset.genomes_scaler
+# print(surrogate.get_inferences(inference_models, cls_val_df, cls_genome_scaler, reg_genome_scaler))
 
 # print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
 # print(surrogate.calc_trust(-2, genome_scaler, individuals))
