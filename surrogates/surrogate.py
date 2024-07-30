@@ -499,35 +499,42 @@ class Surrogate():
         # step 2: get inferences on these genomes
         failed, inferred_df = self.get_inferences(inference_models, inference_df, cls_genome_scaler, reg_genome_scaler)
         # at this stage, the inferred_df contains the set of individuals predicted as valid by the classifier
-        # step 3: split individuals into those predicted to fail and those predicted to be valid
-        invalid_deap = [deap_list[i] for i, v in enumerate(failed) if v == 1]
-        valid_deap =  [deap_list[i] for i, v in enumerate(failed) if v == 0]
-        # step 4: assign metrics based on inferred_df and assign bad metrics if invalid
+
+        # step 3 & 4: split individuals into those predicted to fail and those predicted to be valid 
+        # and assign metrics based on inferred_df and assign bad metrics if invalid
+        invalid_deap = []
+        valid_deap = []
         bad_fitnesses = tuple([300 if x < 0 else -300 for x in self.objectives.values()])
-        for individual in invalid_deap:
-            individual.fitness.values = bad_fitnesses
-        for individual in valid_deap:
-            h = self.__get_hash(str(individual))
-            row = inferred_df[inferred_df['hash'] == h]
-            if row.empty:
-                raise ValueError(f"Hash value {h} not found in the dataframe.")
-            fitness = tuple([row[obj].values[0] for obj in self.objectives.keys()])
-            individual.fitness.values = fitness
+        for i, v in enumerate(failed):
+            individual = deap_list[i]
+            if v == 1:
+                individual.fitness.values = bad_fitnesses
+                invalid_deap.append(individual)
+            else:
+                h = self.__get_hash(str(individual))
+                row = inferred_df[inferred_df['hash'] == h]
+                if row.empty:
+                    raise ValueError(f"Hash value {h} not found in the dataframe.")
+                fitness = tuple([float(row[obj].values[0]) for obj in self.objectives.keys()])
+                individual.fitness.values = fitness
+                valid_deap.append(individual)
         
         return invalid_deap, valid_deap
+    
+
 # TESTING SCRIPT
-# surrogate = Surrogate('/home/tthakur9/precog-opt-grip/conf.toml', '/home/tthakur9/precog-opt-grip/test')
-# # individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv", generations=[21, 22, 23, 24])
-# reg_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/reg_train_dataset.pkl')
-# reg_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/reg_val_dataset.pkl')
-# cls_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/cls_train_dataset.pkl')
-# cls_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/cls_val_dataset.pkl')
-# inference_models = [0, 5, 6, 7]
-# cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
-# reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train')
-# cls_genome_scaler = cls_train_dataset.genomes_scaler
-# reg_genome_scaler = reg_train_dataset.genomes_scaler
-# print(surrogate.get_inferences(inference_models, cls_val_df, cls_genome_scaler, reg_genome_scaler))
+surrogate = Surrogate('/home/tthakur9/precog-opt-grip/conf.toml', '/home/tthakur9/precog-opt-grip/test')
+individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv", generations=[21, 22, 23, 24])
+reg_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/reg_train_dataset.pkl')
+reg_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/reg_val_dataset.pkl')
+cls_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/cls_train_dataset.pkl')
+cls_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/cls_val_dataset.pkl')
+inference_models = [0, 5, 6, 7]
+cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
+reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train')
+cls_genome_scaler = cls_train_dataset.genomes_scaler
+reg_genome_scaler = reg_train_dataset.genomes_scaler
+print(surrogate.set_fitnesses(inference_models, cls_genome_scaler, reg_genome_scaler, individuals))
 
 # print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
 # print(surrogate.calc_trust(-2, genome_scaler, individuals))
