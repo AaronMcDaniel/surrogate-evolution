@@ -74,11 +74,12 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     model, optimizer, scheduler, scaler = build_configuration(model_dict=model_dict, device=device)
+    genome_scaler = train_dataset.genomes_scaler
     
     for epoch in range(1, num_epochs + 1):
         # train and validate for one epoch
-        train_metrics = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler)
-        val_metrics = val_one_epoch(model, device, val_loader)
+        train_metrics = train_one_epoch(model, device, train_loader, optimizer, scaler)
+        val_metrics = val_one_epoch(model, device, val_loader, scheduler)
         # print(f"---- Epoch {epoch} ----")
         # print(f"train : loss = {train_metrics['loss']:.4f} | accuracy = {train_metrics['acc']:.4f} | precision = {train_metrics['prec']:.4f} | recall = {train_metrics['rec']:.4f}")
         # print(f"val   : loss = {val_metrics['loss']:.4f} | accuracy = {val_metrics['acc']:.4f} | precision = {val_metrics['prec']:.4f} | recall = {val_metrics['rec']:.4f}")
@@ -92,10 +93,10 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
     torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict['name']}.pth')
     print('        Save epoch #:', best_epoch_num)    
 
-    return best_epoch_metrics, train_dataset.genomes_scaler             
+    return best_epoch_metrics, genome_scaler             
 
 
-def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
+def train_one_epoch(model, device, train_loader, optimizer, scaler):
     model.train()
 
     # Initialize variables
@@ -129,9 +130,6 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
         data_iter.set_postfix(loss=loss.item())
         torch.cuda.empty_cache()
 
-    # Step scheduler
-    scheduler.step()
-
     # Convert lists to numpy arrays for metric calculation
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
@@ -156,7 +154,7 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
     return epoch_metrics
 
 
-def val_one_epoch(model, device, val_loader):
+def val_one_epoch(model, device, val_loader, scheduler):
     model.eval()
 
     # Initialize variables
@@ -186,6 +184,12 @@ def val_one_epoch(model, device, val_loader):
             data_iter.set_postfix(loss=loss.item())
             torch.cuda.empty_cache()
 
+    # Step scheduler
+    if type(scheduler) is optim.lr_scheduler.ReduceLROnPlateau:
+        scheduler.step(surrogate_val_loss)
+    else:
+        scheduler.step()
+
     # Convert lists to numpy arrays for metric calculation
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
@@ -214,18 +218,21 @@ def val_one_epoch(model, device, val_loader):
 # inference of 1 means genome is predicted to fail, 0 means good genome
 def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir):
     # construct model
-    model, optimizer, scheduler, scaler = build_configuration(model_dict=model_dict, device=device)
+    model, _, _, _ = build_configuration(model_dict=model_dict, device=device)
     model.load_state_dict(torch.load(f'{weights_dir}/{model_dict["name"]}.pth', map_location=device))
-    encoded_genomes = np.stack(inference_df['genome'].values)
-    genomes = torch.tensor(encoded_genomes, dtype=torch.float32, device=device)
+    genomes = np.stack(inference_df['genome'].values)
+    genomes = genome_scaler.transform(genomes)
+    genomes = torch.tensor(genomes, dtype=torch.float32, device=device)
+    model.eval()
     with torch.no_grad():
-        inferences = model(genomes)
+        with autocast():
+            inferences = model(genomes)
     inferences = inferences.sigmoid().cpu().detach().numpy()
     inferences = (inferences.flatten() > 0.5).astype(int)
     return inferences
     
 
-# TESTING SCRIPT
+# # TESTING SCRIPT
 # configs = toml.load('conf.toml')
 # surrogate_config = configs['surrogate']
 # binary_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')
@@ -239,10 +246,10 @@ def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir)
 # model_dict = {
 #                 'name': 'fail_predictor_3000',
 #                 'dropout': 0.2,
-#                 'hidden_sizes': [1024, 512],
-#                 'optimizer': optim.AdamW,
-#                 'lr': 0.01,
-#                 'scheduler': optim.lr_scheduler.CosineAnnealingLR,
+#                 'hidden_sizes': [1024, 512, 256, 128],
+#                 'optimizer': optim.Adam,
+#                 'lr': 0.001,
+#                 'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
 #                 'model': sm.BinaryClassifier
 #             }
 # engine(surrogate_config, model_dict, binary_train_df, binary_val_df, 'test/weights/surrogate_weights')

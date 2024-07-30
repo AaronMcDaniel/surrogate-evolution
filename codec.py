@@ -496,6 +496,32 @@ class Codec:
             layer[num_layer_types + i] = param
         
         return layer
+    
+    
+    def get_layer_list(self, genome):
+        layer_list = []
+        if (self.genome_encoding_strat.lower() == 'tree'):
+            # parse tree decoding into layer list
+            expr = re.split(r'([(),])',genome)
+            remove = [',', '']
+            expr = [x for x in expr if x not in remove]
+            stack = []
+            for element in expr:
+                if element != ')':
+                    stack.append(element)
+                else:
+                    arguments = []
+                    while stack[-1] != '(':
+                        arguments.insert(0, stack.pop())
+                    stack.pop()
+                    function = stack.pop()
+                    try:
+                        stack.append(str(eval(f'primitives.{function}({",".join(arguments)})')))
+                    except: # this is where we add the layers
+                        layer_info = [function]+[self.__parse_arg(x) for x in arguments]
+                        layer_list.append(layer_info)
+            return layer_list
+    
 
     def decode_genome(self, genome, num_loss_components):
         module_list = nn.ModuleList()

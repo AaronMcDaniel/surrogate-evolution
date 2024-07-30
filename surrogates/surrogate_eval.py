@@ -140,8 +140,34 @@ def get_val_scores(cfg, model_dict, train_df, val_df, weights_dir):
     model, optimizer, scheduler, scaler, val_subset = build_configuration(model_dict=model_dict, device=device)
     model.load_state_dict(torch.load(f'{weights_dir}/{model_dict['name']}.pth', map_location=device)) 
     epoch_metrics = val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, min_metrics)
-    return epoch_metrics               
+    return epoch_metrics      
 
+
+def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir):
+    # get model and load weights
+    model, _, _, _, val_subset = build_configuration(model_dict, device)
+    model.load_state_dict(torch.load(f'{weights_dir}/{model_dict['name']}.pth', map_location=device))
+    genomes = np.stack(inference_df['genome'].values)
+
+    # scale features with train scaler
+    genomes = genome_scaler.transform(genomes)
+    genomes = torch.tensor(genomes, dtype=torch.float32, device=device)
+
+    # get inferences
+    model.eval()
+    with torch.no_grad():
+        with autocast():
+            inf = model(genomes)
+    
+    # clamp inferences
+    inf = torch.clamp(inf, min=-300, max=300).to(torch.float32)
+
+    # get only the validation subset of inferences
+    metrics_subset = model_dict['metrics_subset']
+    val_col_indices = [i for i, idx in enumerate(metrics_subset) if idx in val_subset]
+    val_inf = inf[:, val_col_indices].cpu().detach().numpy()
+    return val_inf
+    
 
 def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics):
     model.train()
@@ -149,8 +175,8 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
     # actual surrogate training loss
     surrogate_train_loss = 0.0
     # mean taken for metric regression losses in train
-    # criterion = nn.L1Loss()
-    criterion = nn.MSELoss()
+    criterion = nn.L1Loss()
+    # criterion = nn.MSELoss()
 
     data_iter = tqdm(train_loader, desc='Training')
     for genomes, metrics in data_iter:
@@ -195,8 +221,8 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
     # mse loss matrx for each metric, where rows = num batches and cols = 12 for all predicted metrics
     mse_metrics_per_batch = []
     # no mean taken for losses in validation 
-    # criterion = nn.L1Loss(reduction='none')
-    criterion = nn.MSELoss(reduction='none')
+    criterion = nn.L1Loss(reduction='none')
+    # criterion = nn.MSELoss(reduction='none')
     
     metric_names = cfg['surrogate_metrics']
     selected_metric_names = [metric_names[i] for i in metrics_subset]
@@ -247,24 +273,24 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
     return epoch_metrics
 
 
-# TESTING
-# config_path = 'conf.toml'
+# # TESTING
+# config_path = '/home/tthakur9/precog-opt-grip/conf.toml'
 # configs = toml.load(config_path)
 # cfg = configs['surrogate']
 
-# FILTERED DATASET TESTING
-reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
-reg_val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
-model_dict1 = {'name': 'kan_mse_best_uwvl', 
-              'model': sm.KAN, 
-              'hidden_sizes': [512, 256], 
-              'optimizer': torch.optim.AdamW, 
-              'lr': 0.01, 
-              'scheduler': torch.optim.lr_scheduler.StepLR, 
-              'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 
-              'validation_subset': [0], 
-              'grid_size': 25, 
-              'spline_order': 5
-            }
+# # FILTERED DATASET TESTING
+# reg_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_train.pkl')
+# reg_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_val.pkl')
+# model_dict1 = {'name': 'kan_best_uwvl', 
+#               'model': sm.KAN, 
+#               'hidden_sizes': [512, 256], 
+#               'optimizer': torch.optim.AdamW, 
+#               'lr': 0.01, 
+#               'scheduler': torch.optim.lr_scheduler.StepLR, 
+#               'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 
+#               'validation_subset': [0], 
+#               'grid_size': 25, 
+#               'spline_order': 5
+#             }
 
-print(engine(cfg, model_dict1, reg_train_df, reg_val_df, weights_dir='test'))
+# print(engine(cfg, model_dict1, reg_train_df, reg_val_df, weights_dir='/home/tthakur9/precog-opt-grip/test'))
