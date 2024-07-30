@@ -40,6 +40,8 @@ def ensure_deap_classes(objectives, codec_config):
     # Check if the 'Individual' class exists, if not, create it
     if not hasattr(creator, 'Individual'):
         creator.create("Individual", genome_type, fitness=creator.FitnessMulti)
+    
+    creator.create("TrustIndividual", str, fitness=creator.FitnessMulti)
 
 
 class Surrogate():
@@ -493,7 +495,7 @@ class Surrogate():
         return reg_infs
     
 
-        # takes in a list of deap individuals and assigns them inferred fitnesses 
+    # takes in a list of deap individuals and assigns them inferred fitnesses 
     def set_fitnesses(self, inference_models, cls_genome_scaler, reg_genome_scaler, deap_list):
         deap_list = copy.deepcopy(deap_list)
         # step 1: encode the genomes to create an inference df
@@ -532,13 +534,44 @@ class Surrogate():
     
     
     def calc_trust(self, inference_models, cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df):
+        reg_val_df = reg_val_df.drop_duplicates(subset='hash') # get rid of duplicate individuals for trust calc
+        cls_val_df = cls_val_df.drop_duplicates(subset='hash')
         # step 1: get classifier accuracy
         cls_dict = self.classifier_models[inference_models[0]]
         cls_inferences = cse.get_inferences(cls_dict, self.device, cls_val_df, cls_genome_scaler, self.weights_dir)
         truths = cls_val_df['label'].to_list()
         accuracy = accuracy_score(np.array(truths), np.array(cls_inferences))
         cls_trust = accuracy
-        print(cls_trust)
+        # step 2: get reg inferences
+        reg_inferences_df = self.get_reg_inferences(inference_models[1:], reg_val_df, reg_genome_scaler)
+        # step 3: assign fitness
+        objective_keys = list(self.objectives.keys())
+        true_individuals = []
+        for row in reg_val_df.to_dict('records'):
+            individual = creator.TrustIndividual(row['hash'])
+            individual.fitness.values = tuple([row[x] for x in objective_keys])
+            true_individuals.append(individual)
+        inferred_individuals = []
+        for row in reg_inferences_df.to_dict('records'):
+            individual = creator.TrustIndividual(row['hash'])
+            individual.fitness.values = tuple([row[x] for x in objective_keys])
+            inferred_individuals.append(individual)
+        
+        # step 4: select down using trust_calc_strategy
+        print('    Calculating trust...')
+        match self.trust_calc_strategy.lower():
+            case 'spea2':
+                self.toolbox.register("select", tools.selSPEA2, k = int(len(true_individuals)*self.trust_calc_ratio))
+        
+        selected = [str(g) for g in self.toolbox.select(true_individuals)]
+        surrogate_selected = [str(g) for g in self.toolbox.select(inferred_individuals)]
+        
+        # step 5: check intersection of selected individuals and return
+        selected = set(selected)
+        surrogate_selected = set(surrogate_selected)
+        intersection = selected.intersection(surrogate_selected)
+        reg_trust = len(intersection)/len(selected)
+        return cls_trust, reg_trust
         
     
     
@@ -569,7 +602,7 @@ class Surrogate():
 # reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
 # cls_genome_scaler = cls_train_dataset.genomes_scaler
 # reg_genome_scaler = reg_train_dataset.genomes_scaler
-# surrogate.calc_trust([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
+# print(surrogate.calc_trust([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df))
 # print(surrogate.set_fitnesses([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, individuals))
 # print(surrogate.calc_ensemble_trust([5, 6, 7], reg_genome_scaler, individuals))
 # print(surrogate.calc_trust(-2, genome_scaler, individuals))
