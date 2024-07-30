@@ -90,7 +90,7 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
             best_epoch_num = epoch
             best_epoch_metrics = val_metrics
     
-    torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict['name']}.pth')
+    torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict["name"]}.pth')
     print('        Save epoch #:', best_epoch_num)    
 
     return best_epoch_metrics, genome_scaler             

@@ -189,7 +189,7 @@ class Surrogate():
         
         for model_idx in unique_model_idxs:
             # get inferences on copy of calc_pool and assign fitness to copy
-            print(f'    Getting inferences using {self.models[model_idx]['name']}...')
+            print(f'    Getting inferences using {self.models[model_idx]["name"]}...')
             inferences = self.get_surrogate_inferences(model_idx, genome_scaler, inference_pool)
             unique_inferences.append(inferences)
             
@@ -559,16 +559,18 @@ class Surrogate():
 # print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
 # print(surrogate.calc_trust(-2, genome_scaler, individuals))
 
-# surrogate = Surrogate('conf.toml', 'test/weights/surrogate_weights')
-# individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv", generations=[21, 22, 23, 24])
-# cls_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')
-# cls_val_df = pd.read_pickle('surrogate_dataset/cls_val_dataset.pkl')
-# reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
-# reg_val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
-# cls_train_dataset = sd.SurrogateDataset(cls_train_df, mode='train', metrics_subset=[0, 4, 11])
-# reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
-# cls_genome_scaler = cls_train_dataset.genomes_scaler
-# reg_genome_scaler = reg_train_dataset.genomes_scaler
+surrogate = Surrogate('conf.toml', 'test/weights/surrogate_weights')
+individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv", generations=[21, 22, 23, 24])
+cls_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')
+cls_val_df = pd.read_pickle('surrogate_dataset/cls_val_dataset.pkl')
+reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
+reg_val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
+cls_train_dataset = sd.SurrogateDataset(cls_train_df, mode='train', metrics_subset=[0, 4, 11])
+reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
+cls_genome_scaler = cls_train_dataset.genomes_scaler
+reg_genome_scaler = reg_train_dataset.genomes_scaler
+scores, genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df)
+print(scores)
 # surrogate.calc_trust([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
 # print(surrogate.set_fitnesses([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, individuals))
 # print(surrogate.calc_ensemble_trust([5, 6, 7], reg_genome_scaler, individuals))

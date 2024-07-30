@@ -380,34 +380,47 @@ class Pipeline:
             return None
         print('    Building surrogate train and val datasets...')
         # implement growing sliding window till gen 7 (then use prev 5 gens as val and everything before that as train)
+        name = 'surr_evolution'
         if self.gen_count == 2: # use train val split from gen 1 at gen 2
-            build_dataset(os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0.2, include_only=[1])
-            train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/train_dataset.pkl')
-            val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/val_dataset.pkl')
-            subset_val_df = val_df
+            build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0.2, include_only=[1])
+            reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
+            reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
+            reg_subset_val_df = reg_val_df
+            cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
+            cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
+            cls_subset_val_df = cls_val_df
         elif self.gen_count < 7: # grows here
-            build_dataset(os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=[1])
-            train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/train_dataset.pkl')
-            build_dataset(os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[1:])
-            val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/val_dataset.pkl')
-            build_dataset(os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
-            subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/val_dataset.pkl')
+            build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=[1])
+            reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
+            cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
+            build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[1:])
+            reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
+            cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
+            build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
+            reg_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
+            cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
         else: # slides here
-            build_dataset(os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=seen_gens[:-5])
-            train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/train_dataset.pkl')
-            build_dataset(os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-5:])
-            val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/val_dataset.pkl')
-            build_dataset(os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
-            subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/val_dataset.pkl')
+            build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=seen_gens[:-5])
+            reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
+            cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
+            build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-5:])
+            reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
+            cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
+            build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
+            reg_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
+            cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
+            
         
         # print('++++++++++++++++++++++++')
         # print('train size:', train_df.shape)
         # print('val size:', val_df.shape)
         # print('++++++++++++++++++++++++')
         
-        calc_pool = self.surrogate.get_individuals_from_file(os.path.join(self.output_dir, 'out.csv'), hashes=val_df['hash'].to_list())
-        print('    Done!')
+        #calc_pool = self.surrogate.get_individuals_from_file(os.path.join(self.output_dir, 'out.csv'), hashes=val_df['hash'].to_list())
+        #print('    Done!')
         
+        #first call train function and receive the scores, then find the best model for each objective plus cls, then calculate their trust
+
         print('    Training surrogate ensemble...')
         model_dicts = self.surrogate.models
         all_model_metrics = []
