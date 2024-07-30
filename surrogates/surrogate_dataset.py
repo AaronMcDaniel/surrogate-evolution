@@ -95,6 +95,7 @@ class ClassifierSurrogateDataset(Dataset):
 # 
 # WORKS BUT SHOULD BE PROOFREAD
 def build_dataset(
+        name,
         infile='/gv1/projects/GRIP_Precog_Opt/outputs/out.csv',
         working_dir='/gv1/projects/GRIP_Precog_Opt/outputs', 
         outdir='surrogate_dataset', 
@@ -244,10 +245,10 @@ def build_dataset(
 
     # write train/val sets to file
     os.makedirs(outdir, exist_ok=True)
-    reg_train_set.to_pickle(os.path.join(outdir, 'reg_train_dataset.pkl'))
-    reg_val_set.to_pickle(os.path.join(outdir, 'reg_val_dataset.pkl'))
-    cls_train_set.to_pickle(os.path.join(outdir, 'cls_train_dataset.pkl'))
-    cls_val_set.to_pickle(os.path.join(outdir, 'cls_val_dataset.pkl'))
+    reg_train_set.to_pickle(os.path.join(outdir, f'{name}_reg_train.pkl'))
+    reg_val_set.to_pickle(os.path.join(outdir, f'{name}_reg_val.pkl'))
+    cls_train_set.to_pickle(os.path.join(outdir, f'{name}_cls_train.pkl'))
+    cls_val_set.to_pickle(os.path.join(outdir, f'{name}_cls_val.pkl'))
 
     return reg_train_set, reg_val_set, cls_train_set, cls_val_set
 
@@ -283,7 +284,7 @@ def merge_csv_to_dataset(
 
 
 # TESTING SCRIPT
-# build_dataset(infile='/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv', working_dir='/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution', val_ratio=0.3)
+# build_dataset(name='us_surr', infile='/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv', working_dir='/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution', val_ratio=0.3)
 # reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
 # reg_val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
 # cls_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')

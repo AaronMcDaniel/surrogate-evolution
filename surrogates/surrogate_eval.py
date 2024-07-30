@@ -279,9 +279,9 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
 # cfg = configs['surrogate']
 
 # # FILTERED DATASET TESTING
-# reg_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/reg_train_dataset.pkl')
-# reg_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/reg_val_dataset.pkl')
-# model_dict1 = {'name': 'kan_mse_best_uwvl', 
+# reg_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_train.pkl')
+# reg_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_val.pkl')
+# model_dict1 = {'name': 'kan_best_uwvl', 
 #               'model': sm.KAN, 
 #               'hidden_sizes': [512, 256], 
 #               'optimizer': torch.optim.AdamW, 
