@@ -114,7 +114,8 @@ class Pipeline:
         self.hof_history = {} # dict keeping track of hall of fame through generations
         self.codec = Codec(0, genome_encoding_strat=codec_config['genome_encoding_strat']) # only used for getting hash, so initialization values don't matter
         self.surrogate = Surrogate(config_dir, self.surrogate_weights_dir) # Surrogate class to be defined
-        self.genome_scaler = None # scaler used to transform genomes on training and inference
+        self.reg_genome_scaler = None # scaler used to transform genomes on regression training and inference
+        self.cls_genome_scaler = None # scaler used to transform genomes on classification training and inference
         self.sub_surrogates = [0, 0, 0] # list of sub-surrogate indices to use (SHOULD BE SAVED)
         self.surrogate_trusts = [] # list to keep track of surrogate trust over the generations (SHOULD BE SAVED)
         self.pset = primitives.pset # primitive set
@@ -179,9 +180,12 @@ class Pipeline:
                 self.hall_of_fame = pickle.load(f)
             print('Found hof.pkl!')
             if self.surrogate_enabled:
-                with open(os.path.join(checkpoint_path,'genome_scaler.pkl'), 'rb') as f:
-                    self.genome_scaler = pickle.load(f)
-                print('Found genome_scaler.pkl!')
+                with open(os.path.join(checkpoint_path,'reg_genome_scaler.pkl'), 'rb') as f:
+                    self.reg_genome_scaler = pickle.load(f)
+                print('Found reg_genome_scaler.pkl!')
+                with open(os.path.join(checkpoint_path,'cls_genome_scaler.pkl'), 'rb') as f:
+                    self.cls_genome_scaler = pickle.load(f)
+                print('Found cls_genome_scaler.pkl!')
                 with open(os.path.join(checkpoint_path,'sub_surrogate_selection.pkl'), 'rb') as f:
                     self.sub_surrogates = pickle.load(f)
                 print('Found sub_surrogate_selection.pkl!')
@@ -487,40 +491,55 @@ class Pipeline:
         print('Downselecting...')
         if self.surrogate_enabled and self.gen_count != 1:
             unsustainable_pop_copy = copy.deepcopy(unsustainable_pop)
+
+            # get surrogate inferred fitnesses using classification and regression
+            invalid_deap, valid_deap = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(unsustainable_pop.values()))
+
+            # define sizes for stages of selection
+            num_tw_select = int(self.surrogate.trust * self.surrogate.cls_trust * self.population_size)
+            num_utw_select = int((1 - self.surrogate.trust) * self.surrogate.cls_trust * self.population_size)
+            num_rand_other_select = (self.population_size - num_tw_select - num_utw_select) 
             
-            # get num individuals to be downselected by surrogate vs other technique
-            num_surrogate_select = int(self.population_size*self.surrogate.trust)
-            num_other_select = self.population_size-num_surrogate_select
-            
-            # create downselect function
-            self.toolbox.register("downselect", tools.selNSGA2, k = num_surrogate_select)
-            
-            # get surrogate ensemble inferences on unsustainable pop
-            to_downselect = list(unsustainable_pop_copy.values()) 
-            self.surrogate.set_inferred_fitness(self.sub_surrogates, self.genome_scaler, to_downselect)
+            # create downselect function for trustwrothy surrogate ratio
+            if self.selection_method_trusted == 'NSGA2':
+                self.toolbox.register("downselect", tools.selNSGA2, k = num_tw_select)
+            # TODO add other if statements for other selections strategies
             
             # downselect using surrogate
-            downselected = self.toolbox.downselect(to_downselect)
+            downselected = self.toolbox.downselect(valid_deap)
             
             # create new population dict
             new_pop = {}
+            new_deap_pop = []
+
+            # add trustworthy downselected individuals to new population
+            # remove added individuals from valid_deap and unsustainable population
             for individual in downselected:
                 hash = self.__get_hash(str(individual))
                 new_pop[hash] = {'genome': str(unsustainable_pop_copy[hash]), 'metrics': None}
+                new_deap_pop.append(individual)
                 # delete surrogate selected individuals to avoid duplicates being selected by other technique
                 del unsustainable_pop_copy[hash]
-            
-            # other technique    
+                valid_deap.remove(individual)
+
+            # randomly select from valid deap individuals    
             if (self.selection_method_untrusted.lower() == 'random'): # choose randomly
-                new_hashes = random.sample(list(unsustainable_pop_copy.keys()), num_other_select)
-                other_deap_pop = []
-                for hash in new_hashes:
-                    other_deap_pop.append(unsustainable_pop_copy[hash])
+                to_utw_select = random.sample((valid_deap), num_utw_select)
+                for individual in to_utw_select:
+                    hash = self.__get_hash(str(individual))
                     new_pop[hash] = {'genome': str(unsustainable_pop_copy[hash]), 'metrics': None}
+                    new_deap_pop.append(individual)
+                    del unsustainable_pop_copy[hash]
+                    valid_deap.remove(individual)
+
+                other_rand_hashes = random.sample(list(unsustainable_pop_copy.keys()), num_rand_other_select)
+                for hash in other_rand_hashes:
+                    new_pop[hash] = {'genome': str(unsustainable_pop_copy[hash]), 'metrics': None}
+                    new_deap_pop.append(unsustainable_pop_copy[hash])
            
             # set new current pop and current deap pop
             self.current_population = new_pop
-            self.current_deap_pop = downselected + other_deap_pop
+            self.current_deap_pop = new_deap_pop
             
         else :
             if (self.selection_method_untrusted.lower() == 'random'): # choose randomly
@@ -533,7 +552,6 @@ class Pipeline:
                 self.current_population = new_pop
                 self.current_deap_pop = new_deap_pop
         print('Done!')
-
 
     def cross(self, parents):
         parents = copy.deepcopy(parents)
@@ -569,9 +587,11 @@ class Pipeline:
         with open(os.path.join(checkpoint_path,'hof.pkl'), 'wb') as f:
             pickle.dump(self.hall_of_fame, f)
         if self.surrogate_enabled:
-            # store current genome scaler to be used for downselect
-            with open(os.path.join(checkpoint_path,'genome_scaler.pkl'), 'wb') as f:
-                pickle.dump(self.genome_scaler, f)
+            # store current genome scalers to be used for downselect
+            with open(os.path.join(checkpoint_path,'cls_genome_scaler.pkl'), 'wb') as f:
+                pickle.dump(self.cls_genome_scaler, f)
+            with open(os.path.join(checkpoint_path,'reg_genome_scaler.pkl'), 'wb') as f:
+                pickle.dump(self.reg_genome_scaler, f)
             # store current selected sub-surrogates
             with open(os.path.join(checkpoint_path,'sub_surrogate_selection.pkl'), 'wb') as f:
                 pickle.dump(self.sub_surrogates, f)
