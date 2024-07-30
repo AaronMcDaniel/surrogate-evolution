@@ -116,7 +116,7 @@ class Pipeline:
         self.surrogate = Surrogate(config_dir, self.surrogate_weights_dir) # Surrogate class to be defined
         self.reg_genome_scaler = None # scaler used to transform genomes on regression training and inference
         self.cls_genome_scaler = None # scaler used to transform genomes on classification training and inference
-        self.sub_surrogates = [0, 0, 0] # list of sub-surrogate indices to use (SHOULD BE SAVED)
+        self.sub_surrogates = [0, 0, 0, 0] # list of sub-surrogate indices to use (SHOULD BE SAVED)
         self.surrogate_trusts = [] # list to keep track of surrogate trust over the generations (SHOULD BE SAVED)
         self.pset = primitives.pset # primitive set
         self.gen_count = 1
@@ -242,12 +242,13 @@ class Pipeline:
         if self.surrogate_enabled:
             print('    Preparing surrogate...')
             all_subsurrogate_metrics = self.prepare_surrogate()
-            if all_subsurrogate_metrics is not None:
-                for i, metrics_df in enumerate(all_subsurrogate_metrics):
-                    metrics_df['gen'] = self.gen_count
-                    metrics_df['model'] = self.surrogate.models[i]['name']
-                    self.surrogate_data = pd.concat([self.surrogate_data, metrics_df], ignore_index=True)
-            self.surrogate_trusts.append(self.surrogate.trust)
+            # TODO data logging
+            # if all_subsurrogate_metrics is not None:
+            #     for i, metrics_df in enumerate(all_subsurrogate_metrics):
+            #         metrics_df['gen'] = self.gen_count
+            #         metrics_df['model'] = self.surrogate.models[i]['name']
+            #         self.surrogate_data = pd.concat([self.surrogate_data, metrics_df], ignore_index=True)
+            # self.surrogate_trusts.append(self.surrogate.trust)
             
         print('    Waiting for jobs...')
         # wait for job to finish
@@ -420,84 +421,32 @@ class Pipeline:
         # print('val size:', val_df.shape)
         # print('++++++++++++++++++++++++')
         
-        #calc_pool = self.surrogate.get_individuals_from_file(os.path.join(self.output_dir, 'out.csv'), hashes=val_df['hash'].to_list())
-        #print('    Done!')
         
         #first call train function and receive the scores, then find the best model for each objective plus cls, then calculate their trust
-
         print('    Training surrogate ensemble...')
-        model_dicts = self.surrogate.models
-        all_model_metrics = []
-        best_epochs = []
-        val_subsets = []
-        for model_dict in model_dicts:
-            print(f'        Training {model_dict['name']}...')
-            metrics, best_epoch_metrics, best_epoch, genome_scaler = engine(self.surrogate_config, model_dict, train_df, val_df, self.surrogate_weights_dir) # we want mse scores on a subset of this
-            all_model_metrics.append(metrics)
-            best_epochs.append(best_epoch)
-            val_subsets.append(model_dict['validation_subset'])    
-            print('        Done!')
+        scores, cls_genome_scaler, reg_genome_scaler = self.surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df)
             
-        print('    Selecting best sub-surrogates...')
-        best_metrics = self.__find_best_metrics(self.objectives, all_model_metrics, best_epochs, val_subsets)
+        print('    Selecting best sub-surrogates...') # TODO
         sub_surrogates = []
-        for objective in self.objectives.keys():
-            sub_surrogates.append(best_metrics[objective])
-            print(f'    Selected {self.surrogate.models[best_metrics[objective]]['name']} for {objective}')
+        # finding best classifier
+        cls_trust = 0
+        max_cls_model = ''
+        for key, val in scores['classifiers'].items():
+            if val['acc'] > cls_trust:
+                cls_trust = val['acc']
+                max_cls_model = key
+        sub_surrogates.append(max_cls_model)
+        # finding best regressor
+        result = self.surrogate.optimize_trust(cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
+        reg_trust = result[0]
+        sub_surrogates += result[1]
             
-        self.sub_surrogates = sub_surrogates # sub surrogates need to be in order of objectives
-        # get val scores for the selected models and store
-        ensemble_scores = {}
-        ensemble_scores['gen'] = self.gen_count-1
-        for i, surrogate in enumerate(self.sub_surrogates):
-            model_dict = self.surrogate.models[surrogate]
-            val_scores = get_val_scores(self.surrogate_config, model_dict, train_df, subset_val_df, self.surrogate_weights_dir)
-            mse_name = 'mse_'+list(self.objectives.keys())[i].replace('epoch_', '')
-            ensemble_scores[list(self.objectives.keys())[i]+'_model'] = model_dict['name']
-            ensemble_scores[mse_name] = val_scores[mse_name]
-        
-        self.surrogate_mse_scores.loc[len(self.surrogate_mse_scores)] = ensemble_scores
-        # print(ensemble_scores)
-        # print(self.surrogate_mse_scores)
-            
-        self.genome_scaler = genome_scaler
-        self.surrogate.trust = self.surrogate.calc_ensemble_trust(self.sub_surrogates, genome_scaler, calc_pool)
+        self.cls_genome_scaler = cls_genome_scaler
+        self.reg_genome_scaler = reg_genome_scaler
+        self.surrogate.cls_trust, self.surrogate.reg_trust = cls_trust, reg_trust
+        self.sub_surrogates = sub_surrogates
         print('    Done!')
-        return all_model_metrics
-    
-    
-    def __find_best_metrics(self, objectives, all_model_metrics, best_epochs, val_subsets):
-        # Convert 1-based best_epochs to 0-based index
-        best_epochs = [epoch - 1 for epoch in best_epochs]
-        
-        # Retrieve the specified row from each dataframe
-        metrics = [df.iloc[epoch] for df, epoch in zip(all_model_metrics, best_epochs)]
-        
-        best_metrics = {}
-        
-        for objective, goal in objectives.items():
-            # Initialize best value and corresponding dataframe index
-            best_value = None
-            best_index = None
-            
-            for i, metric in enumerate(metrics):
-                val_headings = [self.surrogate_metrics[x] for x in val_subsets[i]]
-                surrogate_metric_name = 'mse_'+objective.replace('epoch_', '')
-                if surrogate_metric_name not in val_headings:
-                    continue
-                value = metric[surrogate_metric_name]
-                
-                # Skip if the value is NaN
-                if pd.isna(value):
-                    continue
-                
-                if best_value is None or value < best_value:
-                    best_value = value
-                    best_index = i
-            
-            best_metrics[objective] = best_index
-        
-        return best_metrics
+        return scores
 
 
     def downselect(self, unsustainable_pop):
