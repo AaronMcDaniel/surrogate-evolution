@@ -504,9 +504,14 @@ class Pipeline:
             if self.selection_method_trusted == 'NSGA2':
                 self.toolbox.register("downselect", tools.selNSGA2, k = num_tw_select)
             # TODO add other if statements for other selections strategies
+
+            if len(valid_deap) < (self.population_size * self.surrogate.cls_trust):
+                downselect_pool = invalid_deap + valid_deap
+            else:
+                downselect_pool = valid_deap
             
             # downselect using surrogate
-            downselected = self.toolbox.downselect(valid_deap)
+            downselected = self.toolbox.downselect(downselect_pool)
             
             # create new population dict
             new_pop = {}
@@ -520,7 +525,7 @@ class Pipeline:
                 new_deap_pop.append(individual)
                 # delete surrogate selected individuals to avoid duplicates being selected by other technique
                 del unsustainable_pop_copy[hash]
-                valid_deap.remove(individual)
+                downselect_pool.remove(individual)
 
             # randomly select from valid deap individuals    
             if (self.selection_method_untrusted.lower() == 'random'): # choose randomly
@@ -530,7 +535,7 @@ class Pipeline:
                     new_pop[hash] = {'genome': str(unsustainable_pop_copy[hash]), 'metrics': None}
                     new_deap_pop.append(individual)
                     del unsustainable_pop_copy[hash]
-                    valid_deap.remove(individual)
+                    downselect_pool.remove(individual)
 
                 other_rand_hashes = random.sample(list(unsustainable_pop_copy.keys()), num_rand_other_select)
                 for hash in other_rand_hashes:
