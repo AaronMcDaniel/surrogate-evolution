@@ -249,34 +249,34 @@ class Surrogate():
 
     # OUTDATED
     # calculate trust for a single model (will still work, but only if the validation subset of the model used contains all optimization objectives)
-    def calc_trust(self, model_idx, genome_scaler, calc_pool):        
-        # create copy of calc_pool
-        surrogate_pool = copy.deepcopy(calc_pool)
+    # def calc_trust(self, model_idx, genome_scaler, calc_pool):        
+    #     # create copy of calc_pool
+    #     surrogate_pool = copy.deepcopy(calc_pool)
         
-        # get inferences on copy of calc_pool and assign fitness to copy
-        inferences = self.get_surrogate_inferences(model_idx, genome_scaler, surrogate_pool)
-        for i, individual in enumerate(surrogate_pool):
-            individual.fitness.values = inferences[i]
+    #     # get inferences on copy of calc_pool and assign fitness to copy
+    #     inferences = self.get_surrogate_inferences(model_idx, genome_scaler, surrogate_pool)
+    #     for i, individual in enumerate(surrogate_pool):
+    #         individual.fitness.values = inferences[i]
         
-        # '''TESTING'''
-        # for i in range(len(calc_pool)):
-        #     print(calc_pool[i].fitness.values, surrogate_pool[i].fitness.values)
+    #     # '''TESTING'''
+    #     # for i in range(len(calc_pool)):
+    #     #     print(calc_pool[i].fitness.values, surrogate_pool[i].fitness.values)
         
-        # run trust-calc strategy to select trust_calc_ratio-based number of individuals for both calc_pool and its copy
-        # TODO: add other cases of trust_calc_strategy
-        match self.trust_calc_strategy.lower():
-            case 'spea2':
-                self.toolbox.register("select", tools.selSPEA2, k = int(len(calc_pool)*self.trust_calc_ratio))
+    #     # run trust-calc strategy to select trust_calc_ratio-based number of individuals for both calc_pool and its copy
+    #     # TODO: add other cases of trust_calc_strategy
+    #     match self.trust_calc_strategy.lower():
+    #         case 'spea2':
+    #             self.toolbox.register("select", tools.selSPEA2, k = int(len(calc_pool)*self.trust_calc_ratio))
         
-        selected = [self.__get_hash(str(g)) for g in self.toolbox.select(calc_pool)]
-        surrogate_selected = [self.__get_hash(str(g)) for g in self.toolbox.select(surrogate_pool)]
+    #     selected = [self.__get_hash(str(g)) for g in self.toolbox.select(calc_pool)]
+    #     surrogate_selected = [self.__get_hash(str(g)) for g in self.toolbox.select(surrogate_pool)]
         
-        # check intersection of selected individuals and return
-        selected = set(selected)
-        surrogate_selected = set(surrogate_selected)
-        intersection = selected.intersection(surrogate_selected)
-        trust = len(intersection)/len(selected)
-        return trust
+    #     # check intersection of selected individuals and return
+    #     selected = set(selected)
+    #     surrogate_selected = set(surrogate_selected)
+    #     intersection = selected.intersection(surrogate_selected)
+    #     trust = len(intersection)/len(selected)
+    #     return trust
     
     
     # Get surrogate inferences on a list of deap individuals using a single model
@@ -451,7 +451,45 @@ class Surrogate():
         regressor_dicts = [self.models[x] for x in reg_models]
         failed_statuses = cse.get_inferences(classifier_dict, self.device, inference_df, genome_scaler, self.weights_dir) # list of inferences. status of 1 means failed 0 means not
         # to be completed
-        pass
+        pass      
+    
+    
+    # takes in a list of deap individuals and assigns them inferred fitnesses 
+    def set_fitnesses(self, inference_models, cls_genome_scaler, reg_genome_scaler, deap_list):
+        deap_list = copy.deepcopy(deap_list)
+        # step 1: encode the genomes to create an inference df
+        inference_df = pd.DataFrame(columns=['hash', 'genome']) # this df will hold encoded genomes
+        for genome in deap_list:
+            try:
+                encoded_genome = self.codec.encode_surrogate(str(genome), self.genome_epochs) # we're going to infer for the last epoch
+                to_add = {'hash': self.__get_hash(str(genome)), 'genome': encoded_genome}
+                inference_df.loc[len(inference_df)] = to_add
+            except:
+                pass # don't add fundamentally broken genomes to the df
+        # step 2: get inferences on these genomes
+        failed, inferred_df = self.get_inferences(inference_models, inference_df, cls_genome_scaler, reg_genome_scaler)
+        # at this stage, the inferred_df contains the set of individuals predicted as valid by the classifier
+        # step 3: split individuals into those predicted to fail and those predicted to be valid
+        invalid_deap = [deap_list[i] for i, v in enumerate(failed) if v == 1]
+        valid_deap =  [deap_list[i] for i, v in enumerate(failed) if v == 0]
+        # step 4: assign metrics based on inferred_df and assign bad metrics if invalid
+        bad_fitnesses = tuple([300 if x < 0 else -300 for x in self.objectives.values()])
+        for individual in invalid_deap:
+            individual.fitness.values = bad_fitnesses
+        for individual in valid_deap:
+            h = self.__get_hash(str(individual))
+            row = inferred_df[inferred_df['hash'] == h]
+            if row.empty:
+                raise ValueError(f"Hash value {h} not found in the dataframe.")
+            fitness = tuple([row[obj].values[0] for obj in self.objectives.keys()])
+            individual.fitness.values = fitness
+        
+        return invalid_deap, valid_deap
+            
+        
+            
+        
+        
     
 
 # TESTING SCRIPT
