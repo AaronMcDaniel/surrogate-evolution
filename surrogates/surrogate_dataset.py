@@ -283,7 +283,7 @@ def merge_csv_to_dataset(
 
 
 # TESTING SCRIPT
-# build_dataset(infile='/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv', working_dir='/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution', val_ratio=0.3)
+# build_dataset(infile='/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv', working_dir='/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution', val_ratio=0.3)
 # reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
 # reg_val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
 # cls_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')

@@ -74,10 +74,11 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     model, optimizer, scheduler, scaler = build_configuration(model_dict=model_dict, device=device)
+    genome_scaler = train_dataset.genomes_scaler
     
     for epoch in range(1, num_epochs + 1):
         # train and validate for one epoch
-        train_metrics = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler)
+        train_metrics = train_one_epoch(model, device, train_loader, optimizer, scaler)
         val_metrics = val_one_epoch(model, device, val_loader, scheduler)
         # print(f"---- Epoch {epoch} ----")
         # print(f"train : loss = {train_metrics['loss']:.4f} | accuracy = {train_metrics['acc']:.4f} | precision = {train_metrics['prec']:.4f} | recall = {train_metrics['rec']:.4f}")
@@ -92,10 +93,10 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
     torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict['name']}.pth')
     print('        Save epoch #:', best_epoch_num)    
 
-    return best_epoch_metrics, train_dataset.genomes_scaler             
+    return best_epoch_metrics, genome_scaler             
 
 
-def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
+def train_one_epoch(model, device, train_loader, optimizer, scaler):
     model.train()
 
     # Initialize variables
@@ -232,10 +233,10 @@ def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir)
     
 
 # # TESTING SCRIPT
-# configs = toml.load('/home/tthakur9/precog-opt-grip/conf.toml')
+# configs = toml.load('conf.toml')
 # surrogate_config = configs['surrogate']
-# binary_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/cls_train_dataset.pkl')
-# binary_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/cls_val_dataset.pkl')
+# binary_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')
+# binary_val_df = pd.read_pickle('surrogate_dataset/cls_val_dataset.pkl')
 # # # Count the number of 1s and 0s in the 'label' column of the training DataFrame
 # # train_label_counts = binary_train_df['label'].value_counts()
 # # print(f"Training DataFrame label counts:\n{train_label_counts}")
@@ -244,11 +245,11 @@ def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir)
 # # print(f"Validation DataFrame label counts:\n{val_label_counts}")
 # model_dict = {
 #                 'name': 'fail_predictor_3000',
-#                 'dropout': 0.3,
-#                 'hidden_sizes': [2048],
+#                 'dropout': 0.2,
+#                 'hidden_sizes': [1024, 512, 256, 128],
 #                 'optimizer': optim.Adam,
-#                 'lr': 0.0005,
+#                 'lr': 0.001,
 #                 'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
 #                 'model': sm.BinaryClassifier
 #             }
-# engine(surrogate_config, model_dict, binary_train_df, binary_val_df, '/home/tthakur9/precog-opt-grip/test')
+# engine(surrogate_config, model_dict, binary_train_df, binary_val_df, 'test/weights/surrogate_weights')

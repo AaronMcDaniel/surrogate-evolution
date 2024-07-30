@@ -6,6 +6,8 @@ Surrogate class and related surrogate functions. This class is used in the pipel
 import copy
 import hashlib
 import inspect
+
+from sklearn.metrics import accuracy_score
 from codec import Codec
 from deap import creator, gp, base, tools
 import numpy as np
@@ -149,10 +151,10 @@ class Surrogate():
         self.classifier_models = [
             {
                 'name': 'fail_predictor_3000',
-                'dropout': 0.3,
-                'hidden_sizes': [2048],
-                'optimizer': optim.AdamW,
-                'lr': 0.0005,
+                'dropout': 0.2,
+                'hidden_sizes': [1024, 512, 256, 128],
+                'optimizer': optim.Adam,
+                'lr': 0.001,
                 'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
                 'model': sm.BinaryClassifier
             }
@@ -515,6 +517,19 @@ class Surrogate():
             individual.fitness.values = fitness
         
         return invalid_deap, valid_deap
+    
+    
+    def calc_trust(self, inference_models, cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df):
+        # step 1: get classifier accuracy
+        cls_dict = self.classifier_models[inference_models[0]]
+        cls_inferences = cse.get_inferences(cls_dict, self.device, cls_val_df, cls_genome_scaler, self.weights_dir)
+        truths = cls_val_df['label'].to_list()
+        accuracy = accuracy_score(np.array(truths), np.array(cls_inferences))
+        cls_trust = accuracy
+        print(cls_trust)
+        
+    
+    
 # TESTING SCRIPT
 # surrogate = Surrogate('/home/tthakur9/precog-opt-grip/conf.toml', '/home/tthakur9/precog-opt-grip/test')
 # # individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv", generations=[21, 22, 23, 24])
@@ -531,3 +546,16 @@ class Surrogate():
 
 # print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
 # print(surrogate.calc_trust(-2, genome_scaler, individuals))
+
+# surrogate = Surrogate('conf.toml', 'test/weights/surrogate_weights')
+# individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv", generations=[21, 22, 23, 24])
+# cls_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')
+# cls_val_df = pd.read_pickle('surrogate_dataset/cls_val_dataset.pkl')
+# reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
+# reg_val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
+# cls_train_dataset = sd.SurrogateDataset(cls_train_df, mode='train', metrics_subset=[0, 4, 11])
+# reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
+# cls_genome_scaler = cls_train_dataset.genomes_scaler
+# reg_genome_scaler = reg_train_dataset.genomes_scaler
+# surrogate.calc_trust([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
+# print(surrogate.set_fitnesses([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, individuals))
