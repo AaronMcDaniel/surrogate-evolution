@@ -7,7 +7,7 @@ import argparse
 import os
 import pickle
 import toml
-import tqdm
+from tqdm import tqdm
 from surrogates import surrogate_models as sm
 import pandas as pd
 import numpy as np
@@ -60,8 +60,8 @@ def engine(cfg, model_str, param_combo, combo_num):
 
 # prepare data for grid search
 def prepare_data(batch_size, metrics_subset):
-    train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
-    val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
+    train_df = pd.read_pickle('surrogate_dataset/us_surr_reg_train.pkl')
+    val_df = pd.read_pickle('surrogate_dataset/us_surr_reg_val.pkl')
     train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=metrics_subset)
     val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=metrics_subset, metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
@@ -273,7 +273,7 @@ def cat_results(model_str='KAN'):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-cn', '--combo_num', type=int, required=True, default=None)
-    parser.add_argument('-cp', '--cfg_path', type=str, required=False, default='/home/tthakur9/precog-opt-grip/conf.toml')
+    parser.add_argument('-cp', '--cfg_path', type=str, required=False, default='conf.toml')
 
     # argument determines whether old csv files should be overwritten
     parser.add_argument('-o', '--overwrite', type=str, required=False, default='true')
@@ -323,6 +323,6 @@ if __name__ == '__main__':
         if overwrite == 'true':
             engine(cfg=cfg, model_str=model_str, param_combo=combo, combo_num=combo_num)
         else:
-            check_path = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/filtered_gs/gs_combos/combo{combo_num}_metrics.csv'
+            check_path = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/filtered_gs_surrogate_dataset/gs_combos/combo{combo_num}_metrics.csv'
             if not os.path.exists(check_path):
                 engine(cfg=cfg, model_str=model_str, param_combo=combo, combo_num=combo_num)
