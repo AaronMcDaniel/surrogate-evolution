@@ -27,7 +27,5 @@ done
 module load anaconda3/2023.07
 module load cuda/12.1.1
 
-export PYTHONPATH=/gv1/projects/GRIP_Precog_Opt/precog-opt-grip
-
 # Run the Python script with the parsed arguments
-conda run -n myenv --no-capture-output python -u re_evaluation/re_eval_script.py -o "$output_dir" -g "$genome_path"
+conda run -n myenv --no-capture-output python -u -m re_evaluation.re_eval_script -o "$output_dir" -g "$genome_path"

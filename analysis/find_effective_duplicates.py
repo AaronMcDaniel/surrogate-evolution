@@ -5,7 +5,7 @@ import hashlib
 import matplotlib.pyplot as plt
 from codec import Codec
 
-outdir = '/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution'
+outdir = '/gv1/projects/GRIP_Precog_Opt/effective_hash_evolution'
 plotdir = 'test/duplicates.png'
 
 configs = toml.load(os.path.join(outdir, "conf.toml"))

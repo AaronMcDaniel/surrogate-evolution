@@ -7,7 +7,7 @@ import argparse
 import os
 import pickle
 import toml
-import tqdm
+from tqdm import tqdm
 from surrogates import surrogate_models as sm
 import pandas as pd
 import numpy as np
@@ -60,8 +60,8 @@ def engine(cfg, model_str, param_combo, combo_num):
 
 # prepare data for grid search
 def prepare_data(batch_size, metrics_subset):
-    train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
-    val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
+    train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_train.pkl')
+    val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_val.pkl')
     train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=metrics_subset)
     val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=metrics_subset, metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
@@ -118,7 +118,7 @@ def build_configuration(model_str, device, param_combo):
 
 # stores metrics csv file 
 def store_data(model_str, combo_num, metrics_df):
-    metrics_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/gs_combos/combo{combo_num}_metrics.csv'
+    metrics_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/gs_combos/c{combo_num}_metrics.csv'
     os.makedirs(os.path.dirname(metrics_out), exist_ok=True)
     metrics_df.to_csv(metrics_out, index=False)
 
@@ -165,7 +165,7 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
         # forwards with mixed precision
         with autocast():
             # outputs shape: (batch_size, 12)
-            outputs = model(genomes, update_grid=False)
+            outputs = model(genomes)
             clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
             # metric regression loss is meaned, so is scalar tensor value
             loss = criterion(clamped_outputs, metrics)
@@ -198,7 +198,7 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
     mse_metrics_per_batch = []
     # no mean taken for losses in validation 
     # criterion = nn.MSELoss(reduction='none')
-    criterion = nn.L1Loss()
+    criterion = nn.L1Loss(reduction='none')
     
     metric_names = [
         'mse_uw_val_loss', 'mse_iou_loss', 'mse_giou_loss', 'mse_diou_loss', 
@@ -239,7 +239,7 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
 
     # compute the mean of the mse losses for each metric based on num batches
     mse_metrics_per_batch = torch.stack(mse_metrics_per_batch)
-    mse_metrics_meaned = mse_metrics_per_batch #.mean(dim=0)
+    mse_metrics_meaned = mse_metrics_per_batch.mean(dim=0)
 
     epoch_metrics = {
         'val_loss': surrogate_val_loss
@@ -253,19 +253,19 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
 
 
 # uses model string to concatenate grid search resulting metric csvs to one master file
-def cat_results(model_str='KAN'):
-    search_dir = f'/gv1/projects/GRIP_Precog_Opt/surrogates/KAN/gs_combos'
+def cat_results(name, model_str):
+    search_dir = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/gs_combos'
     master_df = create_metrics_df()
 
     # change range as necessary for different grid search runs
-    for i in range(8640):
-        metrics_path = search_dir + f'/combo{i}_metrics.csv'
+    for i in range(3840):
+        metrics_path = search_dir + f'/c{i}_metrics.csv'
         try:
             metrics_df = pd.read_csv(metrics_path)
         except:
             continue
         master_df = pd.concat([master_df, metrics_df], ignore_index=True)
-    out_path = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/full_gs_master.csv'
+    out_path = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/{name}_gs.csv'
     master_df.to_csv(out_path, index=False)
     return None
 
@@ -274,18 +274,19 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-cn', '--combo_num', type=int, required=True, default=None)
     parser.add_argument('-cp', '--cfg_path', type=str, required=False, default='/home/tthakur9/precog-opt-grip/conf.toml')
+    parser.add_argument('-m', '--model', type=str, required=True)
 
-    # argument determines whether old csv files should be overwritten
+    # overwrite determines whether old csv files should be overwritten
     parser.add_argument('-o', '--overwrite', type=str, required=False, default='true')
     args = parser.parse_args()
     combo_num = args.combo_num
     cfg_path = args.cfg_path
     overwrite = args.overwrite
+    model_str = args.model
 
     # load config
     all_cfg = toml.load(cfg_path)
     cfg = all_cfg['surrogate']
-    model_str = "KAN"
 
     if model_str == "MLP":
         # define MLP-unique parameter grid
@@ -323,6 +324,6 @@ if __name__ == '__main__':
         if overwrite == 'true':
             engine(cfg=cfg, model_str=model_str, param_combo=combo, combo_num=combo_num)
         else:
-            check_path = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/filtered_gs/gs_combos/combo{combo_num}_metrics.csv'
+            check_path = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/gs_combos/c{combo_num}_metrics.csv'
             if not os.path.exists(check_path):
                 engine(cfg=cfg, model_str=model_str, param_combo=combo, combo_num=combo_num)
