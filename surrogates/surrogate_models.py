@@ -1,6 +1,6 @@
 """
 Defines all the surrogate models used and their architectures.
-architectures are customizeable and can be grid searched in terms of some parameters.
+Architectures are customizable and can be grid searched in terms of some parameters.
 """
 import copy
 import torch.nn as nn
