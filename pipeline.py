@@ -24,6 +24,7 @@ from surrogates.surrogate import Surrogate
 from primitive_tree import CustomPrimitiveTree
 from surrogates.surrogate_eval import engine, get_val_scores
 from surrogates.surrogate_dataset import build_dataset
+import numpy as np
 
 # job file params
 JOB_NAME = 'precog_eval'
@@ -92,6 +93,7 @@ class Pipeline:
         self.surrogate_temp_dataset_path = os.path.join(self.output_dir, 'temp_surrogate_datasets')
         self.surrogate_weights_dir = os.path.join(output_dir, 'surrogate_weights')
         self.surrogate_metrics = surrogate_config['surrogate_metrics']
+        self.sub_surrogate_sel_strat = surrogate_config['sub_surrogate_sel_strat']
         self.objectives = pipeline_config['objectives']
         self.selection_method_trusted = pipeline_config['selection_method_trusted']
         self.selection_method_untrusted = pipeline_config['selection_method_untrusted']
@@ -122,6 +124,8 @@ class Pipeline:
         self.gen_count = 1
         self.num_genome_fails = 0
         self.total_evaluated_individuals = 0
+
+        assert self.sub_surrogate_sel_strat in ['mse', 'trust']
 
         # Setting up pipeline
         ensure_deap_classes(self.objectives, codec_config)
@@ -435,11 +439,22 @@ class Pipeline:
             if val['acc'] > cls_trust:
                 cls_trust = val['acc']
                 max_cls_model = key
-        sub_surrogates.append(max_cls_model)
-        # finding best regressor
-        result = self.surrogate.optimize_trust(cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
-        reg_trust = result[0]
-        sub_surrogates += result[1]
+        cls_to_dict = {d['name']: d for d in self.surrogate.classifier_models}
+        max_cls_model_idx = list(cls_to_dict.keys()).index(max_cls_model)
+        sub_surrogates.append(max_cls_model_idx)
+        
+        if self.sub_surrogate_sel_strat == 'trust':
+            # finding best regressor
+            result = self.surrogate.optimize_trust(cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
+            reg_trust = result[0]
+            sub_surrogates += result[1]
+        else:
+            #get my model indices, tack on cls in front, pass to calc trust to get my own trusts, pass below
+            reg_indices = self.get_reg_indices(scores)
+            sub_surrogates.extend(reg_indices)
+            cls_trust, reg_trust = self.surrogate.calc_trust(sub_surrogates, cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
+
+        
             
         self.cls_genome_scaler = cls_genome_scaler
         self.reg_genome_scaler = reg_genome_scaler
@@ -448,6 +463,33 @@ class Pipeline:
         print('    Done!')
         return scores
 
+    def get_reg_indices(self, scores):
+        best_models = {}
+        for objective, direction in self.objectives.items():
+            objective = 'mse_' + objective
+            best_models[objective.replace('epoch_', '')] = {'model': '', 'score': np.inf}
+
+        name_to_dict = {d['name']: d for d in self.surrogate.models}
+        indices = []
+        for objective in self.objectives.keys():
+            loss_objective = 'mse_' + objective
+            loss_objective = loss_objective.replace('epoch_', '')
+
+            indices.append(self.surrogate_metrics.index(loss_objective))
+        print(indices)
+
+        for reg_key, reg_val in scores['regressors'].items():
+            for idx, objective in zip(indices, best_models.keys()):
+                if idx in name_to_dict[reg_key]['validation_subset']:
+                    if reg_val[objective] < best_models[objective]['score']:
+                        best_models[objective]['model'] = reg_key
+                        best_models[objective]['score'] = reg_val[objective]
+
+        condensed = []
+        for name, model in best_models.items():
+            condensed.append(list(name_to_dict.keys()).index(model['model']))
+        
+        return condensed
 
     def downselect(self, unsustainable_pop):
         print('Downselecting...')

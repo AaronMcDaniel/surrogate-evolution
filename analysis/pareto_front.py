@@ -189,9 +189,9 @@ if __name__ == "__main__":
     df_effective = pd.read_csv(effective_path)
     # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
     dataframes = [
-        {'df': df_baseline, 'name': 'Baseline', 'colors': ['xkcd:lightblue', 'xkcd:blue', 'xkcd:grey', 'xkcd:charcoal'], 'marker': 'o'}, 
-        {'df': df_surrogate, 'name': 'Surrogate', 'colors': ['xkcd:orange', 'xkcd:dark orange', 'xkcd:grey', 'xkcd:charcoal'], 'marker': '^'},
-        {'df': df_effective, 'name': 'Effective Hash', 'colors': ['xkcd:bright red', 'xkcd:red', 'xkcd:grey', 'xkcd:charcoal'], 'marker': 'P'}
+        {'df': df_effective, 'name': 'Baseline', 'colors': ['xkcd:lightblue', 'xkcd:blue', 'xkcd:grey', 'xkcd:charcoal'], 'marker': 'o'}, 
+        {'df': df_surrogate, 'name': 'Surrogate', 'colors': ['xkcd:orange', 'xkcd:dark orange', 'xkcd:grey', 'xkcd:charcoal'], 'marker': '^'}
+        #{'df': df_effective, 'name': 'Effective Hash', 'colors': ['xkcd:bright red', 'xkcd:red', 'xkcd:grey', 'xkcd:charcoal'], 'marker': 'P'}
     ]
 
     objectives = ['uw_val_epoch_loss', 'ciou_loss', 'average_precision']

@@ -432,10 +432,14 @@ class Surrogate():
 # cls_val_df = pd.read_pickle('surrogate_dataset/cls_val_dataset.pkl')
 # reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
 # reg_val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
-# cls_train_dataset = sd.SurrogateDataset(cls_train_df, mode='train', metrics_subset=[0, 4, 11])
+# cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
 # reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
 # cls_genome_scaler = cls_train_dataset.genomes_scaler
 # reg_genome_scaler = reg_train_dataset.genomes_scaler
+# scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df)
+# print(scores)
+# 
+# 
 # print(surrogate.calc_trust([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df))
 # print(surrogate.set_fitnesses([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, individuals))
 # print(surrogate.calc_ensemble_trust([5, 6, 7], reg_genome_scaler, individuals))

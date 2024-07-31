@@ -77,6 +77,8 @@ surrogate_batch_size = 16
 trust_calc_strategy = "SPEA2"
 # ratio of population to check intersection on
 trust_calc_ratio = 0.3
+# choose whether to select sub surrogates using trust or mse scores
+sub_surrogate_sel_strat = "trust"
 
 [data]
 # time in hours the dataset cache is valid for
