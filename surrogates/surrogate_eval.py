@@ -202,13 +202,13 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
         surrogate_train_loss += loss.item()
         data_iter.set_postfix(loss=loss.item())
         torch.cuda.empty_cache()
-    
-    # step scheduler
-    e.step_scheduler(scheduler, loss)
 
     # calculate surrogate training loss per batch (NOTE batch loss already meaned by batch size)
     num_batches = len(data_iter)
     surrogate_train_loss /= num_batches
+    
+    # step scheduler
+    e.step_scheduler(scheduler, surrogate_train_loss)
 
     return surrogate_train_loss
 
