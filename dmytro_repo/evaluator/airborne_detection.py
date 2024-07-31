@@ -131,7 +131,7 @@ class AirbornePredictor:
             print("inference_setup doesn't exist for this run, skipping...")
 
         aicrowd_helpers.execution_running()
-
+        #HERE IS WHERE YOU SPECIFY THE NUMBER OF FLIGHTS YOU WANT (BASICALLY THE NUMBER OF IMAGE PAIRS) in this case it's 1000
         flights = self.get_all_flight_ids()
         random.shuffle(flights)
         sampled = random.sample(flights, 1000-len(flights))

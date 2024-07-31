@@ -15,7 +15,7 @@ def plot_PR_curve(dmytro_precisions, dmytro_recalls, dmytro_ap, our_precisions, 
     plt.grid(True)
     plt.savefig(save_path)
 
-dmytro_path = '/home/eharpster3/precog-opt-grip/dmytro_metrics/epochs/6/pr_curve_metrics.pkl'
+dmytro_path = 'dmytro_metrics/epochs/6/pr_curve_metrics.pkl'
 our_path = 'dmytro_metrics/compare/pr_curve_metrics_comparison.pkl'
 
 
@@ -34,4 +34,4 @@ our_pre_curve = our_pr_curve_metrics['pre_curve']
 our_rec_curve = our_pr_curve_metrics['rec_curve']
 our_epoch_avg_pre = our_pr_curve_metrics['epoch_avg_pre']
 
-plot_PR_curve(dmytro_pre_curve, dmytro_rec_curve, dmytro_epoch_avg_pre, our_pre_curve, our_rec_curve, our_epoch_avg_pre, save_dir='/home/eharpster3/precog-opt-grip/dmytro_metrics/compare')
+plot_PR_curve(dmytro_pre_curve, dmytro_rec_curve, dmytro_epoch_avg_pre, our_pre_curve, our_rec_curve, our_epoch_avg_pre, save_dir='dmytro_metrics/compare')

@@ -11,6 +11,28 @@ Our NAS consists of a surrogate evaluator to predict model performance and reduc
 ## Usage
 Usage instructions can be found [here](https://wiki.gtri.gatech.edu/display/EMADE/Evolution+Instructions?src=contextnavpagetreemode)
 
+### Generating Pareto Front/Hypervolume Graphs
+ - Go to the main function in analysis/pareto_front.py
+ - Create pandas dataframes of every out.csv you want to graph
+ - Create a dataframe entry in the dataframes list with graphing information:
+   - The actual pandas dataframe
+   - A name that represents the evolution
+   - Colors to indicate different parts
+     - Overall pareto optimal points
+     - recalculated pareto optimal points
+     - Overall pareto optimal points from a previous generation
+     - recalculated pareto optimal points from a previous generation
+   - A marker to use when plotting points
+ - Create a pandas dataframe for every benchmark you want graphed
+ - Create a benchmark entry in the benchmarks list
+   - The pandas dataframe
+   - A name
+   - A color
+   - A marker
+ - Set your effective max values to graph by editing the bounds_limits
+   - Alternates min then max for every objective, in order defined in objectives list
+ - Set a bounds_margin to expand the graph by a certain percent past the effective maximums (0.1 = 10% expansion in every direction)
+
 ## Support
 Additional background and documentation can be found [here](https://wiki.gtri.gatech.edu/display/EMADE/Summer+GRIP+2024+-+Precognition+Optimization?src=contextnavpagetreemode)
 
@@ -18,6 +40,9 @@ Additional background and documentation can be found [here](https://wiki.gtri.ga
  - Two stage surrogate evaluator
  - Different surrogate types (like a transformer model)
  - Different genome and surrogate encoding strategies
+ - Variable length objective lists for graphing pareto fronts
+ - Exploring KAN strategies (grid extension, pruning)
+ - Seeding deap so that it generates individuals in the same order
 
 ## Authors and acknowledgment
 Contributors:

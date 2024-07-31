@@ -644,7 +644,7 @@ def train(experiment_name: str, fold: int, continue_epoch: int = -1):
     store['loss_tracking'] = store_tracking#.detach().cpu().numpy()
     store['loss_horizon'] = store_horizon#.detach().cpu().numpy()
     df = pd.DataFrame(store)
-    df.to_csv(f"/gv1/projects/GRIP_Precog_Opt/data_loading/dmytro-airborne-detection-starter-kit-master/output/{model_str}_loss_nums.csv")
+    df.to_csv(f"../output/{model_str}_loss_nums.csv")
     print('done')
     
 
