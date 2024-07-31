@@ -7,7 +7,7 @@ import argparse
 import os
 import pickle
 import toml
-import tqdm
+from tqdm import tqdm
 from surrogates import surrogate_models as sm
 import pandas as pd
 import numpy as np

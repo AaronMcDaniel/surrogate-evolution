@@ -121,7 +121,7 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
         metrics_df = pd.concat([metrics_df, epoch_metrics_df], ignore_index=True)
     
 
-    torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict['name']}.pth')
+    torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict["name"]}.pth')
     print('        Save epoch #:', best_epoch_num)    
 
     return metrics_df, best_epoch_metrics, best_epoch_num, train_dataset.genomes_scaler
@@ -138,7 +138,7 @@ def get_val_scores(cfg, model_dict, train_df, val_df, weights_dir):
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     model, optimizer, scheduler, scaler, val_subset = build_configuration(model_dict=model_dict, device=device)
-    model.load_state_dict(torch.load(f'{weights_dir}/{model_dict['name']}.pth', map_location=device)) 
+    model.load_state_dict(torch.load(f'{weights_dir}/{model_dict["name"]}.pth', map_location=device)) 
     epoch_metrics = val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, min_metrics)
     return epoch_metrics      
 
@@ -146,7 +146,7 @@ def get_val_scores(cfg, model_dict, train_df, val_df, weights_dir):
 def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir):
     # get model and load weights
     model, _, _, _, val_subset = build_configuration(model_dict, device)
-    model.load_state_dict(torch.load(f'{weights_dir}/{model_dict['name']}.pth', map_location=device))
+    model.load_state_dict(torch.load(f'{weights_dir}/{model_dict["name"]}.pth', map_location=device))
     genomes = np.stack(inference_df['genome'].values)
 
     # scale features with train scaler
