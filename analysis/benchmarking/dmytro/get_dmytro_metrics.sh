@@ -10,13 +10,13 @@
 #SBATCH --array=1-11
 
 module load anaconda3/2023.07
-cd /home/eharpster3/precog-opt-grip/analysis/benchmarking/dmytro
+cd analysis/benchmarking/dmytro
 nvidia-smi
 #four scripts for each model
 #python train.py train experiments/120_gernet_m_b2_all.yaml
 #python train.py train experiments/120_hrnet32_all.yaml
 #python dmytro_eval_script.py -g /home/eharpster3/precog-opt-grip/dmytro_metrics/complex -o /gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution 
-python dmytro_eval_script.py -g /home/eharpster3/precog-opt-grip/dmytro_metrics/epochs/$((SLURM_ARRAY_TASK_ID)) -o /gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution --job_id $((SLURM_ARRAY_TASK_ID))
+python dmytro_eval_script.py -g dmytro_metrics/epochs/$((SLURM_ARRAY_TASK_ID)) -o /gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution --job_id $((SLURM_ARRAY_TASK_ID))
 #--job_id $((SLURM_ARRAY_TASK_ID))
 #python train.py train experiments/130_hrnet48_all.yaml
 

@@ -30,18 +30,18 @@ outdir = args.outdir
 genome_folder = args.genomedir
 job_id = args.job_id
 if job_id == 11:
-    genome_folder = '/home/eharpster3/precog-opt-grip/dmytro_metrics/complex'
+    genome_folder = 'dmytro_metrics/complex'
 genome_hash = os.path.basename(genome_folder)
 print('Genome hash: ', genome_hash)
 print('--------------------')
 
 if job_id is not None:
     if job_id < 10:
-        predictions_path = '/gv1/projects/GRIP_Precog_Opt/data_loading/dmytro-airborne-detection-starter-kit-master/data/results/run0/result0' + str(job_id) + '.pkl'
+        predictions_path = 'dmytro_repo/data/results/run0/result0' + str(job_id) + '.pkl'
     elif job_id == 10:
-        predictions_path = '/gv1/projects/GRIP_Precog_Opt/data_loading/dmytro-airborne-detection-starter-kit-master/data/results/run0/result' + str(job_id) + '.pkl'
+        predictions_path = 'dmytro_repo/data/results/run0/result' + str(job_id) + '.pkl'
     else:
-        predictions_path = '/gv1/projects/GRIP_Precog_Opt/data_loading/dmytro-airborne-detection-starter-kit-master/data/results/run0/result.pkl'
+        predictions_path = 'dmytro_repo/data/results/run0/result.pkl'
 #os.path.join(genome_folder, 'predictions.pkl')
 
 # load config attributes
@@ -168,7 +168,7 @@ def val_one_epoch(predictions, device, val_loader, iou_thresh, conf_thresh, loss
     pr_curve_metrics['pre_curve'] = pre_curve
     pr_curve_metrics['rec_curve'] = rec_curve
     pr_curve_metrics['epoch_avg_pre'] = epoch_avg_pre
-    base_path = '/home/eharpster3/precog-opt-grip/dmytro_metrics'
+    base_path = 'dmytro_metrics'
     print(job_id)
     if job_id < 11:
         path = base_path + '/epochs/' + str(job_id)

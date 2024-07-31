@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pymoo.indicators.hv import HV, Hypervolume
 from matplotlib.ticker import MaxNLocator
+import toml
 
 def stepify_pareto_points_2d(x, y, metric_directions):
     """
@@ -67,7 +68,7 @@ def dominates(point_a, point_b, objectives, directions):
     else:
         return False
 
-def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch):
+def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch, best_epoch_direction):
     metric_a = objectives[0]
     metric_b = objectives[1]
     metric_c = objectives[2]
@@ -101,12 +102,6 @@ def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds
     
     for benchmark in benchmarks:
         benchmark_df = benchmark['df']
-        df_metric_a = benchmark_df.loc[benchmark_df[objectives[0]].idxmin()]
-        df_metric_b = benchmark_df.loc[benchmark_df[objectives[1]].idxmin()]
-        df_metric_c = benchmark_df.loc[benchmark_df[objectives[2]].idxmax()]
-        benchmark_df = benchmark_df.loc[benchmark_df[best_epoch].idxmin()]
-        benchmark_df = pd.concat([benchmark_df, df_metric_a, df_metric_b, df_metric_c], axis=1).transpose()
-        benchmark_df = benchmark_df.reset_index(drop=True)
         plt.scatter(benchmark_df[metric_a], benchmark_df[metric_b], color=benchmark['color'], marker=benchmark['marker'], label=benchmark['name'])
 
     plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
@@ -141,12 +136,6 @@ def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds
 
     for benchmark in benchmarks:
         benchmark_df = benchmark['df']
-        df_metric_a = benchmark_df.loc[benchmark_df[objectives[0]].idxmin()]
-        df_metric_b = benchmark_df.loc[benchmark_df[objectives[1]].idxmin()]
-        df_metric_c = benchmark_df.loc[benchmark_df[objectives[2]].idxmax()]
-        benchmark_df = benchmark_df.loc[benchmark_df[best_epoch].idxmin()]
-        benchmark_df = pd.concat([benchmark_df, df_metric_a, df_metric_b, df_metric_c], axis=1).transpose()
-        benchmark_df = benchmark_df.reset_index(drop=True)
         plt.scatter(benchmark_df[metric_c], benchmark_df[metric_b], color=benchmark['color'], marker=benchmark['marker'], label=benchmark['name'])
 
     plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
@@ -180,6 +169,16 @@ def generate_fronts(df, objectives, directions, name, gen, colors, marker, reach
 
 
 if __name__ == "__main__":
+    # grab the objectives and best epoch criteria from the config and transform them to how I was previously representing that data (True = want to minimize, False = maximize)
+    configs = toml.load('conf.toml')
+    pipeline_config = configs["pipeline"]
+    cfg_objectives = pipeline_config['objectives']
+    cfg_best_epoch = pipeline_config['best_epoch_criteria']
+    objectives = list(cfg_objectives.keys())
+    directions = [val == -1 for val in list(cfg_objectives.values())]
+    best_epoch = cfg_best_epoch[0]
+    best_epoch_direction = cfg_best_epoch[1] == 'min'
+    
     # HERE IS WHERE YOU ADD FRONTS
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
     baseline_path = '/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv'
@@ -194,11 +193,6 @@ if __name__ == "__main__":
         {'df': df_surrogate, 'name': 'Surrogate', 'colors': ['xkcd:orange', 'xkcd:dark orange', 'xkcd:grey', 'xkcd:charcoal'], 'marker': '^'}
         #{'df': df_effective, 'name': 'Effective Hash', 'colors': ['xkcd:bright red', 'xkcd:red', 'xkcd:grey', 'xkcd:charcoal'], 'marker': 'P'}
     ]
-
-    objectives = ['uw_val_epoch_loss', 'ciou_loss', 'average_precision']
-    #True if minimized, False if maximized
-    directions = [True, True, False]
-    best_epoch = 'val_epoch_loss'
 
     min_gens = []
     max_gens = []
@@ -241,11 +235,29 @@ if __name__ == "__main__":
     ]
 
     for benchmark in benchmarks:
-        if best_epoch in objectives:
-            benchmark['df'] = benchmark['df'][[objectives[0], objectives[1], objectives[2]]]
-        else:
-            benchmark['df'] = benchmark['df'][[objectives[0], objectives[1], objectives[2], best_epoch]]
         df = benchmark['df']
+        #Get rid of points that will never be plotted
+        benchmark_df = df
+        dfs = []
+        # grab the row with the best value for that objective
+        for i, objective in enumerate(objectives):
+            if directions[i]:
+                df_objective = benchmark_df.loc[benchmark_df[objective].idxmin()]
+            else:
+                df_objective = benchmark_df.loc[benchmark_df[objective].idxmax()]
+            dfs.append(df_objective)
+        # if we did not already, grab the row that would be selected by best_epoch criteria
+        if best_epoch not in objectives:
+            if best_epoch_direction:
+                df_objective = benchmark_df.loc[benchmark_df[best_epoch].idxmin()]
+            else:
+                df_objective = benchmark_df.loc[benchmark_df[best_epoch].idxmax()]
+            dfs.append(df_objective)
+        # recombine all the rows we grabbed into a pandas dataframe
+        benchmark_df = pd.concat(dfs, axis=1).transpose()
+        df = benchmark_df.reset_index(drop=True)
+        benchmark['df'] = df
+        # grab the max and mins for each objective in the df
         bounds['min_objective_1'].append(df[df[objectives[0]] > bounds_limits[0]][objectives[0]].min())
         bounds['max_objective_1'].append(df[df[objectives[0]] < bounds_limits[1]][objectives[0]].max())
         bounds['min_objective_2'].append(df[df[objectives[1]] > bounds_limits[2]][objectives[1]].min())
@@ -253,7 +265,7 @@ if __name__ == "__main__":
         bounds['min_objective_3'].append(df[df[objectives[2]] > bounds_limits[4]][objectives[2]].min())
         bounds['max_objective_3'].append(df[df[objectives[2]] < bounds_limits[5]][objectives[2]].max())
 
-    
+    # find the max and mins for each objective for all data that will be plotted
     bounds = [min(bounds['min_objective_1']), max(bounds['max_objective_1']), min(bounds['min_objective_2']), max(bounds['max_objective_2']), min(bounds['min_objective_3']), max(bounds['max_objective_3'])]
     print(bounds)
  
@@ -272,7 +284,7 @@ if __name__ == "__main__":
                 reached_max = True    
             all_fronts.append(generate_fronts(dataframe['df'], objectives, directions, dataframe['name'], gen, dataframe['colors'], dataframe['marker'], reached_max))
 
-        gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch)
+        gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch, best_epoch_direction)
         
         print('GEN:', gen)
         for one_front in all_fronts:
