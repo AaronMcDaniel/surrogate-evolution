@@ -6,6 +6,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from pymoo.indicators.hv import HV, Hypervolume
+from matplotlib.ticker import MaxNLocator
 
 def stepify_pareto_points_2d(x, y, metric_directions):
     """
@@ -151,7 +152,7 @@ def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds
     plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
     plt.tight_layout()
-    plt.savefig('graphs/pareto/pareto_gen' + str(gen) + '.jpg')
+    plt.savefig('analysis/graphs/pareto/pareto_gen' + str(gen) + '.jpg')
     plt.close()
     print('plot ' + str(gen) + ' done')
 
@@ -229,8 +230,8 @@ if __name__ == "__main__":
     
     # HERE IS WHERE YOU ADD BENCHMARKS THAT HAVE NO FRONTS
     # same process as adding a front except it only takes in one color instead of a list of colors
-    reduced_path = '/home/eharpster3/precog-opt-grip/dmytro_metrics/combined_metric.csv'
-    full_path = '/home/eharpster3/precog-opt-grip/dmytro_metrics/metrics.csv'
+    reduced_path = 'dmytro_metrics/combined_metric.csv'
+    full_path = 'dmytro_metrics/metrics.csv'
     df_simple = pd.read_csv(reduced_path)
     df_complex = pd.read_csv(full_path)
     
@@ -298,17 +299,21 @@ if __name__ == "__main__":
         print()
 
         gens.append(gen)
-
+    # print('GENS', len(gens))
+    # print(gens)
+    # print()
+    # print('HYPERVOLUMES', len(all_hvs))
+    # print(all_hvs)
     for dataframe in dataframes:
         name = dataframe['name']
-        plt.plot(all_hvs[name], marker=dataframe['marker'], color=dataframe['colors'][1], label=name)
-
+        plt.plot(range(1, len(all_hvs[name]) + 1), all_hvs[name], marker=dataframe['marker'], color=dataframe['colors'][1], label=name)
+    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
     plt.legend()
     plt.title("Pareto Front Hypervolumes Per Generation")
     plt.xlabel('Generation')
     plt.ylabel('Hypervolume')
     plt.tight_layout()
-    plt.savefig('graphs/pareto/pareto_hypervolume.jpg')
+    plt.savefig('analysis/graphs/pareto/pareto_hypervolume.jpg')
     plt.close()
         
     
