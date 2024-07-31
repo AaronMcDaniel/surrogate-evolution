@@ -154,7 +154,7 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
     # criterion = nn.MSELoss()
     criterion = nn.L1Loss()
 
-    data_iter = tqdm.tqdm(train_loader, desc='Training')
+    data_iter = tqdm(train_loader, desc='Training')
     for i, (genomes, metrics) in enumerate(data_iter):
 
         # genomes shape: (batch_size, 976)
@@ -207,7 +207,7 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
     ]
     selected_metric_names = [metric_names[i] for i in metrics_subset]
 
-    data_iter = tqdm.tqdm(val_loader, 'Evaluating')
+    data_iter = tqdm(val_loader, 'Evaluating')
     with torch.no_grad():
         for genomes, metrics in data_iter:
             # genomes shape: (batch_size, 976)
