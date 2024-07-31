@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=dmytro_model_training_dla60.job
-#SBATCH --output=logs/dmytro_model_training_dla60.%A.%a.out
-#SBATCH --error=logs/dmytro_model_training_dla60.%A.%a.err
+#SBATCH --output=dmytro_repo/logs/dmytro_model_training_dla60.%A.%a.out
+#SBATCH --error=dmytro_repo/logs/dmytro_model_training_dla60.%A.%a.err
 #SBATCH --time=20-00:00
 #SBATCH --mem=32G
 #SBATCH -c 8
@@ -10,7 +10,7 @@
 
 module load anaconda3/2023.07
 # cd /gv1/projects/GRIP_Precog_Opt/data_loading/dmytro-airborne-detection-starter-kit-master/seg_tracker
-cd seg_tracker
+cd dmytro_repo/seg_tracker
 nvidia-smi
 #four scripts for each model
 #python train.py train experiments/120_gernet_m_b2_all.yaml
