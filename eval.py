@@ -132,9 +132,9 @@ def save_best_last_epochs(model, metrics_df, curr_epoch, criteria):
     
     # retrieve best epoch as epoch with lowest validation loss
     if criteria[1] == 'max':
-        best_epoch = metrics_df[criteria].idxmax() + 1 # NOTE best epoch won't get saved if val loss is nan
+        best_epoch = metrics_df[criteria[0]].idxmax() + 1 # NOTE best epoch won't get saved if val loss is nan
     else:
-        best_epoch = metrics_df[criteria].idxmin() + 1 # NOTE best epoch won't get saved if val loss is nan
+        best_epoch = metrics_df[criteria[0]].idxmin() + 1 # NOTE best epoch won't get saved if val loss is nan
     if curr_epoch == best_epoch:
         torch.save(model.state_dict(), best_epoch_out)
 
