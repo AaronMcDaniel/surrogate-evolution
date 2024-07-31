@@ -1,4 +1,6 @@
 """
+OUTDATED
+--------
 Script to calculate surrogate trustworthiness over generations off of an existing run
 """
 
