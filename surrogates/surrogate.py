@@ -331,7 +331,7 @@ class Surrogate():
     '''
     
     # trains all the classifiers and regressors and stores their individual weights and metrics
-    def train(self, classifier_train_df, classifier_val_df, regressor_train_df, regressor_val_df):
+    def train(self, classifier_train_df, classifier_val_df, regressor_train_df, regressor_val_df, train_reg=True):
         scores = {
             'classifiers': {},
             'regressors': {}
@@ -344,11 +344,12 @@ class Surrogate():
             if cls_genome_scaler is None: cls_genome_scaler = gs
             scores['classifiers'][classifier_dict['name']] = metrics
         
+        if train_reg:
         # loop through regressor models
-        for regressor_dict in self.models:
-            metrics, best_epoch_metrics, best_epoch_num, gs = rse.engine(self.surrogate_config, regressor_dict, regressor_train_df, regressor_val_df, self.weights_dir)
-            if reg_genome_scaler is None: reg_genome_scaler = gs
-            scores['regressors'][regressor_dict['name']] = best_epoch_metrics
+            for regressor_dict in self.models:
+                metrics, best_epoch_metrics, best_epoch_num, gs = rse.engine(self.surrogate_config, regressor_dict, regressor_train_df, regressor_val_df, self.weights_dir)
+                if reg_genome_scaler is None: reg_genome_scaler = gs
+                scores['regressors'][regressor_dict['name']] = best_epoch_metrics
             
         return scores, cls_genome_scaler, reg_genome_scaler
     
