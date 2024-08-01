@@ -25,6 +25,7 @@ from surrogates.surrogate import Surrogate
 from primitive_tree import CustomPrimitiveTree
 from surrogates.surrogate_eval import engine, get_val_scores
 from surrogates.surrogate_dataset import build_dataset
+import numpy as np
 
 # job file params
 JOB_NAME = 'precog_eval'
@@ -93,6 +94,7 @@ class Pipeline:
         self.surrogate_temp_dataset_path = os.path.join(self.output_dir, 'temp_surrogate_datasets')
         self.surrogate_weights_dir = os.path.join(output_dir, 'surrogate_weights')
         self.surrogate_metrics = surrogate_config['surrogate_metrics']
+        self.sub_surrogate_sel_strat = surrogate_config['sub_surrogate_sel_strat']
         self.objectives = pipeline_config['objectives']
         self.selection_method_trusted = pipeline_config['selection_method_trusted']
         self.selection_method_untrusted = pipeline_config['selection_method_untrusted']
@@ -105,8 +107,9 @@ class Pipeline:
 
         # Other useful attributes
         self.holy_grail = pd.DataFrame(columns=['gen', 'hash', 'genome', 'metrics']) # data regarding every evaluated individual; metrics are from best epoch since all other metric data is already stored by eval_script
-        self.surrogate_data = pd.DataFrame(columns=['gen', 'model', 'epoch_num', 'train_loss'] + self.surrogate_metrics) # all data regarding surrogates; metrics are per epoch
-        self.surrogate_mse_scores = pd.DataFrame(columns=['gen'] + [x+'_model' for x in self.objectives.keys()]+['mse_'+x.replace('epoch_', '') for x in self.objectives.keys()]) # mse metrics for the selected enseble per generation
+        self.all_cls_surrogate_data = pd.DataFrame() # data regarding all classifier surrogates
+        self.all_reg_surrogate_data = pd.DataFrame() # data regarding all regressor surrogates
+        self.selected_surrogate_data = pd.DataFrame() # chosen surrogates per generation with their trusts.
         self.current_population = {} # dict of genomes associated with their metrics with hash as key
         self.current_deap_pop = [] # list of deap individuals representing the current population; no other info
         self.elite_pool = [] # list of deap individuals in the elite pool
@@ -117,12 +120,13 @@ class Pipeline:
         self.surrogate = Surrogate(config_dir, self.surrogate_weights_dir) # Surrogate class to be defined
         self.reg_genome_scaler = None # scaler used to transform genomes on regression training and inference
         self.cls_genome_scaler = None # scaler used to transform genomes on classification training and inference
-        self.sub_surrogates = [0, 0, 0, 0] # list of sub-surrogate indices to use (SHOULD BE SAVED)
-        self.surrogate_trusts = [] # list to keep track of surrogate trust over the generations (SHOULD BE SAVED)
+        self.sub_surrogates = [0, 0, 0, 0] # list of sub-surrogate indices to use
         self.pset = primitives.pset # primitive set
         self.gen_count = 1
         self.num_genome_fails = 0
         self.total_evaluated_individuals = 0
+
+        assert self.sub_surrogate_sel_strat in ['mse', 'trust']
 
         # Setting up pipeline
         ensure_deap_classes(self.objectives, codec_config)
@@ -190,9 +194,12 @@ class Pipeline:
                 with open(os.path.join(checkpoint_path,'sub_surrogate_selection.pkl'), 'rb') as f:
                     self.sub_surrogates = pickle.load(f)
                 print('Found sub_surrogate_selection.pkl!')
-                df = pd.read_csv(os.path.join(checkpoint_path,'surrogate_trusts.csv'))
-                self.surrogate_trusts = df['trust'].to_list()
-                print('Found surrogate_trusts.csv!')
+                try:
+                    self.all_cls_surrogate_data = pd.read_csv(f'{self.output_dir}/cls_surrogate_data.csv')
+                    self.all_reg_surrogate_data = pd.read_csv(f'{self.output_dir}/reg_surrogate_data.csv')
+                    self.selected_surrogate_data = pd.read_csv(f'{self.output_dir}/selected_surrogate_data.csv')
+                except pd.errors.EmptyDataError:
+                    pass 
         else:
             os.makedirs(self.surrogate_weights_dir)
             self.init_pop(seed_file)
@@ -243,13 +250,8 @@ class Pipeline:
         if self.surrogate_enabled:
             print('    Preparing surrogate...')
             all_subsurrogate_metrics = self.prepare_surrogate()
-            # TODO data logging
-            # if all_subsurrogate_metrics is not None:
-            #     for i, metrics_df in enumerate(all_subsurrogate_metrics):
-            #         metrics_df['gen'] = self.gen_count
-            #         metrics_df['model'] = self.surrogate.models[i]['name']
-            #         self.surrogate_data = pd.concat([self.surrogate_data, metrics_df], ignore_index=True)
-            # self.surrogate_trusts.append(self.surrogate.trust)
+            if all_subsurrogate_metrics is not None:
+                self.add_metrics_to_dfs(all_subsurrogate_metrics)
             
         print('    Waiting for jobs...')
         # wait for job to finish
@@ -307,6 +309,37 @@ class Pipeline:
         
         self.total_evaluated_individuals += len(self.current_population)
         print(f'Generation {self.gen_count} evaluation done! Genome failures: {fails}')
+
+
+    def add_metrics_to_dfs(self, output_dict):
+        classifier_columns = ['gen', 'model'] + list(next(iter(output_dict['classifiers'].values())).keys())
+        regressor_columns = ['gen', 'model'] + list(next(iter(output_dict['regressors'].values())).keys())
+        classifiers_df = pd.DataFrame(columns=classifier_columns)
+        regressors_df = pd.DataFrame(columns=regressor_columns)
+        for model_name, metrics in output_dict['classifiers'].items():
+            row = {'gen': self.gen_count, 'model': model_name, **metrics}
+            classifiers_df.loc[len(classifiers_df)] = row
+        for model_name, metrics in output_dict['regressors'].items():
+            row = {'gen': self.gen_count, 'model': model_name, **metrics}
+            regressors_df.loc[len(regressors_df)] = row
+        
+        selected_surr_dict = {}
+        selected_surr_dict['gen'] = self.gen_count
+        selected_surr_dict['cls_model'] = list(output_dict['classifiers'].keys())[self.sub_surrogates[0]]
+        reg_dicts = list(output_dict['regressors'].keys())
+        for i, model_idx in enumerate(self.sub_surrogates[1:]):
+            selected_surr_dict[list(self.objectives.keys())[i]+'_reg_model'] = reg_dicts[model_idx]
+        selected_surr_dict['cls_trust'] = self.surrogate.cls_trust
+        selected_surr_dict['reg_trust'] = self.surrogate.reg_trust        
+        
+        self.selected_surrogate_data = pd.concat([self.selected_surrogate_data, pd.DataFrame([selected_surr_dict])], ignore_index=True)
+        self.all_cls_surrogate_data = pd.concat([self.all_cls_surrogate_data, classifiers_df], ignore_index=True)
+        self.all_reg_surrogate_data = pd.concat([self.all_reg_surrogate_data, regressors_df], ignore_index=True)
+        
+        print(self.all_cls_surrogate_data)
+        print(self.all_reg_surrogate_data)
+        print(self.selected_surrogate_data)
+
 
 
     def select_parents(self, selection_pool):
@@ -391,10 +424,10 @@ class Pipeline:
             build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0.2, include_only=[1])
             reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
             reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
-            reg_subset_val_df = reg_val_df
+            # reg_subset_val_df = reg_val_df
             cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
             cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
-            cls_subset_val_df = cls_val_df
+            # cls_subset_val_df = cls_val_df
         elif self.gen_count < 7: # grows here
             build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=[1])
             reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
@@ -402,9 +435,9 @@ class Pipeline:
             build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[1:])
             reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
             cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
-            build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
-            reg_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
-            cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
+            # build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
+            # reg_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
+            # cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
         else: # slides here
             build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=seen_gens[:-5])
             reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
@@ -412,9 +445,9 @@ class Pipeline:
             build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-5:])
             reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
             cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
-            build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
-            reg_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
-            cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
+            # build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
+            # reg_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
+            # cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
             
         
         # print('++++++++++++++++++++++++')
@@ -425,9 +458,12 @@ class Pipeline:
         
         #first call train function and receive the scores, then find the best model for each objective plus cls, then calculate their trust
         print('    Training surrogate ensemble...')
+        if len(reg_val_df) < self.surrogate_config['surrogate_batch_size']*self.surrogate_config['min_batch_in_val_data']:
+            print('    ----Warning: not enough valid data for regressors... skipping surrogate preparation----')
+            return None
         scores, cls_genome_scaler, reg_genome_scaler = self.surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df)
             
-        print('    Selecting best sub-surrogates...') # TODO
+        print('    Selecting best sub-surrogates...')
         sub_surrogates = []
         # finding best classifier
         cls_trust = 0
@@ -436,11 +472,22 @@ class Pipeline:
             if val['acc'] > cls_trust:
                 cls_trust = val['acc']
                 max_cls_model = key
-        sub_surrogates.append(max_cls_model)
-        # finding best regressor
-        result = self.surrogate.optimize_trust(cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
-        reg_trust = result[0]
-        sub_surrogates += result[1]
+        cls_to_dict = {d['name']: d for d in self.surrogate.classifier_models}
+        max_cls_model_idx = list(cls_to_dict.keys()).index(max_cls_model)
+        sub_surrogates.append(max_cls_model_idx)
+        # print(f'    Selected {max_cls_model} as classifier')
+        
+        if self.sub_surrogate_sel_strat == 'trust':
+            # finding best regressor
+            result = self.surrogate.optimize_trust(cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
+            reg_trust = result[0]
+            sub_surrogates += result[1]
+        else:
+            #get my model indices, tack on cls in front, pass to calc trust to get my own trusts, pass below
+            reg_indices = self.get_reg_indices(scores)
+            sub_surrogates.extend(reg_indices)
+            cls_trust, reg_trust = self.surrogate.calc_trust(sub_surrogates, cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
+    
             
         self.cls_genome_scaler = cls_genome_scaler
         self.reg_genome_scaler = reg_genome_scaler
@@ -449,7 +496,7 @@ class Pipeline:
         print('    Done!')
         return scores
     
-    
+
     def get_reg_indices(self, scores):
         best_models = {}
         for objective, direction in self.objectives.items():
@@ -488,8 +535,8 @@ class Pipeline:
             invalid_deap, valid_deap = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(unsustainable_pop.values()))
 
             # define sizes for stages of selection
-            num_tw_select = int(self.surrogate.trust * self.surrogate.cls_trust * self.population_size)
-            num_utw_select = int((1 - self.surrogate.trust) * self.surrogate.cls_trust * self.population_size)
+            num_tw_select = int(self.surrogate.reg_trust * self.surrogate.cls_trust * self.population_size)
+            num_utw_select = int((1 - self.surrogate.reg_trust) * self.surrogate.cls_trust * self.population_size)
             num_rand_other_select = (self.population_size - num_tw_select - num_utw_select) 
             
             # create downselect function for trustwrothy surrogate ratio
@@ -608,15 +655,9 @@ class Pipeline:
         hof_df.to_csv(f'{self.output_dir}/hall_of_fame.csv', index=False)
         if self.surrogate_enabled:
             # write surrogate information to file
-            self.surrogate_data.to_csv(f'{self.output_dir}/surrogate_data_extra.csv', index=False)
-            self.surrogate_mse_scores.to_csv(f'{self.output_dir}/surrogate_data.csv', index=False)
-            # write trust info
-            data = [{'gen': g, 'trust': t} for g, t in zip(list(range(1, self.gen_count+1)), self.surrogate_trusts)]
-            with open(f'{self.output_dir}/surrogate_trusts.csv', mode='w', newline='') as file:
-                writer = csv.DictWriter(file, fieldnames=['gen', 'trust'])
-                writer.writeheader()
-                writer.writerows(data)
-                
+            self.all_cls_surrogate_data.to_csv(f'{self.output_dir}/cls_surrogate_data.csv', index=False)
+            self.all_reg_surrogate_data.to_csv(f'{self.output_dir}/reg_surrogate_data.csv', index=False)
+            self.selected_surrogate_data.to_csv(f'{self.output_dir}/selected_surrogate_data.csv', index=False)                
         print('Done!')
 
 

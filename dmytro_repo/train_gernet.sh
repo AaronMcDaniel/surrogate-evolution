@@ -1,16 +1,16 @@
 #!/bin/bash
 #SBATCH --job-name=dmytro_model_training_gernet.job
-#SBATCH --output=dmytro_model_training_gernet.%A.%a.out
-#SBATCH --error=dmytro_model_training_gernet.%A.%a.err
+#SBATCH --output=dmytro_repo/logs/dmytro_model_training_gernet.%A.%a.out
+#SBATCH --error=dmytro_repo/logs/dmytro_model_training_gernet.%A.%a.err
 #SBATCH --time=20-00:00
 #SBATCH --mem=32G
 #SBATCH -c 8
 #SBATCH -G 1
 #SBATCH -x ice109,ice111,ice161,ice113,ice116,ice114,ice170,ice149,ice158,ice177,ice178,ice120
-#BATCH -C "NVIDIAA100-SXM4-80GB"
+##BATCH -C "NVIDIAA100-SXM4-80GB"
 
 module load anaconda3/2023.07
-cd seg_tracker
+cd dmytro_repo/seg_tracker
 nvidia-smi
 #four scripts for each model
 python train.py train experiments/120_gernet_m_b2_all.yaml

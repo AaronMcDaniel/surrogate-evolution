@@ -8,15 +8,12 @@
 
 # Check if a directory argument is provided
 if [ "$#" -ne 1 ]; then
-    echo "Usage: sbatch precog_pw.job <directory>"
+    echo "Usage: sbatch purge_all_weights.job <directory>"
     exit 1
 fi
 
 # Set the directory variable
 PURGE_DIR=$1
-
-# Determine the directory of the current script
-SCRIPT_DIR=$(dirname "$(realpath "$0")")
 
 # Execute the Python script with the provided directory
 python purge_all_weights.py "$PURGE_DIR"

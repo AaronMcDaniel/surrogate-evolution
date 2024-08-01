@@ -33,3 +33,8 @@ dmytro_repo/old_logs/
 dmytro_repo/output/checkpoints/
 dmytro_repo/output/models/
 dmytro_repo/predictions.pkl
+dmytro_metrics/*/
+dmytro_metrics/*.csv
+**/*.jpg files
+**/*.pkl
+**/*.csv

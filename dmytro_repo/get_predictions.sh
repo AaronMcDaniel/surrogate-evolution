@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=dmytro_get_predictions.job
-#SBATCH --output=logs/dmytro_get_predictions.%A.%a.out
-#SBATCH --error=logs/dmytro_get_predictions.%A.%a.err
+#SBATCH --output=dmytro_repo/logs/dmytro_get_predictions.%A.%a.out
+#SBATCH --error=dmytro_repo/logs/dmytro_get_predictions.%A.%a.err
 #SBATCH --time=20-00:00
 #SBATCH --mem=32G
 #SBATCH -c 8
@@ -10,7 +10,7 @@
 #SBATCH --array=1-11
 
 module load anaconda3/2023.07
-
+cd dmytro_repo
 nvidia-smi
 #four scripts for each model
 #python train.py train experiments/120_gernet_m_b2_all.yaml

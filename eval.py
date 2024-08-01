@@ -122,7 +122,7 @@ def create_metrics_df():
 
 
 # saves latest model's weights to disc and checks if current epoch is also the best epoch
-def save_best_last_epochs(model, metrics_df, curr_epoch):
+def save_best_last_epochs(model, metrics_df, curr_epoch, criteria):
     last_epoch_out = f'{outdir}/generation_{gen_num}/{hash}/last_epoch.pth'
     best_epoch_out = f'{outdir}/generation_{gen_num}/{hash}/best_epoch.pth'
 
@@ -131,7 +131,10 @@ def save_best_last_epochs(model, metrics_df, curr_epoch):
     torch.save(model.state_dict(), last_epoch_out)
     
     # retrieve best epoch as epoch with lowest validation loss
-    best_epoch = metrics_df['val_epoch_loss'].idxmin() + 1 # NOTE best epoch won't get saved if val loss is nan
+    if criteria[1] == 'max':
+        best_epoch = metrics_df[criteria[0]].idxmax() + 1 # NOTE best epoch won't get saved if val loss is nan
+    else:
+        best_epoch = metrics_df[criteria[0]].idxmin() + 1 # NOTE best epoch won't get saved if val loss is nan
     if curr_epoch == best_epoch:
         torch.save(model.state_dict(), best_epoch_out)
 
@@ -281,6 +284,7 @@ def engine(cfg, genome):
     iou_thresh = cfg['iou_thresh']
     conf_thresh = cfg['conf_thresh']
     iou_type = cfg['iou_type']
+    best_epoch_criteria = cfg['best_epoch_criteria']
     train_seed = cfg['train_seed']
     val_seed = cfg['val_seed']
     
@@ -323,7 +327,7 @@ def engine(cfg, genome):
 
         # save metrics_df, best/last epochs, predictions to disc
         store_data(metrics_df, all_preds)
-        save_best_last_epochs(model, metrics_df, epoch)
+        save_best_last_epochs(model, metrics_df, epoch, best_epoch_criteria)
 
 
 def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, loss_weights, iou_type, max_batch=None):
@@ -475,7 +479,8 @@ if __name__ == '__main__':
     model_config = configs["model"]
     codec_config = configs["codec"]
     data_config = configs["data"]
-    all_config = model_config | codec_config | data_config
+    pipeline_config = configs["pipeline"]
+    all_config = model_config | codec_config | data_config | pipeline_config
 
     # load generated input for current generation
     input_file = open(f'{infile}', 'r')
