@@ -4,6 +4,7 @@ test/
 weights/
 pretrained_weights/
 surrogate_dataset/
+surrogates/testing.py
 codec_backup.py
 codec_tester.py
 find_max_params.py
@@ -36,3 +37,4 @@ dmytro_metrics/*.csv
 **/*.jpg files
 **/*.pkl
 **/*.csv
+**/*.png

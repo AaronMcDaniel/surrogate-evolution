@@ -335,6 +335,6 @@ if __name__ == "__main__":
         job_id = None
     submission = SegPredictor()
     submission.run(job_id=job_id)
-    submission.save_results()
+    submission.save_results(job_id=job_id)
     # convert_and_copy_generated_results_to_metrics_folder()
 

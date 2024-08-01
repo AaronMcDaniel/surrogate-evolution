@@ -99,6 +99,50 @@ class Surrogate():
               'model': sm.MLP
             },
             {
+                'name': 'mlp_best_uwvl_2',
+                'dropout': 0.0,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.SGD,
+                'lr': 0.1,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'metrics_subset': [0],
+                'validation_subset': [0],
+                'model': sm.MLP
+            },
+            {
+                'name': 'mlp_best_cioul_2',
+                'dropout': 0.2,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.Adam,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.CosineAnnealingLR,
+                'metrics_subset': [4],
+                'validation_subset': [4],
+                'model': sm.MLP
+            },
+            {
+                'name': 'mlp_best_ap_2',
+                'dropout': 0.2,
+                'hidden_sizes': [1024, 512],
+                'optimizer': optim.RMSprop,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.MultiStepLR,
+                'metrics_subset': [11],
+                'validation_subset': [11],
+                'model': sm.MLP
+            },
+            {
+                'name': 'mlp_best_overall_2',
+                'dropout': 0.4,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.RMSprop,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.StepLR,
+                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                'validation_subset': [0, 4, 11],
+                'model': sm.MLP
+            },   
+            {
               'name': 'kan_best_uwvl',
               'model': sm.KAN,
               'hidden_sizes': [512, 256],
@@ -248,6 +292,18 @@ class Surrogate():
                 'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
                 'lr': 0.01,
                 'dropout': 0.2,
+            },
+            {
+                'name': 'fail_predictor_turbo',
+                'hidden_sizes': [512, 256],
+                'optimizer': optim.RMSprop,
+                'lr': 0.001,
+                'spline_order': 2,
+                'grid_size': 25,
+                'model': sm.KAN,
+                'output_size': 1,
+                'scheduler': optim.lr_scheduler.CosineAnnealingWarmRestarts,
+                'scale_noise': 0.5
             }
         ]
         self.trust_calc_strategy = surrogate_config["trust_calc_strategy"]
@@ -332,6 +388,7 @@ class Surrogate():
     
     # trains all the classifiers and regressors and stores their individual weights and metrics
     def train(self, classifier_train_df, classifier_val_df, regressor_train_df, regressor_val_df, train_reg=True):
+    def train(self, classifier_train_df, classifier_val_df, regressor_train_df, regressor_val_df, train_reg=True):
         scores = {
             'classifiers': {},
             'regressors': {}
@@ -344,6 +401,7 @@ class Surrogate():
             if cls_genome_scaler is None: cls_genome_scaler = gs
             scores['classifiers'][classifier_dict['name']] = metrics
         
+        if train_reg:
         # loop through regressor models
         if train_reg:
             for regressor_dict in self.models:
@@ -506,13 +564,14 @@ class Surrogate():
         max_trust = [float('-inf'), None]
         for c in combos:
             _, trust = self.calc_trust([0] + c, cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
-            # print(c, trust)
             if trust > max_trust[0]:
                 max_trust[0] = trust
                 max_trust[1] = c
         return max_trust
-        
     
+    
+# # TESTING SCRIPT
+
 # TESTING SCRIPT
 # surrogate = Surrogate('conf.toml', 'test/weights/surrogate_weights')
 # reg_train_df = pd.read_pickle('surrogate_dataset/us_surr_reg_train.pkl')

@@ -7,7 +7,7 @@ import numpy
 import torch
 import tqdm
 import sys
-sys.path.insert(0, '/home/eharpster3/precog-opt-grip')
+sys.path.insert(0, 'precog-opt-grip')
 import aot_dataset as data
 from torch.utils.data import DataLoader
 import numpy as np
@@ -36,9 +36,7 @@ print('Genome hash: ', genome_hash)
 print('--------------------')
 
 if job_id is not None:
-    if job_id < 10:
-        predictions_path = 'dmytro_repo/data/results/run0/result0' + str(job_id) + '.pkl'
-    elif job_id == 10:
+    if job_id <= 10:
         predictions_path = 'dmytro_repo/data/results/run0/result' + str(job_id) + '.pkl'
     else:
         predictions_path = 'dmytro_repo/data/results/run0/result.pkl'

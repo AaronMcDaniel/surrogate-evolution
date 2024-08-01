@@ -147,7 +147,7 @@ class AirbornePredictor:
             #self.save_results(flight)
         
         print('ALL DONE HERE')
-        self.save_results()
+        #self.save_results()
         aicrowd_helpers.execution_success()
 
     def run(self, job_id=None):
@@ -203,6 +203,7 @@ class AirbornePredictor:
         else:
             path = os.path.join(self.get_results_directory(flight_id), "result" + str(job_id) + ".pkl")
         #print(os.path.join(self.get_results_directory(flight_id), "result10.pkl"))
+        print(job_id)
         print(path)
         print('NUM RESULTS:', len(self.custom_results))
         #with open(os.path.join(self.get_results_directory(flight_id), "result10.pkl"), 'wb') as fp:
