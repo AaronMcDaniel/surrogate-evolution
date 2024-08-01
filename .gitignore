@@ -20,10 +20,9 @@ conf_kan.toml
 kan/
 kaneffKAN/
 kanKAN
-*.job
-!main.job
-!grid_search.job
-!re_eval.job
+eval.job
+test_eval.job
+precog_eval.job
 dmytro_repo/data/models/*.pth
 dmytro_repo/data/models/custom/
 dmytro_repo/data/results/
