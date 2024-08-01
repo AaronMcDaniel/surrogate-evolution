@@ -120,7 +120,7 @@ class Pipeline:
         self.surrogate = Surrogate(config_dir, self.surrogate_weights_dir) # Surrogate class to be defined
         self.reg_genome_scaler = None # scaler used to transform genomes on regression training and inference
         self.cls_genome_scaler = None # scaler used to transform genomes on classification training and inference
-        self.sub_surrogates = [0, 0, 0, 0] # list of sub-surrogate indices to use
+        self.sub_surrogates = [0] * len(self.objectives) + 1 # list of sub-surrogate indices to use
         self.pset = primitives.pset # primitive set
         self.gen_count = 1
         self.num_genome_fails = 0
@@ -455,13 +455,17 @@ class Pipeline:
         # print('val size:', val_df.shape)
         # print('++++++++++++++++++++++++')
         
-        
+        # check if there's enough data to train regressors
+        train_reg = True
+        if len(reg_val_df) < self.surrogate_config['surrogate_batch_size']*self.surrogate_config['min_batch_in_val_data']:
+            train_reg = False
+            print('----Warning: not enough valid data for regressors... skipping surrogate preparation----')
         #first call train function and receive the scores, then find the best model for each objective plus cls, then calculate their trust
         print('    Training surrogate ensemble...')
         if len(reg_val_df) < self.surrogate_config['surrogate_batch_size']*self.surrogate_config['min_batch_in_val_data']:
             print('    ----Warning: not enough valid data for regressors... skipping surrogate preparation----')
             return None
-        scores, cls_genome_scaler, reg_genome_scaler = self.surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df)
+        scores, cls_genome_scaler, reg_genome_scaler = self.surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df, train_reg=train_reg)
             
         print('    Selecting best sub-surrogates...')
         sub_surrogates = []
@@ -477,16 +481,19 @@ class Pipeline:
         sub_surrogates.append(max_cls_model_idx)
         # print(f'    Selected {max_cls_model} as classifier')
         
-        if self.sub_surrogate_sel_strat == 'trust':
-            # finding best regressor
-            result = self.surrogate.optimize_trust(cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
-            reg_trust = result[0]
-            sub_surrogates += result[1]
+        if train_reg:
+            if self.sub_surrogate_sel_strat == 'trust':
+                # finding best regressor
+                result = self.surrogate.optimize_trust(cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
+                reg_trust = result[0]
+                sub_surrogates += result[1]
+            else:
+                #get my model indices, tack on cls in front, pass to calc trust to get my own trusts, pass below
+                reg_indices = self.get_reg_indices(scores)
+                sub_surrogates.extend(reg_indices)
+                cls_trust, reg_trust = self.surrogate.calc_trust(sub_surrogates, cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
         else:
-            #get my model indices, tack on cls in front, pass to calc trust to get my own trusts, pass below
-            reg_indices = self.get_reg_indices(scores)
-            sub_surrogates.extend(reg_indices)
-            cls_trust, reg_trust = self.surrogate.calc_trust(sub_surrogates, cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
+            sub_surrogates.extend(self.sub_surrogates[1:])
     
             
         self.cls_genome_scaler = cls_genome_scaler
