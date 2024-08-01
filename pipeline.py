@@ -12,6 +12,7 @@ import random
 import shutil
 import subprocess
 import time
+import numpy as np
 import toml
 import os
 
@@ -447,7 +448,36 @@ class Pipeline:
         self.sub_surrogates = sub_surrogates
         print('    Done!')
         return scores
+    
+    
+    def get_reg_indices(self, scores):
+        best_models = {}
+        for objective, direction in self.objectives.items():
+            objective = 'mse_' + objective
+            best_models[objective.replace('epoch_', '')] = {'model': '', 'score': np.inf}
 
+        name_to_dict = {d['name']: d for d in self.surrogate.models}
+        indices = []
+        for objective in self.objectives.keys():
+            loss_objective = 'mse_' + objective
+            loss_objective = loss_objective.replace('epoch_', '')
+
+            indices.append(self.surrogate_metrics.index(loss_objective))
+        print(indices)
+
+        for reg_key, reg_val in scores['regressors'].items():
+            for idx, objective in zip(indices, best_models.keys()):
+                if idx in name_to_dict[reg_key]['validation_subset']:
+                    if reg_val[objective] < best_models[objective]['score']:
+                        best_models[objective]['model'] = reg_key
+                        best_models[objective]['score'] = reg_val[objective]
+
+        condensed = []
+        for name, model in best_models.items():
+            condensed.append(list(name_to_dict.keys()).index(model['model']))
+        
+        return condensed
+    
 
     def downselect(self, unsustainable_pop):
         print('Downselecting...')

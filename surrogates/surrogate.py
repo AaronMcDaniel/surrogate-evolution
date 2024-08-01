@@ -97,6 +97,50 @@ class Surrogate():
               'metrics_subset': [11],
               'validation_subset': [11],
               'model': sm.MLP
+            },
+            {
+                'name': 'mlp_best_uwvl_2',
+                'dropout': 0.0,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.SGD,
+                'lr': 0.1,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'metrics_subset': [0],
+                'validation_subset': [0],
+                'model': sm.MLP
+            },
+            {
+                'name': 'mlp_best_cioul_2',
+                'dropout': 0.2,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.Adam,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.CosineAnnealingLR,
+                'metrics_subset': [4],
+                'validation_subset': [4],
+                'model': sm.MLP
+            },
+            {
+                'name': 'mlp_best_ap_2',
+                'dropout': 0.2,
+                'hidden_sizes': [1024, 512],
+                'optimizer': optim.RMSprop,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.MultiStepLR,
+                'metrics_subset': [11],
+                'validation_subset': [11],
+                'model': sm.MLP
+            },
+            {
+                'name': 'mlp_best_overall_2',
+                'dropout': 0.4,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.RMSprop,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.StepLR,
+                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                'validation_subset': [0, 4, 11],
+                'model': sm.MLP
             },   
             {
               'name': 'kan_best_uwvl', 
@@ -132,7 +176,56 @@ class Surrogate():
               'validation_subset': [11],
               'model': sm.KAN,
               'spline_order': 1,
-              'grid_size': 25
+              'grid_size': 25,
+              'model': sm.KAN
+            },
+            {
+                'name': 'kan_best_overall',
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.AdamW,
+                'lr': 0.001,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                'validation_subset': [0, 4, 11],
+                'spline_order': 1,
+                'grid_size': 25,
+                'model': sm.KAN
+            },
+            {
+                'name': 'kan_best_uwvl_2',
+                'hidden_sizes': [512, 256],
+                'optimizer': optim.AdamW,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.CosineAnnealingWarmRestarts,
+                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                'validation_subset': [0],
+                'spline_order': 2,
+                'grid_size': 1, 
+                'model': sm.KAN
+            },
+            {
+                'name': 'kan_best_cioul_2',
+                'hidden_sizes': [2048],
+                'optimizer': optim.AdamW,
+                'lr': 0.001,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'metrics_subset': [4],
+                'validation_subset': [4],
+                'spline_order': 2,
+                'model': sm.KAN,
+                'grid_size': 5
+            },
+            {
+                'name': 'kan_best_ap_2',
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.AdamW,
+                'lr': 0.001,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'metrics_subset': [11],
+                'validation_subset': [11],
+                'spline_order': 1,
+                'model': sm.KAN,
+                'grid_size': 5
             }
         ]
         self.classifier_models = [
@@ -143,7 +236,30 @@ class Surrogate():
                 'optimizer': optim.Adam,
                 'lr': 0.001,
                 'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
-                'model': sm.BinaryClassifier
+                'model': sm.MLP,
+                'output_size': 1
+            },
+            {
+                'name': 'fail_predictor_6000',
+                'output_size': 1,
+                'model': sm.MLP,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.Adagrad,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'lr': 0.01,
+                'dropout': 0.2,
+            },
+            {
+                'name': 'fail_predictor_turbo',
+                'hidden_sizes': [512, 256],
+                'optimizer': optim.RMSprop,
+                'lr': 0.001,
+                'spline_order': 2,
+                'grid_size': 25,
+                'model': sm.KAN,
+                'output_size': 1,
+                'scheduler': optim.lr_scheduler.CosineAnnealingWarmRestarts,
+                'scale_noise': 0.5
             }
         ]
         self.trust_calc_strategy = surrogate_config["trust_calc_strategy"]
@@ -401,33 +517,14 @@ class Surrogate():
         max_trust = [float('-inf'), None]
         for c in combos:
             _, trust = self.calc_trust([0] + c, cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
-            # print(c, trust)
             if trust > max_trust[0]:
                 max_trust[0] = trust
                 max_trust[1] = c
         return max_trust
-        
     
-# TESTING SCRIPT
-# surrogate = Surrogate('conf.toml', 'test/weights/surrogate_weights')
-# reg_train_df = pd.read_pickle('surrogate_dataset/us_surr_reg_train.pkl')
-# reg_val_df = pd.read_pickle('surrogate_dataset/us_surr_reg_val.pkl')
-# cls_train_df = pd.read_pickle('surrogate_dataset/us_surr_cls_train.pkl')
-# cls_val_df = pd.read_pickle('surrogate_dataset/us_surr_cls_val.pkl')
-# # inference_models = [0, 5, 6, 7]
-# cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
-# reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train')
-# cls_genome_scaler = cls_train_dataset.genomes_scaler
-# reg_genome_scaler = reg_train_dataset.genomes_scaler
-# print(surrogate.optimize_trust(cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df))
-# # print(surrogate.set_fitnesses(inference_models, cls_genome_scaler, reg_genome_scaler, individuals))
-
-# print(surrogate.calc_ensemble_trust([4, 5, 6], reg_genome_scaler, individuals))
-# print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
-# print(surrogate.calc_trust(-2, genome_scaler, individuals))
-
-# surrogate = Surrogate('conf.toml', 'test/weights/surrogate_weights')
-# individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv", generations=[21, 22, 23, 24])
+    
+# # TESTING SCRIPT
+# surrogate = Surrogate('conf.toml', 'test')
 # cls_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')
 # cls_val_df = pd.read_pickle('surrogate_dataset/cls_val_dataset.pkl')
 # reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
@@ -436,7 +533,5 @@ class Surrogate():
 # reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
 # cls_genome_scaler = cls_train_dataset.genomes_scaler
 # reg_genome_scaler = reg_train_dataset.genomes_scaler
-# print(surrogate.calc_trust([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df))
-# print(surrogate.set_fitnesses([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, individuals))
-# print(surrogate.calc_ensemble_trust([5, 6, 7], reg_genome_scaler, individuals))
-# print(surrogate.calc_trust(-2, genome_scaler, individuals))
+# print(surrogate.calc_trust([0, -4, -4, -4], cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df))
+# print(surrogate.optimize_trust(cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df))

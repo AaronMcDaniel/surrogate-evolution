@@ -51,8 +51,8 @@ def build_configuration(model_dict, device):
             scheduler = scheduler_func(optimizer=optimizer, T_max=10)
         elif scheduler_func == optim.lr_scheduler.ReduceLROnPlateau:
             scheduler = scheduler_func(optimizer=optimizer, mode='min', factor=0.5, patience=5)
-        else:
-            scheduler = scheduler_func(optimizer=optimizer)
+        elif scheduler_func == optim.lr_scheduler.CosineAnnealingWarmRestarts:
+            scheduler = scheduler_func(optimizer=optimizer, T_0=10, T_mult=2)
         scaler = GradScaler()
         
         return model, optimizer, scheduler, scaler
@@ -237,19 +237,22 @@ def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir)
 # surrogate_config = configs['surrogate']
 # binary_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_cls_train.pkl')
 # binary_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_cls_val.pkl')
-# # Count the number of 1s and 0s in the 'label' column of the training DataFrame
-# train_label_counts = binary_train_df['label'].value_counts()
-# print(f"Training DataFrame label counts:\n{train_label_counts}")
-# # Count the number of 1s and 0s in the 'label' column of the validation DataFrame
-# val_label_counts = binary_val_df['label'].value_counts()
-# print(f"Validation DataFrame label counts:\n{val_label_counts}")
+# # # Count the number of 1s and 0s in the 'label' column of the training DataFrame
+# # train_label_counts = binary_train_df['label'].value_counts()
+# # print(f"Training DataFrame label counts:\n{train_label_counts}")
+# # # Count the number of 1s and 0s in the 'label' column of the validation DataFrame
+# # val_label_counts = binary_val_df['label'].value_counts()
+# # print(f"Validation DataFrame label counts:\n{val_label_counts}")
 # model_dict = {
-#                 'name': 'fail_predictor_3000',
-#                 'dropout': 0.2,
-#                 'hidden_sizes': [1024, 512, 256, 128],
-#                 'optimizer': optim.Adam,
+#                 'name': 'fail_predictor_turbo',
+#                 'hidden_sizes': [512, 256],
+#                 'optimizer': optim.RMSprop,
 #                 'lr': 0.001,
-#                 'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
-#                 'model': sm.BinaryClassifier
+#                 'spline_order': 2,
+#                 'grid_size': 25,
+#                 'model': sm.KAN,
+#                 'output_size': 1,
+#                 'scheduler': optim.lr_scheduler.CosineAnnealingWarmRestarts,
+#                 'scale_noise': 0.5
 #             }
 # engine(surrogate_config, model_dict, binary_train_df, binary_val_df, '/home/tthakur9/precog-opt-grip/test')

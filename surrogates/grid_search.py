@@ -118,7 +118,7 @@ def build_configuration(model_str, device, param_combo):
 
 # stores metrics csv file 
 def store_data(model_str, combo_num, metrics_df):
-    metrics_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/gs_combos/c{combo_num}_metrics.csv'
+    metrics_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/regressors/{model_str}/gs_combos/c{combo_num}_metrics.csv'
     os.makedirs(os.path.dirname(metrics_out), exist_ok=True)
     metrics_df.to_csv(metrics_out, index=False)
 
@@ -254,7 +254,7 @@ def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_me
 
 # uses model string to concatenate grid search resulting metric csvs to one master file
 def cat_results(name, model_str):
-    search_dir = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/gs_combos'
+    search_dir = f'/gv1/projects/GRIP_Precog_Opt/surrogates/regressors/{model_str}/gs_combos'
     master_df = create_metrics_df()
 
     # change range as necessary for different grid search runs
@@ -265,7 +265,7 @@ def cat_results(name, model_str):
         except:
             continue
         master_df = pd.concat([master_df, metrics_df], ignore_index=True)
-    out_path = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/{name}_gs.csv'
+    out_path = f'/gv1/projects/GRIP_Precog_Opt/surrogates/regressors{model_str}/{name}_gs.csv'
     master_df.to_csv(out_path, index=False)
     return None
 
@@ -324,6 +324,6 @@ if __name__ == '__main__':
         if overwrite == 'true':
             engine(cfg=cfg, model_str=model_str, param_combo=combo, combo_num=combo_num)
         else:
-            check_path = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/gs_combos/c{combo_num}_metrics.csv'
+            check_path = f'/gv1/projects/GRIP_Precog_Opt/surrogates/regressors{model_str}/gs_combos/c{combo_num}_metrics.csv'
             if not os.path.exists(check_path):
                 engine(cfg=cfg, model_str=model_str, param_combo=combo, combo_num=combo_num)
