@@ -1,0 +1,52 @@
+#!/bin/bash
+#SBATCH --job-name=surrogate_evolution
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32GB
+#SBATCH --time=08:00:00
+#SBATCH -G 1
+#SBATCH --output="analysis/trusts_over_gen.log"
+#SBATCH --error="analysis/trusts_over_gen_error.log"
+
+# Parse command line arguments
+num_generations=""
+run_folder=""
+config_dir="conf.toml"
+datasets_folder="test/trust_gens_datasets"
+trusts_dir="test/trusts_over_gens.pkl"
+subsurrogates_dir="test/subsurrogates_over_gens.pkl"
+weights_dir="test/trust_over_gens_weights"
+
+while getopts ":n:r:c:d:t:s:w:" opt; do
+  case $opt in
+    n) num_generations="$OPTARG"
+    ;;
+    r) run_folder="$OPTARG"
+    ;;
+    c) config_dir="$OPTARG"
+    ;;
+    d) datasets_folder="$OPTARG"
+    ;;
+    t) trusts_dir="$OPTARG"
+    ;;
+    s) subsurrogates_dir="$OPTARG"
+    ;;
+    w) weights_dir="$OPTARG"
+    ;;
+    \?) echo "Invalid option -$OPTARG" >&2
+        exit 1
+    ;;
+  esac
+done
+
+# Check for required arguments
+if [ -z "$num_generations" ] || [ -z "$run_folder" ]; then
+  echo "Usage: $0 -n num_generations -r run_folder [-c config_dir] [-d datasets_folder] [-t trusts_dir] [-s subsurrogates_dir] [-w weights_dir]" >&2
+  exit 1
+fi
+
+module load anaconda3/2023.07
+module load cuda/12.1.1
+
+# Run the Python script with the parsed arguments
+conda run -n myenv --no-capture-output python -u -m analysis.trusts_over_generation -n "$num_generations" -r "$run_folder" -c "$config_dir" -d "$datasets_folder" -t "$trusts_dir" -s "$subsurrogates_dir" -w "$weights_dir"
