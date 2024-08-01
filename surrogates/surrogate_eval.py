@@ -119,10 +119,10 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
         epoch_metrics['train_loss'] = train_epoch_loss
         epoch_metrics_df = pd.DataFrame([epoch_metrics])
         metrics_df = pd.concat([metrics_df, epoch_metrics_df], ignore_index=True)
-    
-
-    torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict["name"]}.pth')
-    print('        Save epoch #:', best_epoch_num)    
+        
+    if best_epoch is not None:
+        torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict["name"]}.pth')
+        print('        Save epoch #:', best_epoch_num)    
 
     return metrics_df, best_epoch_metrics, best_epoch_num, train_dataset.genomes_scaler
 
@@ -202,13 +202,13 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
         surrogate_train_loss += loss.item()
         data_iter.set_postfix(loss=loss.item())
         torch.cuda.empty_cache()
-    
-    # step scheduler
-    e.step_scheduler(scheduler, loss)
 
     # calculate surrogate training loss per batch (NOTE batch loss already meaned by batch size)
     num_batches = len(data_iter)
     surrogate_train_loss /= num_batches
+    
+    # step scheduler
+    e.step_scheduler(scheduler, surrogate_train_loss)
 
     return surrogate_train_loss
 

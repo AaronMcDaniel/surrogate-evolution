@@ -97,28 +97,72 @@ class Surrogate():
               'metrics_subset': [11],
               'validation_subset': [11],
               'model': sm.MLP
-            },   
+            },
             {
-              'name': 'kan_best_uwvl', 
-              'model': sm.KAN, 
-              'hidden_sizes': [512, 256], 
-              'optimizer': torch.optim.AdamW, 
-              'lr': 0.01, 
-              'scheduler': torch.optim.lr_scheduler.StepLR, 
-              'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 
-              'validation_subset': [0], 
-              'grid_size': 25, 
+              'name': 'kan_best_uwvl',
+              'model': sm.KAN,
+              'hidden_sizes': [512, 256],
+              'optimizer': torch.optim.AdamW,
+              'lr': 0.01,
+              'scheduler': torch.optim.lr_scheduler.StepLR,
+              'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+              'validation_subset': [0],
+              'grid_size': 25,
               'spline_order': 5
             },
-            { 
-              'name': 'kan_best_cioul', 
-              'model': sm.KAN, 
-              'hidden_sizes': [2048, 1024, 512], 
-              'optimizer': torch.optim.AdamW, 
-              'lr': 0.001, 
-              'scheduler': torch.optim.lr_scheduler.CosineAnnealingWarmRestarts, 
-              'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 
-              'validation_subset': [4], 
+            {
+                'name': 'mlp_best_uwvl_2',
+                'dropout': 0.0,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.SGD,
+                'lr': 0.1,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'metrics_subset': [0],
+                'validation_subset': [0],
+                'model': sm.MLP
+            },
+            {
+                'name': 'mlp_best_cioul_2',
+                'dropout': 0.2,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.Adam,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.CosineAnnealingLR,
+                'metrics_subset': [4],
+                'validation_subset': [4],
+                'model': sm.MLP
+            },
+            {
+                'name': 'mlp_best_ap_2',
+                'dropout': 0.2,
+                'hidden_sizes': [1024, 512],
+                'optimizer': optim.RMSprop,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.MultiStepLR,
+                'metrics_subset': [11],
+                'validation_subset': [11],
+                'model': sm.MLP
+            },
+            {
+                'name': 'mlp_best_overall_2',
+                'dropout': 0.4,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.RMSprop,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.StepLR,
+                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                'validation_subset': [0, 4, 11],
+                'model': sm.MLP
+            },
+            {
+              'name': 'kan_best_cioul',
+              'model': sm.KAN,
+              'hidden_sizes': [2048, 1024, 512],
+              'optimizer': torch.optim.AdamW,
+              'lr': 0.001,
+              'scheduler': torch.optim.lr_scheduler.CosineAnnealingWarmRestarts,
+              'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+              'validation_subset': [4],
               'grid_size': 10,
               'spline_order': 1
             },
@@ -132,7 +176,56 @@ class Surrogate():
               'validation_subset': [11],
               'model': sm.KAN,
               'spline_order': 1,
-              'grid_size': 25
+              'grid_size': 25,
+              'model': sm.KAN
+            },
+            {
+                'name': 'kan_best_overall',
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.AdamW,
+                'lr': 0.001,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                'validation_subset': [0, 4, 11],
+                'spline_order': 1,
+                'grid_size': 25,
+                'model': sm.KAN
+            },
+            {
+                'name': 'kan_best_uwvl_2',
+                'hidden_sizes': [512, 256],
+                'optimizer': optim.AdamW,
+                'lr': 0.01,
+                'scheduler': optim.lr_scheduler.CosineAnnealingWarmRestarts,
+                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                'validation_subset': [0],
+                'spline_order': 2,
+                'grid_size': 1,
+                'model': sm.KAN
+            },
+            {
+                'name': 'kan_best_cioul_2',
+                'hidden_sizes': [2048],
+                'optimizer': optim.AdamW,
+                'lr': 0.001,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'metrics_subset': [4],
+                'validation_subset': [4],
+                'spline_order': 2,
+                'model': sm.KAN,
+                'grid_size': 5
+            },
+            {
+                'name': 'kan_best_ap_2',
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.AdamW,
+                'lr': 0.001,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'metrics_subset': [11],
+                'validation_subset': [11],
+                'spline_order': 1,
+                'model': sm.KAN,
+                'grid_size': 5
             }
         ]
         self.classifier_models = [
@@ -143,7 +236,18 @@ class Surrogate():
                 'optimizer': optim.Adam,
                 'lr': 0.001,
                 'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
-                'model': sm.BinaryClassifier
+                'model': sm.MLP,
+                'output_size': 1
+            },
+            {
+                'name': 'fail_predictor_6000',
+                'output_size': 1,
+                'model': sm.MLP,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.Adagrad,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'lr': 0.01,
+                'dropout': 0.2,
             }
         ]
         self.trust_calc_strategy = surrogate_config["trust_calc_strategy"]
@@ -234,14 +338,12 @@ class Surrogate():
         }
         cls_genome_scaler = None
         reg_genome_scaler = None
-        print('Training classifier')
         # loop through the classifier models
         for classifier_dict in self.classifier_models:
             metrics, gs = cse.engine(self.surrogate_config, classifier_dict, classifier_train_df, classifier_val_df, self.weights_dir)
             if cls_genome_scaler is None: cls_genome_scaler = gs
             scores['classifiers'][classifier_dict['name']] = metrics
         
-        print('training regressor')
         # loop through regressor models
         for regressor_dict in self.models:
             metrics, best_epoch_metrics, best_epoch_num, gs = rse.engine(self.surrogate_config, regressor_dict, regressor_train_df, regressor_val_df, self.weights_dir)
@@ -304,6 +406,9 @@ class Surrogate():
     # used for downselecting 
     def set_fitnesses(self, inference_models, cls_genome_scaler, reg_genome_scaler, deap_list):
         deap_list = copy.deepcopy(deap_list)
+        invalid_deap = []
+        valid_deap = []
+        remaining_deap = []
         # step 1: encode the genomes to create an inference df
         inference_df = pd.DataFrame(columns=['hash', 'genome']) # this df will hold encoded genomes
         for genome in deap_list:
@@ -311,19 +416,18 @@ class Surrogate():
                 encoded_genome = self.codec.encode_surrogate(str(genome), self.genome_epochs) # we're going to infer for the last epoch
                 to_add = {'hash': self.__get_hash(str(genome)), 'genome': encoded_genome}
                 inference_df.loc[len(inference_df)] = to_add
+                remaining_deap.append(genome)
             except:
-                pass # don't add fundamentally broken genomes to the df
+                invalid_deap.append(genome)
         # step 2: get inferences on these genomes
         failed, inferred_df = self.get_inferences(inference_models, inference_df, cls_genome_scaler, reg_genome_scaler)
         # at this stage, the inferred_df contains the set of individuals predicted as valid by the classifier
 
         # step 3 & 4: split individuals into those predicted to fail and those predicted to be valid 
         # and assign metrics based on inferred_df and assign bad metrics if invalid
-        invalid_deap = []
-        valid_deap = []
         bad_fitnesses = tuple([300 if x < 0 else -300 for x in self.objectives.values()])
         for i, v in enumerate(failed):
-            individual = deap_list[i]
+            individual = remaining_deap[i]
             if v == 1:
                 individual.fitness.values = bad_fitnesses
                 invalid_deap.append(individual)
@@ -427,11 +531,10 @@ class Surrogate():
 # print(surrogate.calc_trust(-2, genome_scaler, individuals))
 
 # surrogate = Surrogate('conf.toml', 'test/weights/surrogate_weights')
-# individuals = surrogate.get_individuals_from_file("/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv", generations=[21, 22, 23, 24])
-# cls_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')
-# cls_val_df = pd.read_pickle('surrogate_dataset/cls_val_dataset.pkl')
-# reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
-# reg_val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
+# cls_train_df = pd.read_pickle('surrogate_dataset/us_surr_cls_train.pkl')
+# cls_val_df = pd.read_pickle('surrogate_dataset/us_surr_cls_val.pkl')
+# reg_train_df = pd.read_pickle('surrogate_dataset/us_surr_reg_train.pkl')
+# reg_val_df = pd.read_pickle('surrogate_dataset/us_surr_reg_val.pkl')
 # cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
 # reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
 # cls_genome_scaler = cls_train_dataset.genomes_scaler
