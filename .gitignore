@@ -37,3 +37,4 @@ dmytro_metrics/*.csv
 **/*.jpg files
 **/*.pkl
 **/*.csv
+**/*.png
