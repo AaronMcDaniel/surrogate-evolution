@@ -12,6 +12,7 @@ import random
 import shutil
 import subprocess
 import time
+import numpy as np
 import toml
 import os
 

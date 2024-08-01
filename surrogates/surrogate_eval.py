@@ -4,6 +4,7 @@ Train and Validate operations for the regressor surrogates. Called surrogate_eva
 
 
 import inspect
+import os
 import toml
 from tqdm import tqdm
 from surrogates import surrogate_dataset as sd
@@ -17,7 +18,6 @@ import eval as e
 from surrogates import surrogate_models as sm
 from torch.cuda.amp import autocast, GradScaler
 import numpy as np
-
 
 def prepare_data(model_dict, batch_size, train_df, val_df):
     train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=model_dict['metrics_subset'])
@@ -273,22 +273,21 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
     return epoch_metrics
 
 
-# # TESTING
+def train_all_reg(cfg, reg_train_df, reg_val_df, surrogate, weights_dir='/home/tthakur9/precog-opt-grip/test'):
+    for m in surrogate.models:
+        weights_path = os.path.join(weights_dir, m['name'] + '.pth')
+        if not os.path.exists(weights_path):
+            print(f"Training model: {m['name']}")
+            # Train the model and save the weights
+            engine(cfg, m, reg_train_df, reg_val_df, weights_dir=weights_dir)
+        else:
+            print(f"Weights for model {m['name']} already exist at {weights_path}. Skipping training.")
+
+
+# # # TESTING
 # config_path = '/home/tthakur9/precog-opt-grip/conf.toml'
 # configs = toml.load(config_path)
 # cfg = configs['surrogate']
 # reg_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_train.pkl')
 # reg_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_val.pkl')
-# model_dict1 = {
-#                 'name': 'mlp_best_overall',
-#                 'dropout': 0.2,
-#                 'hidden_sizes': [2048, 1024, 512],
-#                 'optimizer': optim.Adam,
-#                 'lr': 0.1,
-#                 'scheduler': optim.lr_scheduler.StepLR,
-#                 'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-#                 'validation_subset': [0, 4, 11],
-#                 'model': sm.MLP
-#             }
 
-# print(engine(cfg, model_dict1, reg_train_df, reg_val_df, weights_dir='/home/tthakur9/precog-opt-grip/test'))
