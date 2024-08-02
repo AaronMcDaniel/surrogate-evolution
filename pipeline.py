@@ -28,13 +28,13 @@ from surrogates.surrogate_dataset import build_dataset
 import numpy as np
 
 # job file params
-JOB_NAME = 'precog_eval'
+JOB_NAME = 't_evo'
 NODES = 1
 CORES = 8
 MEM = '32GB'
 JOB_TIME = '08:00:00'
 SCRIPT = 'eval.py'
-ENV_NAME = 'myenv'
+ENV_NAME = 'tv1'
 EXCEPTED_NODES = ['ice109', 'ice111', 'ice161', 'ice113', 'ice116', 'ice114', 'ice170', 'ice149', 'ice158', 'ice177', 'ice178', 'ice120']
 GPUS = ["TeslaV100-PCIE-32GB", "TeslaV100S-PCIE-32GB", "NVIDIAA100-SXM4-80GB", "NVIDIAA10080GBPCIe", "TeslaP100-SXM2-16GB", "TeslaK80"]
 # ALLOWED_NODES = ['ice108', 'ice107', 'ice110', 'ice143', 'ice144', 'ice145', 'ice151', 'ice162', 'ice163', 'ice164', 'ice165', 'ice175', 'ice176', 'ice179', 'ice183', 'ice185', 'ice191', 'ice192', 'ice193']
@@ -95,6 +95,8 @@ class Pipeline:
         self.surrogate_weights_dir = os.path.join(output_dir, 'surrogate_weights')
         self.surrogate_metrics = surrogate_config['surrogate_metrics']
         self.sub_surrogate_sel_strat = surrogate_config['sub_surrogate_sel_strat']
+        self.surrogate_pretrained = surrogate_config['pretrained']
+        self.surrogate_pretrained_dir = surrogate_config['pretrained_dir']
         self.objectives = pipeline_config['objectives']
         self.selection_method_trusted = pipeline_config['selection_method_trusted']
         self.selection_method_untrusted = pipeline_config['selection_method_untrusted']
@@ -110,6 +112,8 @@ class Pipeline:
         self.all_cls_surrogate_data = pd.DataFrame() # data regarding all classifier surrogates
         self.all_reg_surrogate_data = pd.DataFrame() # data regarding all regressor surrogates
         self.selected_surrogate_data = pd.DataFrame() # chosen surrogates per generation with their trusts.
+        self.cls_surrogate_pretrained_data = None
+        self.reg_surrogate_pretrained_data = None
         self.current_population = {} # dict of genomes associated with their metrics with hash as key
         self.current_deap_pop = [] # list of deap individuals representing the current population; no other info
         self.elite_pool = [] # list of deap individuals in the elite pool
@@ -120,7 +124,7 @@ class Pipeline:
         self.surrogate = Surrogate(config_dir, self.surrogate_weights_dir) # Surrogate class to be defined
         self.reg_genome_scaler = None # scaler used to transform genomes on regression training and inference
         self.cls_genome_scaler = None # scaler used to transform genomes on classification training and inference
-        self.sub_surrogates = [0] * len(self.objectives) + 1 # list of sub-surrogate indices to use
+        self.sub_surrogates = [0] * (len(self.objectives) + 1) # list of sub-surrogate indices to use
         self.pset = primitives.pset # primitive set
         self.gen_count = 1
         self.num_genome_fails = 0
@@ -203,6 +207,14 @@ class Pipeline:
         else:
             os.makedirs(self.surrogate_weights_dir)
             self.init_pop(seed_file)
+
+        # if surrogate should be "pretrained", load existing data
+        if self.surrogate_pretrained:
+            self.cls_surrogate_pretrained_data = pd.read_pickle(f'{self.surrogate_pretrained_dir}/pretrain_cls_train.pkl')
+            self.reg_surrogate_pretrained_data = pd.read_pickle(f'{self.surrogate_pretrained_dir}/pretrain_reg_train.pkl')
+        else:
+            self.cls_surrogate_pretrained_data = pd.DataFrame()
+            self.reg_surrogate_pretrained_data = pd.DataFrame()
             
 
     def init_pop(self, seed_file = None):
@@ -449,10 +461,14 @@ class Pipeline:
             # reg_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
             # cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
             
+
+        # concatenate online datasets wit pretrained datasets
+        reg_train_df = pd.concat([reg_train_df, self.reg_surrogate_pretrained_data], axis=0)
+        cls_train_df = pd.concat([cls_train_df, self.cls_surrogate_pretrained_data], axis=0)
         
         # print('++++++++++++++++++++++++')
-        # print('train size:', train_df.shape)
-        # print('val size:', val_df.shape)
+        # print('reg train size:', reg_train_df.shape)
+        # print('cls train size:', cls_train_df.shape)
         # print('++++++++++++++++++++++++')
         
         # check if there's enough data to train regressors
