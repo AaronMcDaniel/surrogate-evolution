@@ -25,26 +25,28 @@ class SurrogateDataset(Dataset):
         self.genomes_scaler = genomes_scaler
         self.metrics_scaler = metrics_scaler
         self.mode = mode
-        self.genomes = np.stack(df['genome'].values)
-        # labels/metrics in the last 12 cols of df
         if metrics_subset is None:
             metrics_subset = list(range(12))
         metrics_subset = [-12 + i for i in metrics_subset]
-
-        self.metrics = df.iloc[:, metrics_subset].values
         self.max_metrics = torch.ones((1, len(metrics_subset))) * 300.0
         self.min_metrics = torch.ones((1, len(metrics_subset))) * -300.0
         
         # standardize genome/metrics data dist if train mode
         if mode == 'train':
-            # self.metrics = self.metrics_scaler.fit_transform(self.metrics)
+            self.genomes = np.stack(df['genome'].values)
+            self.metrics = df.iloc[:, metrics_subset].values
             self.genomes = self.genomes_scaler.fit_transform(self.genomes)
         if mode == 'val':
-            # self.metrics = self.metrics_scaler.transform(self.metrics)
+            grouped = df.groupby('hash')
+            best_epochs = []
+            for _, g in grouped:
+                best_epoch_idx = g['uw_val_epoch_loss'].idxmin()
+                best_epoch = g.loc[best_epoch_idx]
+                best_epochs.append(best_epoch)
+            best_epochs_df = pd.DataFrame(best_epochs)
+            self.genomes = np.stack(best_epochs_df['genome'].values)
+            self.metrics = best_epochs_df.iloc[:, metrics_subset].values
             self.genomes = self.genomes_scaler.transform(self.genomes)
-
-        # self.max_metrics = torch.tensor(self.metrics_scaler.transform(self.max_metrics), dtype=torch.float32)
-        # self.min_metrics = torch.tensor(self.metrics_scaler.transform(self.min_metrics), dtype=torch.float32)
             
         if np.isnan(self.genomes).any() or np.isnan(self.metrics).any():
             breakpoint()
@@ -211,7 +213,6 @@ def build_dataset(
         all_reg_data.append(reg_data)
         all_cls_data.append(cls_data)
 
-
     # get reg and cls val sizes
     reg_val_size = int(val_ratio * len(all_reg_data))
     cls_val_size = int(val_ratio * len(all_cls_data))
@@ -243,6 +244,23 @@ def build_dataset(
     cls_train_set = pd.DataFrame(cls_train_genomes)
     cls_val_set = pd.DataFrame(cls_val_genomes)
 
+    reg_concat_idx = len(reg_train_set)
+    cls_concat_idx = len(cls_train_set)
+
+    complete_reg_set = pd.concat([reg_train_set, reg_val_set], axis=0).reset_index(drop=True)
+    complete_cls_set = pd.concat([cls_train_set, cls_val_set], axis=0).reset_index(drop=True)
+
+    complete_reg_set, reg_num_train_rem = remove_dupes(complete_reg_set, 'genome', reg_concat_idx)
+    complete_cls_set, cls_num_train_rem = remove_dupes(complete_cls_set, 'genome', cls_concat_idx)
+
+    reg_split = reg_concat_idx - reg_num_train_rem
+    cls_split = reg_concat_idx - cls_num_train_rem
+
+    reg_train_set = complete_reg_set[:reg_split]
+    reg_val_set = complete_reg_set[reg_split:]
+    cls_train_set = complete_cls_set[:cls_split]
+    cls_val_set = complete_cls_set[cls_split:]
+
     # write train/val sets to file
     os.makedirs(outdir, exist_ok=True)
     reg_train_set.to_pickle(os.path.join(outdir, f'{name}_reg_train.pkl'))
@@ -256,6 +274,12 @@ def build_dataset(
 def merge_dfs_to_dataset(df1: pd.DataFrame, df2: pd.DataFrame, outdir):
     merged_df = pd.concat([df1, df2])
     merged_df.to_pickle(outdir)
+
+
+def remove_dupes(df, key, concat_idx):
+    mask = df[key].apply(lambda x: tuple(x)).duplicated(keep='first')
+    num_train_dupes_removed = mask[:concat_idx].sum()
+    return df[~mask], num_train_dupes_removed
 
 
 def find_bad_individuals(df, bad_thresh=100000):
@@ -284,10 +308,12 @@ def merge_csv_to_dataset(
 
 
 # TESTING SCRIPT
-# build_dataset(name='us_surr', infile='/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv', working_dir='/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution', val_ratio=0.3)
-# reg_train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
-# reg_val_df = pd.read_pickle('surrogate_dataset/reg_val_dataset.pkl')
-# cls_train_df = pd.read_pickle('surrogate_dataset/cls_train_dataset.pkl')
-# cls_val_df = pd.read_pickle('surrogate_dataset/cls_val_dataset.pkl')
-# breakpoint()
+# build_dataset(name='no_dupes', infile='/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv', working_dir='/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution', val_ratio=0.3)
+reg_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/no_dupes_reg_train.pkl')
+reg_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/no_dupes_reg_val.pkl')
+reg_train_ds = SurrogateDataset(reg_train_df, 'train', None)
+reg_val_ds = SurrogateDataset(reg_val_df, 'val', None, reg_train_ds.metrics_scaler, reg_train_ds.genomes_scaler)
+
+# cls_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/no_dupes_cls_train.pkl')
+# cls_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/no_dupes_reg_val.pkl')
 
