@@ -8,9 +8,9 @@ import re
 import torch
 import torch.nn as nn
 import torchvision
-from custom_detectors.custom_rcnn import CustomFasterRCNN
-from custom_detectors.custom_fcos import CustomFCOS
-from custom_detectors.custom_retinanet import CustomRetinaNet
+from custom_heads.custom_detectors.custom_rcnn import CustomFasterRCNN
+from custom_heads.custom_detectors.custom_fcos import CustomFCOS
+from custom_heads.custom_detectors.custom_retinanet import CustomRetinaNet
 from torchvision.models.detection.ssd import SSD
 from torchvision.models.detection.rpn import AnchorGenerator as RCNNAnchorGenerator
 from torchvision.models.detection.anchor_utils import AnchorGenerator
