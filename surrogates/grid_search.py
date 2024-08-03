@@ -23,6 +23,9 @@ from surrogates import surrogate_dataset as sd
 from torch.utils.data import DataLoader
 from torch.cuda.amp import autocast, GradScaler
 
+file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
+repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
+
 def engine(cfg, model_str, param_combo, combo_num):
 
     # pull surrogate train/eval config attributes
@@ -60,8 +63,8 @@ def engine(cfg, model_str, param_combo, combo_num):
 
 # prepare data for grid search
 def prepare_data(batch_size, metrics_subset):
-    train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_train.pkl')
-    val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_val.pkl')
+    train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_reg_train.pkl'))
+    val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_reg_val.pkl'))
     train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=metrics_subset)
     val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=metrics_subset, metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
@@ -273,7 +276,7 @@ def cat_results(name, model_str):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-cn', '--combo_num', type=int, required=True, default=None)
-    parser.add_argument('-cp', '--cfg_path', type=str, required=False, default='/home/tthakur9/precog-opt-grip/conf.toml')
+    parser.add_argument('-cp', '--cfg_path', type=str, required=False, default=os.path.join(repo_dir, 'conf.toml'))
     parser.add_argument('-m', '--model', type=str, required=True)
 
     # overwrite determines whether old csv files should be overwritten

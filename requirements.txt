@@ -1,0 +1,17 @@
+# python should be 3.12.3
+deap @ git+https://github.com/jasonzutty/deap.git 
+torch==2.3.1
+torchaudio==2.3.1
+torchvision==0.18.1
+scikit-learn==1.5.0
+opencv-python==4.10.0.84
+pillow==10.2.0
+scipy==1.13.1
+seaborn==0.13.2
+matplotlib==3.8.4
+pandas==2.2.1
+tqdm==4.66.4
+toml==0.10.2
+future==1.0.0
+toml==0.10.2
+numpy==1.26.4

@@ -17,6 +17,10 @@ from surrogates import surrogate_models as sm
 from torch.cuda.amp import autocast, GradScaler
 from sklearn.metrics import precision_score, recall_score, accuracy_score
 import numpy as np
+import os
+
+file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
+repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
 
 
 def prepare_data(batch_size, train_df, val_df):
@@ -232,27 +236,27 @@ def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir)
     return inferences
     
 
-# # TESTING SCRIPT
-# configs = toml.load('conf.toml')
-# surrogate_config = configs['surrogate']
-# binary_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_cls_train.pkl')
-# binary_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_cls_val.pkl')
-# # # Count the number of 1s and 0s in the 'label' column of the training DataFrame
-# # train_label_counts = binary_train_df['label'].value_counts()
-# # print(f"Training DataFrame label counts:\n{train_label_counts}")
-# # # Count the number of 1s and 0s in the 'label' column of the validation DataFrame
-# # val_label_counts = binary_val_df['label'].value_counts()
-# # print(f"Validation DataFrame label counts:\n{val_label_counts}")
-# model_dict = {
-#                 'name': 'fail_predictor_turbo',
-#                 'hidden_sizes': [512, 256],
-#                 'optimizer': optim.RMSprop,
-#                 'lr': 0.001,
-#                 'spline_order': 2,
-#                 'grid_size': 25,
-#                 'model': sm.KAN,
-#                 'output_size': 1,
-#                 'scheduler': optim.lr_scheduler.CosineAnnealingWarmRestarts,
-#                 'scale_noise': 0.5
-#             }
-# engine(surrogate_config, model_dict, binary_train_df, binary_val_df, '/home/tthakur9/precog-opt-grip/test')
+def main():
+    configs = toml.load('conf.toml')
+    surrogate_config = configs['surrogate']
+    binary_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_cls_train.pkl'))
+    binary_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_cls_val.pkl'))
+    # Count the number of 1s and 0s in the 'label' column of the training DataFrame
+    train_label_counts = binary_train_df['label'].value_counts()
+    print(f"Training DataFrame label counts:\n{train_label_counts}")
+    # Count the number of 1s and 0s in the 'label' column of the validation DataFrame
+    val_label_counts = binary_val_df['label'].value_counts()
+    print(f"Validation DataFrame label counts:\n{val_label_counts}")
+    model_dict = {
+                    'name': 'fail_predictor_3000',
+                    'dropout': 0.2,
+                    'hidden_sizes': [1024, 512, 256, 128],
+                    'optimizer': optim.Adam,
+                    'lr': 0.001,
+                    'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                    'model': sm.BinaryClassifier
+                }
+    engine(surrogate_config, model_dict, binary_train_df, binary_val_df, os.path.join(repo_dir, 'test'))
+
+if __name__ == "__main__":
+    main()
