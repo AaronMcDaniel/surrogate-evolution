@@ -62,6 +62,22 @@ class Pipeline:
         self.clean = clean
         self.logs_dir = os.path.join(self.output_dir, 'logs')
         self.attempt_resume = False
+        
+        # init file names
+        self.trust_file = os.path.join(self.output_dir, 'surrogate_trusts.csv')
+        self.checkpoint_path = os.path.join(self.output_dir, 'checkpoint')
+        self.holy_grail_file = os.path.join(self.output_dir, 'out.csv')
+        self.elites_file = os.path.join(self.output_dir,'elites.csv')
+        self.hall_of_fame_file = os.path.join(self.output_dir, 'hall_of_fame.csv')
+        self.surrogate_data_file = os.path.join(self.output_dir, 'surrogate_data.csv')
+        self.surrogate_data_extra_file = os.path.join(self.output_dir, 'surrogate_data_extra.csv')
+
+        self.latest_pop_file = os.path.join(self.checkpoint_path,'latest_pop.pkl')
+        self.elites_checkpoint_file = os.path.join(self.checkpoint_path,'elites.pkl')
+        self.hof_file = os.path.join(self.checkpoint_path,'hof.pkl')
+        self.reg_genome_scaler_file = os.path.join(self.checkpoint_path,'reg_genome_scaler.pkl')
+        self.cls_genome_scaler_file = os.path.join(self.checkpoint_path,'cls_genome_scaler.pkl')
+        self.sub_surrogate_selection_file = os.path.join(self.checkpoint_path,'sub_surrogate_selection.pkl')
 
         # Check if output location already exists
         if os.path.exists(self.output_dir):
@@ -119,7 +135,7 @@ class Pipeline:
         self.reg_genome_scaler = None # scaler used to transform genomes on regression training and inference
         self.cls_genome_scaler = None # scaler used to transform genomes on classification training and inference
         self.sub_surrogates = [0, 0, 0, 0] # list of sub-surrogate indices to use (SHOULD BE SAVED)
-        self.surrogate_trusts = [] # list to keep track of surrogate trust over the generations (SHOULD BE SAVED)
+        self.surrogate_trusts = {"gen":[], "cls_trust":[], "reg_trust":[]} # list to keep track of surrogate trust over the generations (SHOULD BE SAVED)
         self.pset = primitives.pset # primitive set
         self.gen_count = 1
         self.num_genome_fails = 0
@@ -158,7 +174,7 @@ class Pipeline:
     def initialize(self, seed_file = None):
         if self.attempt_resume:
             print('Attempting to resume...')
-            self.holy_grail = pd.read_csv(os.path.join(self.output_dir, 'out.csv'))
+            self.holy_grail = pd.read_csv(self.holy_grail_file)
             metric_columns = [col for col in self.holy_grail.columns if col not in ['gen', 'hash', 'genome']]
             self.holy_grail['metrics'] = self.holy_grail[metric_columns].apply(lambda row: row.to_dict(), axis=1)
             self.holy_grail = self.holy_grail.drop(columns=metric_columns)
@@ -173,29 +189,35 @@ class Pipeline:
                 del metrics['hash']
                 del metrics['genome']
                 self.current_population[genome['hash']] = {'genome': genome['genome'], 'metrics': metrics}
-            checkpoint_path = os.path.join(self.output_dir, 'checkpoint')
-            with open(os.path.join(checkpoint_path,'latest_pop.pkl'), 'rb') as f:
+            with open(self.latest_pop_file, 'rb') as f:
                 self.current_deap_pop = pickle.load(f)
             print('Found latest_pop.pkl!')
-            with open(os.path.join(checkpoint_path,'elites.pkl'), 'rb') as f:
+            with open(self.elites_checkpoint_file, 'rb') as f:
                 self.elite = pickle.load(f)
             print('Found elites.pkl!')
-            with open(os.path.join(checkpoint_path,'hof.pkl'), 'rb') as f:
+            with open(self.hof_file, 'rb') as f:
                 self.hall_of_fame = pickle.load(f)
             print('Found hof.pkl!')
             if self.surrogate_enabled:
-                with open(os.path.join(checkpoint_path,'reg_genome_scaler.pkl'), 'rb') as f:
+                with open(self.reg_genome_scaler_file, 'rb') as f:
                     self.reg_genome_scaler = pickle.load(f)
                 print('Found reg_genome_scaler.pkl!')
-                with open(os.path.join(checkpoint_path,'cls_genome_scaler.pkl'), 'rb') as f:
+                with open(self.cls_genome_scaler_file, 'rb') as f:
                     self.cls_genome_scaler = pickle.load(f)
                 print('Found cls_genome_scaler.pkl!')
-                with open(os.path.join(checkpoint_path,'sub_surrogate_selection.pkl'), 'rb') as f:
+                with open(self.sub_surrogate_selection_file, 'rb') as f:
                     self.sub_surrogates = pickle.load(f)
                 print('Found sub_surrogate_selection.pkl!')
-                df = pd.read_csv(os.path.join(checkpoint_path,'surrogate_trusts.csv'))
-                self.surrogate_trusts = df['trust'].to_list()
-                print('Found surrogate_trusts.csv!')
+                if os.path.exists(self.trust_file):
+                    df = pd.read_csv(self.trust_file)
+                    self.surrogate_trusts = {key: list(df[key]) for key in df if "unnamed" not in key.lower()}
+                    print('Found surrogate_trusts.csv!')
+                else:
+                    self.surrogate_trusts["gen"] = list(range(1, self.gen_count+1))
+                    self.surrogate_trusts["cls_trust"] = [0] * self.gen_count
+                    self.surrogate_trusts["reg_trust"] = [0] * self.gen_count
+                    print('Found no surrogate trust, assuming they are all 0')
+
         else:
             os.makedirs(self.surrogate_weights_dir)
             self.init_pop(seed_file)
@@ -237,8 +259,10 @@ class Pipeline:
         self.create_job_file(len(self.current_population), self.gen_count)
 
         # create this gen's log diretory
-        os.system(f'rm -rf {os.path.join(self.logs_dir, f'generation_{self.gen_count}')}')
-        os.makedirs(os.path.join(self.logs_dir, f'generation_{self.gen_count}'))
+        generation_string = f'generation_{self.gen_count}'
+        log_folder = os.path.join(self.logs_dir, generation_string)
+        os.system(f'rm -rf {log_folder}')
+        os.makedirs(log_folder)
 
         # dispatch job
         print('    Dispatching jobs...')
@@ -252,7 +276,6 @@ class Pipeline:
             #         metrics_df['gen'] = self.gen_count
             #         metrics_df['model'] = self.surrogate.models[i]['name']
             #         self.surrogate_data = pd.concat([self.surrogate_data, metrics_df], ignore_index=True)
-            # self.surrogate_trusts.append(self.surrogate.trust)
             
         print('    Waiting for jobs...')
         # wait for job to finish
@@ -391,7 +414,7 @@ class Pipeline:
         # implement growing sliding window till gen 7 (then use prev 5 gens as val and everything before that as train)
         name = 'surr_evolution'
         if self.gen_count == 2: # use train val split from gen 1 at gen 2
-            build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0.2, include_only=[1])
+            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0.2, include_only=[1])
             reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
             reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
             reg_subset_val_df = reg_val_df
@@ -399,23 +422,23 @@ class Pipeline:
             cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
             cls_subset_val_df = cls_val_df
         elif self.gen_count < 7: # grows here
-            build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=[1])
+            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=[1])
             reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
             cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
-            build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[1:])
+            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[1:])
             reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
             cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
-            build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
+            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
             reg_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
             cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
         else: # slides here
-            build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=seen_gens[:-5])
+            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=seen_gens[:-5])
             reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
             cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
-            build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-5:])
+            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-5:])
             reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
             cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
-            build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
+            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
             reg_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
             cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
             
@@ -460,6 +483,11 @@ class Pipeline:
         self.reg_genome_scaler = reg_genome_scaler
         self.surrogate.cls_trust, self.surrogate.reg_trust = cls_trust, reg_trust
         self.sub_surrogates = sub_surrogates
+
+        # log trusts
+        self.surrogate_trusts["gen"].append(self.gen_count)
+        self.surrogate_trusts["cls_trust"].append(self.surrogate.cls_trust)
+        self.surrogate_trusts["reg_trust"].append(self.surrogate.reg_trust)
         print('    Done!')
         return scores
 
@@ -500,8 +528,11 @@ class Pipeline:
             invalid_deap, valid_deap = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(unsustainable_pop.values()))
 
             # define sizes for stages of selection
-            num_tw_select = int(self.surrogate.trust * self.surrogate.cls_trust * self.population_size)
-            num_utw_select = int((1 - self.surrogate.trust) * self.surrogate.cls_trust * self.population_size)
+            # selection where we trust surrogate classification AND regression values
+            num_tw_select = int(self.surrogate.reg_trust * self.surrogate.cls_trust * self.population_size)
+            # selection where we trust surrogate classification AND NOT regression
+            num_utw_select = int((1 - self.surrogate.reg_trust) * self.surrogate.cls_trust * self.population_size)
+            # selection where we don't trust any of the surrogate's predictions
             num_rand_other_select = (self.population_size - num_tw_select - num_utw_select) 
             
             # create downselect function for trustwrothy surrogate ratio
@@ -586,48 +617,44 @@ class Pipeline:
     def log_info(self):
         print('Logging data...')
         # store current pop, elite pool, and hof as pickle files
-        checkpoint_path = os.path.join(self.output_dir, 'checkpoint') 
-        if not os.path.exists(checkpoint_path):
-            os.makedirs(checkpoint_path)
-        with open(os.path.join(checkpoint_path,'latest_pop.pkl'), 'wb') as f:
+        if not os.path.exists(self.checkpoint_path):
+            os.makedirs(self.checkpoint_path)
+        with open(self.latest_pop_file, 'wb') as f:
             pickle.dump(self.current_deap_pop, f)
-        with open(os.path.join(checkpoint_path,'elites.pkl'), 'wb') as f:
+        with open(self.elites_checkpoint_file, 'wb') as f:
             pickle.dump(self.elite_pool, f)
-        with open(os.path.join(checkpoint_path,'hof.pkl'), 'wb') as f:
+        with open(self.hof_file, 'wb') as f:
             pickle.dump(self.hall_of_fame, f)
         if self.surrogate_enabled:
             # store current genome scalers to be used for downselect
-            with open(os.path.join(checkpoint_path,'cls_genome_scaler.pkl'), 'wb') as f:
+            with open(self.cls_genome_scaler_file, 'wb') as f:
                 pickle.dump(self.cls_genome_scaler, f)
-            with open(os.path.join(checkpoint_path,'reg_genome_scaler.pkl'), 'wb') as f:
+            with open(self._reg_genome_scaler_file, 'wb') as f:
                 pickle.dump(self.reg_genome_scaler, f)
             # store current selected sub-surrogates
-            with open(os.path.join(checkpoint_path,'sub_surrogate_selection.pkl'), 'wb') as f:
+            with open(self.sub_surrogate_selection_file, 'wb') as f:
                 pickle.dump(self.sub_surrogates, f)
         # store elite pool and hof history as pickle files
-        with open(os.path.join(self.output_dir,'elites_history.pkl'), 'wb') as f:
+        with open(self.elites_history_file, 'wb') as f:
             pickle.dump(self.elite_pool_history, f)
-        with open(os.path.join(self.output_dir,'hof_history.pkl'), 'wb') as f:
+        with open(self.hof_history_file, 'wb') as f:
             pickle.dump(self.hof_history, f)
         # store holy grail
         holy_grail_expanded = self.holy_grail.join(pd.json_normalize(self.holy_grail['metrics'])).drop('metrics', axis='columns')
-        holy_grail_expanded.to_csv(f'{self.output_dir}/out.csv', index=False)
+        holy_grail_expanded.to_csv(self.holy_grail_file, index=False)
         # get all entries from holy grail that share the same hashes as the elite pool members
         elites_df = holy_grail_expanded[holy_grail_expanded['hash'].isin([self.__get_hash(str(genome)) for genome in self.elite_pool])]
-        elites_df.to_csv(f'{self.output_dir}/elites.csv', index=False)
+        elites_df.to_csv(elites_file, index=False)
         # get all entries from holy grail that share the same hashes as the hall of fame members
         hof_df = holy_grail_expanded[holy_grail_expanded['hash'].isin([self.__get_hash(str(genome)) for genome in self.hall_of_fame.items])]
-        hof_df.to_csv(f'{self.output_dir}/hall_of_fame.csv', index=False)
+        hof_df.to_csv(hall_of_fame_file, index=False)
         if self.surrogate_enabled:
             # write surrogate information to file
-            self.surrogate_data.to_csv(f'{self.output_dir}/surrogate_data_extra.csv', index=False)
-            self.surrogate_mse_scores.to_csv(f'{self.output_dir}/surrogate_data.csv', index=False)
+            self.surrogate_data.to_csv(self.surrogate_data_extra_file, index=False)
+            self.surrogate_mse_scores.to_csv(self.surrogate_data_file, index=False)
             # write trust info
-            data = [{'gen': g, 'trust': t} for g, t in zip(list(range(1, self.gen_count+1)), self.surrogate_trusts)]
-            with open(f'{self.output_dir}/surrogate_trusts.csv', mode='w', newline='') as file:
-                writer = csv.DictWriter(file, fieldnames=['gen', 'trust'])
-                writer.writeheader()
-                writer.writerows(data)
+            trust_df = pd.DataFrame(self.surrogate_trusts)
+            trust_df.to_csv(self.trust_file)
                 
         print('Done!')
 

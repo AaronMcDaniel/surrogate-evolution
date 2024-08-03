@@ -32,6 +32,9 @@ while GaPipeline.gen_count <= num_gen:
     if not GaPipeline.attempt_resume:
         GaPipeline.evaluate_gen()
         num_evals += 1
+    else:
+        # just train the surrogate, don't evaluate generation on resume
+        all_subsurrogate_metrics = GaPipeline.prepare_surrogate()
     if not GaPipeline.attempt_resume:
         elites = GaPipeline.update_elite_pool() # elites are selected from existing elite pool and current pop
     else :

@@ -13,8 +13,9 @@ conf_file=""
 num_generations=1
 force_wipe=""
 clear_dir=""
+conda_environment="myenv"  # default value
 
-while getopts ":o:c:n:fr" opt; do
+while getopts ":o:c:n:e:fr" opt; do
   case $opt in
     o) output_dir="$OPTARG"
     ;;
@@ -22,10 +23,13 @@ while getopts ":o:c:n:fr" opt; do
     ;;
     n) num_generations="$OPTARG"
     ;;
+    e) conda_environment="$OPTARG"
+    ;;
     f) force_wipe="-f"
     ;;
     r) clear_dir="-r"
     ;;
+
     \?) echo "Invalid option -$OPTARG" >&2
         exit 1
     ;;
@@ -36,4 +40,4 @@ module load anaconda3/2023.07
 module load cuda/12.1.1
 
 # Run the Python script with the parsed arguments
-conda run -n myenv --no-capture-output python -u main.py -o "$output_dir" -conf "$conf_file" -n "$num_generations" $force_wipe $clear_dir
+conda run -n ${conda_environment} --no-capture-output python -u main.py -o "$output_dir" -conf "$conf_file" -n "$num_generations" $force_wipe $clear_dir
