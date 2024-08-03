@@ -17,6 +17,9 @@ from torch.utils.data import DataLoader
 from surrogates import surrogate_dataset as sd
 import pickle
 
+file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
+repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
+
 
 def prepare_data(batch_size, metrics_subset):
     train_df = pd.read_pickle('surrogate_dataset/reg_train_dataset.pkl')
@@ -122,14 +125,14 @@ def plot_preds(predictions, truths, metric_names, save_folder='plots'):
 
 def store_data(model_str, metrics_df):
     #metrics_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/surrogate_metrics.csv'
-    metrics_out = f'/home/eharpster3/precog-opt-grip/analysis/kan/{model_str}/surrogate_metrics.csv'
+    metrics_out = os.path.join(repo_dir, f'analysis/kan/{model_str}/surrogate_metrics.csv')
     os.makedirs(os.path.dirname(metrics_out), exist_ok=True)
     metrics_df.to_csv(metrics_out, index=False)
 
 
 def save_model_weights(model_str, model):
     #weights_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/{model_str}/weights.pth'
-    weights_out = f'/home/eharpster3/precog-opt-grip/analysis/kan{model_str}/weights.pth'
+    weights_out = os.path.join(repo_dir, f'analysis/kan{model_str}/weights.pth')
     os.makedirs(os.path.dirname(weights_out), exist_ok=True)
     torch.save(model.state_dict(), weights_out)
 

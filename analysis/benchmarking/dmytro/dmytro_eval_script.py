@@ -7,7 +7,11 @@ import numpy
 import torch
 import tqdm
 import sys
-sys.path.insert(0, '/home/eharpster3/precog-opt-grip')
+
+# get repo dir
+file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
+repo_dir = os.path.abspath(os.path.join(file_directory, "../../.."))
+sys.path.insert(0, repo_dir)
 import aot_dataset as data
 from torch.utils.data import DataLoader
 import numpy as np
@@ -15,7 +19,6 @@ import pandas as pd
 from tqdm import tqdm
 import torch
 import cv2
-import os
 import utils as u
 import criterion as c
 from eval import process_images, process_targets, process_preds_truths, create_metrics_df

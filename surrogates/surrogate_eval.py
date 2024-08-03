@@ -17,6 +17,10 @@ import eval as e
 from surrogates import surrogate_models as sm
 from torch.cuda.amp import autocast, GradScaler
 import numpy as np
+import os
+
+file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
+repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
 
 
 def prepare_data(model_dict, batch_size, train_df, val_df):
@@ -273,22 +277,25 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
     return epoch_metrics
 
 
-# # TESTING
-# config_path = '/home/tthakur9/precog-opt-grip/conf.toml'
-# configs = toml.load(config_path)
-# cfg = configs['surrogate']
-# reg_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_train.pkl')
-# reg_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_reg_val.pkl')
-# model_dict1 = {
-#                 'name': 'mlp_best_overall',
-#                 'dropout': 0.2,
-#                 'hidden_sizes': [2048, 1024, 512],
-#                 'optimizer': optim.Adam,
-#                 'lr': 0.1,
-#                 'scheduler': optim.lr_scheduler.StepLR,
-#                 'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-#                 'validation_subset': [0, 4, 11],
-#                 'model': sm.MLP
-#             }
+def main():
+    config_path = os.path.join(repo_dir, 'conf.toml')
+    configs = toml.load(config_path)
+    cfg = configs['surrogate']
+    reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_reg_train.pkl'))
+    reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_reg_val.pkl'))
+    model_dict1 = {
+                    'name': 'mlp_best_overall',
+                    'dropout': 0.2,
+                    'hidden_sizes': [2048, 1024, 512],
+                    'optimizer': optim.Adam,
+                    'lr': 0.1,
+                    'scheduler': optim.lr_scheduler.StepLR,
+                    'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                    'validation_subset': [0, 4, 11],
+                    'model': sm.MLP
+                }
 
-# print(engine(cfg, model_dict1, reg_train_df, reg_val_df, weights_dir='/home/tthakur9/precog-opt-grip/test'))
+    print(engine(cfg, model_dict1, reg_train_df, reg_val_df, weights_dir=os.path.join(repo_dir, 'test')))
+
+if __name__ == "__main__":
+    main()
