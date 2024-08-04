@@ -15,4 +15,4 @@ module load cuda/12.2.2
 conda_env=${1:-"grip"}
 dataset_name=${2:-"final_baseline_unseeded_surrogate_evolution"}
 
-conda run -n ${conda_env} --no-capture-output python -u -m surrogates.grid_search -cn $((SLURM_ARRAY_TASK_ID)) -o -n ${dataset_name}
+conda run -n ${conda_env} --no-capture-output python -u -m surrogates.cls_grid_search -cn $((SLURM_ARRAY_TASK_ID)) -o -n ${dataset_name}
