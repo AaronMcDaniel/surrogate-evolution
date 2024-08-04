@@ -40,4 +40,4 @@ module load anaconda3/2023.07
 module load cuda/12.1.1
 
 # Run the Python script with the parsed arguments
-conda run -n ${conda_environment} --no-capture-output python -u main.py -o "$output_dir" -conf "$conf_file" -n "$num_generations" $force_wipe $clear_dir
+conda run -n ${conda_environment} --no-capture-output python -u main.py -c ${conda_environment} -o "$output_dir" -conf "$conf_file" -n "$num_generations" $force_wipe $clear_dir

@@ -56,12 +56,14 @@ def ensure_deap_classes(objectives, codec_config):
 
 
 class Pipeline:
-    def __init__(self, output_dir, config_dir, force_wipe = False, clean = False) -> None:
+    def __init__(self, output_dir, config_dir, force_wipe = False, clean = False, conda="myenv") -> None:
+        global ENV_NAME
         self.output_dir = output_dir
         self.force_wipe = force_wipe
         self.clean = clean
         self.logs_dir = os.path.join(self.output_dir, 'logs')
         self.attempt_resume = False
+        ENV_NAME = conda
         
         # init file names
         self.trust_file = os.path.join(self.output_dir, 'surrogate_trusts.csv')
@@ -172,7 +174,7 @@ class Pipeline:
 
 
     def initialize(self, seed_file = None):
-        if self.attempt_resume:
+        if self.attempt_resume and os.path.exists(self.holy_grail_file):
             print('Attempting to resume...')
             self.holy_grail = pd.read_csv(self.holy_grail_file)
             metric_columns = [col for col in self.holy_grail.columns if col not in ['gen', 'hash', 'genome']]
@@ -297,7 +299,8 @@ class Pipeline:
                     data = dataframe.nlargest(1, self.best_epoch_criteria[0]).squeeze().to_dict()
                 else:
                     data = dataframe.nsmallest(1, self.best_epoch_criteria[0]).squeeze().to_dict()
-                del data['epoch_num']
+                if 'epoch_num' in data:
+                    del data['epoch_num']
                 # update current population metrics
                 self.current_population[hash]['metrics'] = data
                 # update holy grail dataframe
@@ -614,6 +617,11 @@ class Pipeline:
         return mutants
 
 
+    def __get_hash(self, s):
+        layer_list = self.codec.get_layer_list(s)
+        return hashlib.shake_256(str(layer_list).encode()).hexdigest(5)
+
+
     def log_info(self):
         print('Logging data...')
         # store current pop, elite pool, and hof as pickle files
@@ -629,25 +637,27 @@ class Pipeline:
             # store current genome scalers to be used for downselect
             with open(self.cls_genome_scaler_file, 'wb') as f:
                 pickle.dump(self.cls_genome_scaler, f)
-            with open(self._reg_genome_scaler_file, 'wb') as f:
+            with open(self.reg_genome_scaler_file, 'wb') as f:
                 pickle.dump(self.reg_genome_scaler, f)
             # store current selected sub-surrogates
             with open(self.sub_surrogate_selection_file, 'wb') as f:
                 pickle.dump(self.sub_surrogates, f)
-        # store elite pool and hof history as pickle files
-        with open(self.elites_history_file, 'wb') as f:
-            pickle.dump(self.elite_pool_history, f)
-        with open(self.hof_history_file, 'wb') as f:
-            pickle.dump(self.hof_history, f)
+        # # store elite pool and hof history as pickle files
+        # with open(self.elites_history_file, 'wb') as f:
+        #     pickle.dump(self.elite_pool_history, f)
+        # with open(self.hof_history_file, 'wb') as f:
+        #     pickle.dump(self.hof_history, f)
         # store holy grail
         holy_grail_expanded = self.holy_grail.join(pd.json_normalize(self.holy_grail['metrics'])).drop('metrics', axis='columns')
         holy_grail_expanded.to_csv(self.holy_grail_file, index=False)
         # get all entries from holy grail that share the same hashes as the elite pool members
-        elites_df = holy_grail_expanded[holy_grail_expanded['hash'].isin([self.__get_hash(str(genome)) for genome in self.elite_pool])]
-        elites_df.to_csv(elites_file, index=False)
+        elite_hashes = [self.__get_hash(str(genome)) for genome in self.elite_pool]
+        elites_df = holy_grail_expanded[holy_grail_expanded['hash'].isin(elite_hashes)]
+        elites_df.to_csv(self.elites_file, index=False)
         # get all entries from holy grail that share the same hashes as the hall of fame members
-        hof_df = holy_grail_expanded[holy_grail_expanded['hash'].isin([self.__get_hash(str(genome)) for genome in self.hall_of_fame.items])]
-        hof_df.to_csv(hall_of_fame_file, index=False)
+        hof_hashes = [self.__get_hash(str(genome)) for genome in self.hall_of_fame.items]
+        hof_df = holy_grail_expanded[holy_grail_expanded['hash'].isin(hof_hashes)]
+        hof_df.to_csv(self.hall_of_fame_file, index=False)
         if self.surrogate_enabled:
             # write surrogate information to file
             self.surrogate_data.to_csv(self.surrogate_data_extra_file, index=False)
@@ -662,11 +672,6 @@ class Pipeline:
     def step_gen(self):
         self.gen_count += 1
         self.attempt_resume = False
-
-
-    def __get_hash(self, s):
-        layer_list = self.codec.get_layer_list(s)
-        return hashlib.shake_256(str(layer_list).encode()).hexdigest(5)
     
 
     def clear_outputs(self):

@@ -5,6 +5,12 @@ Launches an evolution.
 
 import argparse
 from pipeline import Pipeline
+import numpy as np
+import random
+
+def set_seed(seed_val):
+    np.random.seed(seed_val)
+    random.seed(seed_val)
 
 
 parser = argparse.ArgumentParser()
@@ -14,6 +20,7 @@ parser.add_argument('-f', '--force', action='store_true', help='Force overwrite 
 parser.add_argument('-n', '--num_generations', type=int, required=True, help='The number of generations to run the evolution for')
 parser.add_argument('-r', '--remove', action='store_true', help='Cleans output directory of non-pareto-optimal individual weights')
 parser.add_argument('-conf', '--configuration', type=str, required=True, help='The path to the configuration file')
+parser.add_argument('-c', '--conda', type=str, required=True, help='The conda environment name to use for running')
 
 args = parser.parse_args()
 
@@ -22,12 +29,16 @@ config_dir = args.configuration
 force_flag = args.force
 num_gen = args.num_generations
 clean = args.remove
+conda = args.conda
 
 num_evals = 0
 
-GaPipeline = Pipeline(output_dir, config_dir, force_flag, clean)
+
+GaPipeline = Pipeline(output_dir, config_dir, force_flag, clean, conda=conda)
+set_seed(100 + 0)
 GaPipeline.initialize()
 while GaPipeline.gen_count <= num_gen:
+    set_seed(100 + int(GaPipeline.gen_count))
     print(f'---------- Generation {GaPipeline.gen_count} ----------')
     if not GaPipeline.attempt_resume:
         GaPipeline.evaluate_gen()
