@@ -114,8 +114,12 @@ class Pipeline:
         self.surrogate_weights_dir = os.path.join(output_dir, 'surrogate_weights')
         self.surrogate_metrics = surrogate_config['surrogate_metrics']
         self.sub_surrogate_sel_strat = surrogate_config['sub_surrogate_sel_strat']
-        self.surrogate_pretrained = surrogate_config['pretrained']
-        self.surrogate_pretrained_dir = surrogate_config['pretrained_dir']
+        if 'pretrained_dir' in surrogate_config and 'pretrained' in surrogate_config:
+            self.surrogate_pretrained = surrogate_config['pretrained']
+            self.surrogate_pretrained_dir = surrogate_config['pretrained_dir']
+        else:
+            self.surrogate_pretrained = False
+            self.surrogate_pretrained_dir = None
         self.objectives = pipeline_config['objectives']
         self.selection_method_trusted = pipeline_config['selection_method_trusted']
         self.selection_method_untrusted = pipeline_config['selection_method_untrusted']
@@ -288,7 +292,7 @@ class Pipeline:
 
         # dispatch job
         print('    Dispatching jobs...')
-        os.popen(f"sbatch {JOB_NAME}.job" )
+        os.popen(f"sbatch {JOB_NAME}_{self.gen_count}.job" )
         if self.surrogate_enabled:
             print('    Preparing surrogate...')
             all_subsurrogate_metrics = self.prepare_surrogate()
@@ -322,7 +326,8 @@ class Pipeline:
                 for g in self.current_deap_pop:
                     if str(g) == genome['genome']:
                         g.fitness.values = tuple([data[key] for key in self.objectives.keys()])
-            except FileNotFoundError:
+            except FileNotFoundError as e:
+                import pdb; pdb.set_trace()
                 # in the case the file isn't found we generate a file with bad metrics and then use that
                 print(f'    Couldn\'t find individual {hash} evaluation... Assuming genome failure and assigning bad metrics')
                 self.num_genome_fails += 1
@@ -754,5 +759,5 @@ module load cuda/12.1.1
 # Execute the Python script with SLURM_ARRAY_TASK_ID as argument. Script also has optional args -i and -o to specify input file and output directory respectively
 conda run -n {ENV_NAME} --no-capture-output python -u {SCRIPT} $((SLURM_ARRAY_TASK_ID)) -i {self.output_dir}/eval_inputs/eval_input_gen{gen_num}.csv -o {self.output_dir}
 """
-        with open(f'{JOB_NAME}.job', 'w') as fh:
+        with open(f'{JOB_NAME}_{gen_num}.job', 'w') as fh:
             fh.write(batch_script)

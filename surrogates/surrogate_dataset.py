@@ -6,6 +6,11 @@ Functions for building surrogate datasets and dataset classes used for surrogate
 import argparse
 import math
 import os
+import sys
+file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
+repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
+sys.path.append(repo_dir)
+
 import random
 import numpy as np
 import pandas as pd
@@ -16,6 +21,8 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler, RobustScaler
 import pickle
+import tqdm
+
 
 
 class SurrogateDataset(Dataset):
@@ -53,7 +60,7 @@ class SurrogateDataset(Dataset):
 
     # returns num samples in dataset
     def __len__(self):
-        return len(self.df)
+        return len(self.genomes)
     
     # retrieve genome, metrics at specific index
     def __getitem__(self, i):
@@ -104,6 +111,9 @@ def build_dataset(
         metrics='uw_val_epoch_loss,iou_loss,giou_loss,diou_loss,ciou_loss,center_loss,size_loss,obj_loss,precision,recall,f1_score,average_precision', 
         exclude=[], include_only=None, val_ratio=0.3, seed=0
     ):
+
+    os.makedirs(outdir, exist_ok=True)
+
     codec = Codec(num_classes=7)
     metric_headings = metrics.split(',')
     excluded_gens = exclude
@@ -117,16 +127,19 @@ def build_dataset(
 
     data = pd.read_csv(infile)
     data = data.to_dict('records')
+    data = tqdm.tqdm(data)
 
     all_reg_data = []
     all_cls_data = []
+    print(f"Building dataset from {len(data)} individuals")
+
 
     for line in data:
         genome_hash = line['hash']
         gen = line['gen']
         genome = line['genome']
 
-        if gen in excluded_gens or (include_only is not None and gen not in include_only):
+        if gen in excluded_gens or (include_only is not None and len(include_only) > 0 and gen not in include_only):
             continue
         
         metrics_path = os.path.join(working_dir, f'generation_{gen}', genome_hash, 'metrics.csv')
@@ -294,8 +307,8 @@ def find_bad_individuals(df, bad_thresh=100000):
 
 def merge_csv_to_dataset(
         files_to_merge = [
-            '/home/tthakur9/precog-opt-grip/surrogate_dataset/baseline_evolution_complete_dataset.pkl',
-            '/home/tthakur9/precog-opt-grip/surrogate_dataset/train_dataset.pkl'
+            os.path.join(repo_dir, 'surrogate_dataset/baseline_evolution_complete_dataset.pkl'),
+            os.path.join(repo_dir, 'surrogate_dataset/train_dataset.pkl')
         ],
         output_file='/surrogate_dataset/merged_train_dataset.pkl'
     ):
@@ -307,13 +320,41 @@ def merge_csv_to_dataset(
     comb_df.to_pickle(output_file)
 
 
-# TESTING SCRIPT
-# build_dataset(name='no_dupes', infile='/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv', working_dir='/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution', val_ratio=0.3)
-reg_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/no_dupes_reg_train.pkl')
-reg_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/no_dupes_reg_val.pkl')
-reg_train_ds = SurrogateDataset(reg_train_df, 'train', None)
-reg_val_ds = SurrogateDataset(reg_val_df, 'val', None, reg_train_ds.metrics_scaler, reg_train_ds.genomes_scaler)
+def main():
 
-# cls_train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/no_dupes_cls_train.pkl')
-# cls_val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/no_dupes_reg_val.pkl')
+
+    import argparse
+    parser = argparse.ArgumentParser("Generates datasets for training surrogates")
+    parser.add_argument('name', type=str, help='The prefix added to generated .pkl dataset files')
+    parser.add_argument('--working-dir', type=str, default='/gv1/projects/GRIP_Precog_Opt/outputs', help='The working directory for the evolution to turn into a dataset')
+    parser.add_argument('--infile', type=str, default=None, help='The input file, which is an out.csv file from a previous run. Defaults to the out.csv file in the working-dir')
+    parser.add_argument('--outdir', type=str, default='surrogate_dataset', help='The directory to save the surrogate dataset to')
+    parser.add_argument('--metrics', type=str, default='uw_val_epoch_loss,iou_loss,giou_loss,diou_loss,ciou_loss,center_loss,size_loss,obj_loss,precision,recall,f1_score,average_precision', help='Comma seperated list of metric header names in the out.csv file')
+    parser.add_argument('--exclude', type=str, default='', help='Comma seperated generation numbers to exclude from the dataset, corresponding to the gen field in the out.csv file')
+    parser.add_argument('--include-only', type=str, default='', help='Comma seperated generation numbers to exclusively include from the dataset, corresponding to the gen field in the out.csv file')
+    parser.add_argument('--val-ratio', type=float, default=0.3, help='The proportion of the dataset to allocate to the validation set')
+    parser.add_argument('--seed', type=int, default=0, help='The random seed used for generating and shuffling the dataset')
+    my_args = parser.parse_args()
+
+    exclude = [int(item) for item in my_args.exclude.split(',') if len(item) > 0]
+    include_only = [int(item) for item in my_args.include_only.split(',') if len(item) > 0]
+    if my_args.infile is None:
+        my_args.infile = os.path.join(my_args.working_dir, 'out.csv')
+
+    build_dataset(my_args.name,
+        infile=my_args.infile,
+        working_dir=my_args.working_dir, 
+        outdir=my_args.outdir, 
+        metrics=my_args.metrics, 
+        exclude=exclude, include_only=include_only, val_ratio=my_args.val_ratio, seed=my_args.seed)
+
+    reg_train_df = pd.read_pickle(os.path.join(my_args.outdir, f'{my_args.name}_reg_train.pkl'))
+    reg_val_df = pd.read_pickle(os.path.join(my_args.outdir, f'{my_args.name}_reg_val.pkl'))
+    reg_train_ds = SurrogateDataset(reg_train_df, 'train', None)
+    reg_val_ds = SurrogateDataset(reg_val_df, 'val', None, reg_train_ds.metrics_scaler, reg_train_ds.genomes_scaler)
+    cls_train_df = pd.read_pickle(os.path.join(my_args.outdir, f'{my_args.name}_cls_train.pkl'))
+    cls_val_df = pd.read_pickle(os.path.join(my_args.outdir, f'{my_args.name}_reg_val.pkl'))
+
+if __name__ == "__main__":
+    main()
 

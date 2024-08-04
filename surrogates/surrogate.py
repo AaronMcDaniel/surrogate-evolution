@@ -25,6 +25,10 @@ from surrogates import classifier_surrogate_eval as cse
 from surrogates import surrogate_eval as se
 from surrogates import surrogate_eval as rse
 import random
+import os
+
+file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
+repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
 
 
 def ensure_deap_classes(objectives, codec_config):
@@ -568,40 +572,41 @@ class Surrogate():
         return max_trust
     
     
-# # TESTING SCRIPT
+def main():
+    surrogate = Surrogate('conf.toml', os.path.join(repo_dir, 'test/weights/surrogate_weights'))
+    reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_reg_train.pkl'))
+    reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_reg_val.pkl'))
+    cls_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_cls_train.pkl'))
+    cls_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_cls_val.pkl'))
+    # inference_models = [0, 5, 6, 7]
+    cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
+    reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train')
+    cls_genome_scaler = cls_train_dataset.genomes_scaler
+    reg_genome_scaler = reg_train_dataset.genomes_scaler
+    print(surrogate.optimize_trust(cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df))
+    # print(surrogate.set_fitnesses(inference_models, cls_genome_scaler, reg_genome_scaler, individuals))
 
-# TESTING SCRIPT
-# surrogate = Surrogate('conf.toml', 'test/weights/surrogate_weights')
-# reg_train_df = pd.read_pickle('surrogate_dataset/us_surr_reg_train.pkl')
-# reg_val_df = pd.read_pickle('surrogate_dataset/us_surr_reg_val.pkl')
-# cls_train_df = pd.read_pickle('surrogate_dataset/us_surr_cls_train.pkl')
-# cls_val_df = pd.read_pickle('surrogate_dataset/us_surr_cls_val.pkl')
-# # inference_models = [0, 5, 6, 7]
-# cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
-# reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train')
-# cls_genome_scaler = cls_train_dataset.genomes_scaler
-# reg_genome_scaler = reg_train_dataset.genomes_scaler
-# print(surrogate.optimize_trust(cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df))
-# # print(surrogate.set_fitnesses(inference_models, cls_genome_scaler, reg_genome_scaler, individuals))
+    print(surrogate.calc_ensemble_trust([4, 5, 6], reg_genome_scaler, individuals))
+    print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
+    print(surrogate.calc_trust(-2, genome_scaler, individuals))
 
-# print(surrogate.calc_ensemble_trust([4, 5, 6], reg_genome_scaler, individuals))
-# print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
-# print(surrogate.calc_trust(-2, genome_scaler, individuals))
+    surrogate = Surrogate('conf.toml', os.path.join(repo_dir, 'test/weights/surrogate_weights'))
+    cls_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_cls_train.pkl'))
+    cls_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_cls_val.pkl'))
+    reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_reg_train.pkl'))
+    reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_reg_val.pkl'))
+    cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
+    reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
+    cls_genome_scaler = cls_train_dataset.genomes_scaler
+    reg_genome_scaler = reg_train_dataset.genomes_scaler
+    scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df)
+    print(scores)
+    
+    
+    print(surrogate.calc_trust([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df))
+    print(surrogate.set_fitnesses([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, individuals))
+    print(surrogate.calc_ensemble_trust([5, 6, 7], reg_genome_scaler, individuals))
+    print(surrogate.calc_trust(-2, genome_scaler, individuals))
 
-# surrogate = Surrogate('conf.toml', 'test/weights/surrogate_weights')
-# cls_train_df = pd.read_pickle('surrogate_dataset/us_surr_cls_train.pkl')
-# cls_val_df = pd.read_pickle('surrogate_dataset/us_surr_cls_val.pkl')
-# reg_train_df = pd.read_pickle('surrogate_dataset/us_surr_reg_train.pkl')
-# reg_val_df = pd.read_pickle('surrogate_dataset/us_surr_reg_val.pkl')
-# cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
-# reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
-# cls_genome_scaler = cls_train_dataset.genomes_scaler
-# reg_genome_scaler = reg_train_dataset.genomes_scaler
-# scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df)
-# print(scores)
-# 
-# 
-# print(surrogate.calc_trust([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df))
-# print(surrogate.set_fitnesses([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, individuals))
-# print(surrogate.calc_ensemble_trust([5, 6, 7], reg_genome_scaler, individuals))
-# print(surrogate.calc_trust(-2, genome_scaler, individuals))
+if __name__ == "__main__":
+    main()

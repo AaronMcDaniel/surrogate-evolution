@@ -407,13 +407,11 @@ class Codec:
         params = layer_vals[1:]
         enum_dict ={}
         # these are the params in optim, sched, and head that have enums, and they print the words in the layer_info rather than the number which requires being handled special
-        match name:
-            case 'OneCycleLR':
-                params[self.enum_dict[name]['AnnealStrategy']] = primitives.AnnealStrategy[params[self.enum_dict[name]['AnnealStrategy']]].value
-           
-            case 'CyclicLR':
-                params[self.enum_dict[name]['CyclicLRMode']] = primitives.CyclicLRMode[params[self.enum_dict[name]['CyclicLRMode']]].value
-                params[self.enum_dict[name]['CyclicLRScaleMode']] = primitives.CyclicLRScaleMode[params[self.enum_dict[name]['CyclicLRScaleMode']]].value
+        if name == 'OneCycleLR':
+            params[self.enum_dict[name]['AnnealStrategy']] = primitives.AnnealStrategy[params[self.enum_dict[name]['AnnealStrategy']]].value
+        elif name == 'CyclicLR':
+            params[self.enum_dict[name]['CyclicLRMode']] = primitives.CyclicLRMode[params[self.enum_dict[name]['CyclicLRMode']]].value
+            params[self.enum_dict[name]['CyclicLRScaleMode']] = primitives.CyclicLRScaleMode[params[self.enum_dict[name]['CyclicLRScaleMode']]].value
                 
         params = self.inject_onehot2(params, self.enum_dict[name])
         layer_type = self.param_mapping[name]

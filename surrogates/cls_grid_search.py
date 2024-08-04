@@ -6,6 +6,11 @@ import inspect
 import itertools
 import argparse
 import os
+import sys
+file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
+repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
+sys.path.append(repo_dir)
+
 import pickle
 import toml
 from tqdm import tqdm
@@ -25,14 +30,16 @@ from torch.utils.data import DataLoader
 from torch.cuda.amp import autocast, GradScaler
 from sklearn.metrics import precision_score, recall_score, accuracy_score
 
-def engine(cfg, model_str, param_combo, combo_num):
+classifier_dir = '/gv1/projects/GRIP_Precog_Opt/surrogates/classifiers'
+
+def engine(cfg, model_str, param_combo, combo_num, **kwargs):
 
     # pull surrogate train/eval config attributes
     num_epochs = cfg['surrogate_train_epochs']
     batch_size = cfg['surrogate_batch_size']
 
     # define subset of metrics to train on and prepare data accordingly
-    train_loader, val_loader, train_dataset = prepare_data(batch_size)
+    train_loader, val_loader, train_dataset = prepare_data(batch_size, **kwargs)
 
     # only use cpu for grid search
     device = torch.device('cpu')
@@ -59,9 +66,9 @@ def engine(cfg, model_str, param_combo, combo_num):
 
 
 # prepare data for grid search
-def prepare_data(batch_size):
-    train_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_cls_train.pkl')
-    val_df = pd.read_pickle('/home/tthakur9/precog-opt-grip/surrogate_dataset/us_surr_cls_val.pkl')
+def prepare_data(batch_size, name='us_surr'):
+    train_df = pd.read_pickle(os.path.join(repo_dir, f'surrogate_dataset/{name}_cls_train.pkl'))
+    val_df = pd.read_pickle(os.path.join(repo_dir, f'surrogate_dataset/{name}_cls_val.pkl'))
     train_dataset = sd.ClassifierSurrogateDataset(train_df, mode='train')
     val_dataset = sd.ClassifierSurrogateDataset(val_df, mode='val', genomes_scaler=train_dataset.genomes_scaler)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
@@ -113,7 +120,7 @@ def build_configuration(model_str, device, param_combo):
 
 # stores metrics csv file 
 def store_data(model_str, combo_num, metrics_df):
-    metrics_out = f'/gv1/projects/GRIP_Precog_Opt/surrogates/classifiers/{model_str}/gs_combos/c{combo_num}_metrics.csv'
+    metrics_out = os.path.join(classifier_dir, f'{model_str}/gs_combos/c{combo_num}_metrics.csv')
     os.makedirs(os.path.dirname(metrics_out), exist_ok=True)
     metrics_df.to_csv(metrics_out, index=False)
 
@@ -249,7 +256,7 @@ def create_metrics_df():
 
 # uses model string to concatenate grid search resulting metric csvs to one master file
 def cat_results(name, model_str):
-    search_dir = f'/gv1/projects/GRIP_Precog_Opt/surrogates/classifiers/{model_str}/gs_combos'
+    search_dir = os.path.join(classifier_dir, f'{model_str}/gs_combos')
     master_df = create_metrics_df()
 
     # change range as necessary for different grid search runs
@@ -260,7 +267,7 @@ def cat_results(name, model_str):
         except:
             continue
         master_df = pd.concat([master_df, metrics_df], ignore_index=True)
-    out_path = f'/gv1/projects/GRIP_Precog_Opt/surrogates/classifiers/{model_str}/{name}_gs.csv'
+    out_path = os.path.join(classifier_dir, f'{model_str}/{name}_gs.csv')
     master_df.to_csv(out_path, index=False)
     return None
 
@@ -268,62 +275,74 @@ def cat_results(name, model_str):
 # cat_results('cls_surr', 'KAN')
 
 
-# if __name__ == '__main__':
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument('-cn', '--combo_num', type=int, required=True, default=None)
-#     parser.add_argument('-cp', '--cfg_path', type=str, required=False, default='/home/tthakur9/precog-opt-grip/conf.toml')
-#     parser.add_argument('-m', '--model', type=str, required=True)
+if __name__ == '__main__':
+    mlp_param_grid = {
+            'model': [sm.MLP],
+            'output_size': [1],
+            'dropout': [0.0, 0.2, 0.4, 0.6],
+            'hidden_sizes': [[512, 256], [1024, 512], [2048, 1024, 512]],
+            'optimizer': [optim.SGD, optim.Adam, optim.RMSprop, optim.Adagrad],
+            'lr': [0.0001, 0.001, 0.01, 0.1],
+            'scheduler': [lr.StepLR, lr.MultiStepLR, lr.CosineAnnealingLR, lr.ReduceLROnPlateau],
+    }
+    kan_param_grid = {
+                'hidden_sizes': [[512, 256], [2048, 1024, 512], [2048], []],
+                'optimizer': [optim.SGD, optim.RMSprop, optim.AdamW, optim.Adagrad],
+                'lr': [0.001, 0.01, 0.1, 0.0001],
+                'scheduler': [lr.StepLR, lr.CosineAnnealingWarmRestarts, lr.ReduceLROnPlateau],
+                'spline_order': [1, 2, 3, 4, 5],
+                'grid_size': [1, 5, 10, 25],
+                'model': [sm.KAN],
+                'output_size': [1]
+    }
+    
+    mlp_count = np.prod([len(val) for val in mlp_param_grid.values()])
+    kan_count = np.prod([len(val) for val in kan_param_grid.values()])
+    total_count = mlp_count + kan_count
 
-#     # overwrite determines whether old csv files should be overwritten
-#     parser.add_argument('-o', '--overwrite', type=str, required=False, default='true')
-#     args = parser.parse_args()
-#     combo_num = args.combo_num
-#     cfg_path = args.cfg_path
-#     overwrite = args.overwrite
-#     model_str = args.model
+    parser = argparse.ArgumentParser(f'Runs a single iteration of a grid search over {mlp_count} MLP and {kan_count} KAN regressor surrogate models, totalling {total_count} models')
+    parser.add_argument('-cn', '--combo_num', type=int, required=True, default=None, help=f'The 0-indexed number defining which iteration of the grid search out of {total_count} to evaluate')
+    parser.add_argument('-cp', '--cfg_path', type=str, required=False, default=os.path.join(repo_dir, 'conf.toml'), help='The config path defining the objectives')
+    parser.add_argument('-n', '--name', type=str, default='us_surr', help='The name of the dataset to use')
 
-#     # load config
-#     all_cfg = toml.load(cfg_path)
-#     cfg = all_cfg['surrogate']
+    # overwrite determines whether old csv files should be overwritten
+    parser.add_argument('-o', '--overwrite', default=False, action='store_true')
+    args = parser.parse_args()
+    combo_num = args.combo_num
+    cfg_path = args.cfg_path
+    overwrite = args.overwrite
+    name = args.name
 
-#     if model_str == "MLP":
-#         # define MLP-unique parameter grid
-#         param_grid = {
-#                     'model': [sm.MLP],
-#                     'output_size': [1],
-#                     'dropout': [0.0, 0.2, 0.4, 0.6],
-#                     'hidden_sizes': [[512, 256], [1024, 512], [2048, 1024, 512]],
-#                     'optimizer': [optim.SGD, optim.Adam, optim.RMSprop, optim.Adagrad],
-#                     'lr': [0.0001, 0.001, 0.01, 0.1],
-#                     'scheduler': [lr.StepLR, lr.MultiStepLR, lr.CosineAnnealingLR, lr.ReduceLROnPlateau],
-#         }
+    # load config
+    all_cfg = toml.load(cfg_path)
+    cfg = all_cfg['surrogate']
 
-#     elif model_str == "KAN":
-#         # define unique KAN param grid
-#         param_grid = {
-#                     'hidden_sizes': [[512, 256], [2048, 1024, 512], [2048], []],
-#                     'optimizer': [optim.SGD, optim.RMSprop, optim.AdamW, optim.Adagrad],
-#                     'lr': [0.001, 0.01, 0.1, 0.0001],
-#                     'scheduler': [lr.StepLR, lr.CosineAnnealingWarmRestarts, lr.ReduceLROnPlateau],
-#                     'spline_order': [1, 2, 3, 4, 5],
-#                     'grid_size': [1, 5, 10, 25],
-#                     'model': [sm.KAN],
-#                     'output_size': [1]
-#         }
 
-#     # use grid's keys & values to create a list of dicts for each combo in search space
-#     param_names = param_grid.keys()
-#     param_values = param_grid.values()
-#     combinations = list(itertools.product(*param_values))
-#     combinations_dicts = [dict(zip(param_names, combo)) for combo in combinations]
-#     if combo_num is None or combo_num >= len(combinations_dicts):
-#         print(f'No more {model_str} parameter combinations to try.')
-#     else:
-#         combo = combinations_dicts[combo_num]
-#         # run a train/eval engine if overwrite is true, else check if the file already exists
-#         if overwrite == 'false':
-#             check_path = f'/gv1/projects/GRIP_Precog_Opt/surrogates/classifiers/{model_str}/gs_combos/c{combo_num}_metrics.csv'
-#             if not os.path.exists(check_path):
-#                 engine(cfg=cfg, model_str=model_str, param_combo=combo, combo_num=combo_num)
-#         else:
-#             engine(cfg=cfg, model_str=model_str, param_combo=combo, combo_num=combo_num)
+    # include both dicts in grid search, first KAN, then MLP
+    if combo_num < kan_count:
+        model_str = "KAN"
+    else:
+        model_str = "MLP"
+        combo_num -= kan_count
+
+    if model_str == "MLP":
+        param_grid = mlp_param_grid
+    elif model_str == "KAN":
+        param_grid = kan_param_grid
+
+    # use grid's keys & values to create a list of dicts for each combo in search space
+    param_names = param_grid.keys()
+    param_values = param_grid.values()
+    combinations = list(itertools.product(*param_values))
+    combinations_dicts = [dict(zip(param_names, combo)) for combo in combinations]
+    if combo_num is None or combo_num >= len(combinations_dicts):
+        print(f'No more {model_str} parameter combinations to try.')
+    else:
+        combo = combinations_dicts[combo_num]
+        # run a train/eval engine if overwrite is true, else check if the file already exists
+        check_path = os.path.join(classifier_dir, f'{model_str}/gs_combos/c{combo_num}_metrics.csv')
+        if overwrite == True or not os.path.exists(check_path):
+            engine(cfg=cfg, model_str=model_str, param_combo=combo, combo_num=combo_num, name=name)
+            print(f'Checkpoint file written to: {check_path}')
+        else:
+            print(f'Found existing checkpoint file at: {check_path}')
