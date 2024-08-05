@@ -18,6 +18,7 @@ from torch.cuda.amp import autocast, GradScaler
 from sklearn.metrics import precision_score, recall_score, accuracy_score
 import numpy as np
 import os
+import time
 
 file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
 repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
@@ -70,6 +71,7 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
     best_epoch = None
     best_epoch_num = None
     best_epoch_metrics = None
+    start_time = time.time()
     # pull surrogate train/eval config attributes
     num_epochs = cfg['surrogate_train_epochs']
     batch_size = cfg['surrogate_batch_size']
@@ -95,7 +97,9 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
             best_epoch_metrics = val_metrics
     
     torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict["name"]}.pth')
-    print('        Save epoch #:', best_epoch_num)    
+    total_time = time.time() - start_time
+    total_time_str = f"{int(total_time / 3600)}:{int(total_time / 60 % 60):02d}:{total_time % 60 :06.3f}"
+    print(f'        {model_dict["name"]} Time: {total_time_str} Save epoch #: {best_epoch_num}, Acc={best_acc}')    
 
     return best_epoch_metrics, genome_scaler             
 

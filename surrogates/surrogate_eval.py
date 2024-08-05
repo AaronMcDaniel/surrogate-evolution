@@ -18,6 +18,7 @@ from surrogates import surrogate_models as sm
 from torch.cuda.amp import autocast, GradScaler
 import numpy as np
 import os
+import time
 
 file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
 repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
@@ -82,6 +83,7 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
     best_epoch = None
     best_epoch_num = None
     best_epoch_metrics = None
+    start_time = time.time()
     # pull surrogate train/eval config attributes
     num_epochs = cfg['surrogate_train_epochs']
     batch_size = cfg['surrogate_batch_size']
@@ -126,7 +128,10 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
     
 
     torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict["name"]}.pth')
-    print('        Save epoch #:', best_epoch_num)    
+    metric_names = [metric_names[val] for val in val_subset]
+    total_time = time.time() - start_time
+    total_time_str = f"{int(total_time / 3600)}:{int(total_time / 60 % 60):02d}:{total_time % 60 :06.3f}"
+    print(f'        {model_dict["name"]} Time: {total_time_str} Save epoch #: {best_epoch_num}, {metric_names}={best_loss_metric}')
 
     return metrics_df, best_epoch_metrics, best_epoch_num, train_dataset.genomes_scaler
 
@@ -284,7 +289,7 @@ def main():
     reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_reg_train.pkl'))
     reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_reg_val.pkl'))
     model_dict1 = {
-                    'name': 'mlp_best_overall',
+                    'name': 'mlp_best_overall_test',
                     'dropout': 0.2,
                     'hidden_sizes': [2048, 1024, 512],
                     'optimizer': optim.Adam,

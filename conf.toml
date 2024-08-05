@@ -2,7 +2,7 @@
 
 [pipeline]
 # initial population size
-initial_population_size = 200
+initial_population_size = 300
 # population size
 population_size = 30
 # unsustainable population size
@@ -14,7 +14,7 @@ crossovers = {one_point = 0.5, one_point_leaf_biased = 0.3}
 # types of mutations and their probabilities
 mutations = {node_replacement = 0.2}
 # whether to use surrogate
-surrogate_enabled = false
+surrogate_enabled = true
 # GA objectives to optimize for and their weights (matter only relative to each other)
 objectives = {uw_val_epoch_loss = -1, ciou_loss = -1, average_precision = 1}
 # strategy for down selecting individuals trusted by the surrogate
@@ -79,6 +79,8 @@ trust_calc_strategy = "SPEA2"
 trust_calc_ratio = 0.3
 # choose whether to select sub surrogates using trust or mse scores
 sub_surrogate_sel_strat = "trust"
+# minimum validation set size in number of batches the surrogate should have for it to train
+min_batch_in_val_data = 2
 
 [data]
 # time in hours the dataset cache is valid for

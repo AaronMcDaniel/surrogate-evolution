@@ -27,7 +27,7 @@ from surrogates.surrogate_dataset import build_dataset
 import numpy as np
 
 # job file params
-JOB_NAME = 'precog_eval'
+JOB_NAME = 'precog_individual'
 NODES = 1
 CORES = 8
 MEM = '32GB'
@@ -82,16 +82,16 @@ class Pipeline:
         self.sub_surrogate_selection_file = os.path.join(self.checkpoint_path,'sub_surrogate_selection.pkl')
 
         # Check if output location already exists
-        if os.path.exists(self.output_dir):
+        if os.path.exists(self.holy_grail_file):
             if not self.force_wipe:
                 self.attempt_resume = True
             else:
                 self.clear_outputs()
-                os.makedirs(self.logs_dir)
+                os.makedirs(self.logs_dir, exist_ok=True)
                 shutil.copy(config_dir, output_dir)
         else:
-            os.makedirs(self.output_dir)
-            os.makedirs(self.logs_dir)
+            os.makedirs(self.output_dir, exist_ok=True)
+            os.makedirs(self.logs_dir, exist_ok=True)
             shutil.copy(config_dir, output_dir)
 
         # Begin by loading config attributes
@@ -174,7 +174,7 @@ class Pipeline:
 
 
     def initialize(self, seed_file = None):
-        if self.attempt_resume and os.path.exists(self.holy_grail_file):
+        if self.attempt_resume:
             print('Attempting to resume...')
             self.holy_grail = pd.read_csv(self.holy_grail_file)
             metric_columns = [col for col in self.holy_grail.columns if col not in ['gen', 'hash', 'genome']]
@@ -221,7 +221,7 @@ class Pipeline:
                     print('Found no surrogate trust, assuming they are all 0')
 
         else:
-            os.makedirs(self.surrogate_weights_dir)
+            os.makedirs(self.surrogate_weights_dir, exist_ok=True)
             self.init_pop(seed_file)
             
 
@@ -264,11 +264,12 @@ class Pipeline:
         generation_string = f'generation_{self.gen_count}'
         log_folder = os.path.join(self.logs_dir, generation_string)
         os.system(f'rm -rf {log_folder}')
-        os.makedirs(log_folder)
+        os.makedirs(log_folder, exist_ok=True)
 
         # dispatch job
         print('    Dispatching jobs...')
-        os.popen(f"sbatch {JOB_NAME}.job" )
+        sbatch_output = os.popen(f"sbatch {JOB_NAME}.job" ).read()
+        print(sbatch_output)
         if self.surrogate_enabled:
             print('    Preparing surrogate...')
             all_subsurrogate_metrics = self.prepare_surrogate()
@@ -480,6 +481,8 @@ class Pipeline:
             sub_surrogates.extend(reg_indices)
             cls_trust, reg_trust = self.surrogate.calc_trust(sub_surrogates, cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
 
+        print(f"\tSelected regression surrogates with trust: {reg_trust}")
+
         
             
         self.cls_genome_scaler = cls_genome_scaler
@@ -626,7 +629,7 @@ class Pipeline:
         print('Logging data...')
         # store current pop, elite pool, and hof as pickle files
         if not os.path.exists(self.checkpoint_path):
-            os.makedirs(self.checkpoint_path)
+            os.makedirs(self.checkpoint_path, exist_ok=True)
         with open(self.latest_pop_file, 'wb') as f:
             pickle.dump(self.current_deap_pop, f)
         with open(self.elites_checkpoint_file, 'wb') as f:
