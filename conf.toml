@@ -40,7 +40,7 @@ train_epochs = 10
 # batch size
 batch_size = 2
 # number of batches in one epoch
-batches_per_epoch = 500
+batches_per_epoch = 1
 # number of target classes in AOT
 num_classes = 7
 # iou threshold for determining detection
@@ -81,10 +81,15 @@ trust_calc_ratio = 0.3
 sub_surrogate_sel_strat = "trust"
 # minimum validation set size in number of batches the surrogate should have for it to train
 min_batch_in_val_data = 2
+# flag that determines whether surrogate 'pretrains' on prev run data
+pretrained = false
+# folder containing surrogate datasets used in pretraining the model
+#pretrained_dir = '/home/tthakur9/precog-opt-grip/surrogate_dataset/'
+
 
 [data]
 # time in hours the dataset cache is valid for
 cache_thresh = 1
 # size of the dataset
-max_size = 1000
+max_size = 2
 

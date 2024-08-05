@@ -131,7 +131,7 @@ class AirbornePredictor:
             print("inference_setup doesn't exist for this run, skipping...")
 
         aicrowd_helpers.execution_running()
-
+        #HERE IS WHERE YOU SPECIFY THE NUMBER OF FLIGHTS YOU WANT (BASICALLY THE NUMBER OF IMAGE PAIRS) in this case it's 1000
         flights = self.get_all_flight_ids()
         random.shuffle(flights)
         sampled = random.sample(flights, 1000-len(flights))
@@ -147,7 +147,7 @@ class AirbornePredictor:
             #self.save_results(flight)
         
         print('ALL DONE HERE')
-        self.save_results()
+        #self.save_results()
         aicrowd_helpers.execution_success()
 
     def run(self, job_id=None):
@@ -203,6 +203,7 @@ class AirbornePredictor:
         else:
             path = os.path.join(self.get_results_directory(flight_id), "result" + str(job_id) + ".pkl")
         #print(os.path.join(self.get_results_directory(flight_id), "result10.pkl"))
+        print(job_id)
         print(path)
         print('NUM RESULTS:', len(self.custom_results))
         #with open(os.path.join(self.get_results_directory(flight_id), "result10.pkl"), 'wb') as fp:

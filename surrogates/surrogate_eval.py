@@ -4,6 +4,7 @@ Train and Validate operations for the regressor surrogates. Called surrogate_eva
 
 
 import inspect
+import os
 import toml
 from tqdm import tqdm
 from surrogates import surrogate_dataset as sd
@@ -22,7 +23,6 @@ import time
 
 file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
 repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
-
 
 def prepare_data(model_dict, batch_size, train_df, val_df):
     train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=model_dict['metrics_subset'])
@@ -126,12 +126,12 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
         epoch_metrics_df = pd.DataFrame([epoch_metrics])
         metrics_df = pd.concat([metrics_df, epoch_metrics_df], ignore_index=True)
     
-
-    torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict["name"]}.pth')
-    metric_names = [metric_names[val] for val in val_subset]
-    total_time = time.time() - start_time
-    total_time_str = f"{int(total_time / 3600)}:{int(total_time / 60 % 60):02d}:{total_time % 60 :06.3f}"
-    print(f'        {model_dict["name"]} Time: {total_time_str} Save epoch #: {best_epoch_num}, {metric_names}={best_loss_metric}')
+    if best_epoch is not None:
+        torch.save(best_epoch.state_dict(), f'{weights_dir}/{model_dict["name"]}.pth')
+        metric_names = [metric_names[val] for val in val_subset]
+        total_time = time.time() - start_time
+        total_time_str = f"{int(total_time / 3600)}:{int(total_time / 60 % 60):02d}:{total_time % 60 :06.3f}"
+        print(f'        {model_dict["name"]} Time: {total_time_str} Save epoch #: {best_epoch_num}, {metric_names}={best_loss_metric}')
 
     return metrics_df, best_epoch_metrics, best_epoch_num, train_dataset.genomes_scaler
 
@@ -211,13 +211,13 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
         surrogate_train_loss += loss.item()
         data_iter.set_postfix(loss=loss.item())
         torch.cuda.empty_cache()
-    
-    # step scheduler
-    e.step_scheduler(scheduler, loss)
 
     # calculate surrogate training loss per batch (NOTE batch loss already meaned by batch size)
     num_batches = len(data_iter)
     surrogate_train_loss /= num_batches
+    
+    # step scheduler
+    e.step_scheduler(scheduler, surrogate_train_loss)
 
     return surrogate_train_loss
 
@@ -280,6 +280,21 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
     })
 
     return epoch_metrics
+
+
+def train_all_reg(cfg, reg_train_df, reg_val_df, surrogate, weights_dir=os.path.join(repo_dir, 'test')):
+    """
+    Trains all regressors defined by the dictionaries in surrogate.models
+    This essentially calls the engine() method for many configs
+    """
+    for m in surrogate.models:
+        weights_path = os.path.join(weights_dir, m['name'] + '.pth')
+        if not os.path.exists(weights_path):
+            print(f"Training model: {m['name']}")
+            # Train the model and save the weights
+            engine(cfg, m, reg_train_df, reg_val_df, weights_dir=weights_dir)
+        else:
+            print(f"Weights for model {m['name']} already exist at {weights_path}. Skipping training.")
 
 
 def main():

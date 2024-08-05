@@ -2,6 +2,7 @@
 Script to launch grid-search process for surrogates.
 """
 
+import inspect
 import itertools
 import argparse
 import os
@@ -9,7 +10,6 @@ import sys
 file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
 repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
 sys.path.append(repo_dir)
-
 
 import pickle
 import toml
@@ -28,9 +28,9 @@ from functools import partial
 from surrogates import surrogate_dataset as sd
 from torch.utils.data import DataLoader
 from torch.cuda.amp import autocast, GradScaler
+from sklearn.metrics import precision_score, recall_score, accuracy_score
 
-regressor_dir = '/gv1/projects/GRIP_Precog_Opt/surrogates/regressors'
-
+classifier_dir = '/gv1/projects/GRIP_Precog_Opt/surrogates/classifiers'
 
 def engine(cfg, model_str, param_combo, combo_num, **kwargs):
 
@@ -39,27 +39,25 @@ def engine(cfg, model_str, param_combo, combo_num, **kwargs):
     batch_size = cfg['surrogate_batch_size']
 
     # define subset of metrics to train on and prepare data accordingly
-    metrics_subset = param_combo['metrics_subset']
-    train_loader, val_loader, train_dataset = prepare_data(batch_size, metrics_subset=metrics_subset, **kwargs)
-    max_metrics = train_dataset.max_metrics
-    min_metrics = train_dataset.min_metrics
+    train_loader, val_loader, train_dataset = prepare_data(batch_size, **kwargs)
 
     # only use cpu for grid search
     device = torch.device('cpu')
     model, optimizer, scheduler, scaler = build_configuration(model_str=model_str, device=device, param_combo=param_combo)
 
-    # create metrics_df
     metrics_df = create_metrics_df()
     for epoch in range(1, num_epochs + 1):
 
             # train and validate for one epoch
-            train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics=max_metrics, min_metrics=min_metrics)
-            epoch_metrics = val_one_epoch(model, device, val_loader, metrics_subset=metrics_subset, max_metrics=max_metrics, min_metrics=min_metrics)
+            train_metrics = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler)
+            epoch_metrics = val_one_epoch(model, device, val_loader, scheduler)
 
             # update metrics df
             epoch_metrics['param_combo'] = str(param_combo)
             epoch_metrics['epoch_num'] = epoch
-            epoch_metrics['train_loss'] = train_epoch_loss
+
+            for k, v in train_metrics.items():
+                epoch_metrics[k] = v
             epoch_metrics_df = pd.DataFrame([epoch_metrics])
             metrics_df = pd.concat([metrics_df, epoch_metrics_df], ignore_index=True)
     
@@ -68,11 +66,11 @@ def engine(cfg, model_str, param_combo, combo_num, **kwargs):
 
 
 # prepare data for grid search
-def prepare_data(batch_size, metrics_subset, name='us_surr'):
-    train_df = pd.read_pickle(os.path.join(repo_dir, f'surrogate_dataset/{name}_reg_train.pkl'))
-    val_df = pd.read_pickle(os.path.join(repo_dir, f'surrogate_dataset/{name}_reg_val.pkl'))
-    train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=metrics_subset)
-    val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=metrics_subset, metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
+def prepare_data(batch_size, name='us_surr'):
+    train_df = pd.read_pickle(os.path.join(repo_dir, f'surrogate_dataset/{name}_cls_train.pkl'))
+    val_df = pd.read_pickle(os.path.join(repo_dir, f'surrogate_dataset/{name}_cls_val.pkl'))
+    train_dataset = sd.ClassifierSurrogateDataset(train_df, mode='train')
+    val_dataset = sd.ClassifierSurrogateDataset(val_df, mode='val', genomes_scaler=train_dataset.genomes_scaler)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=True)
     return train_loader, val_loader, train_dataset       
@@ -80,23 +78,18 @@ def prepare_data(batch_size, metrics_subset, name='us_surr'):
 
 # build model, optimizer, scheduler, and scaler
 def build_configuration(model_str, device, param_combo):
-    input_size = 1021
 
-    if model_str == "MLP":
-        # build MLP
-        hidden_sizes = param_combo['hidden_sizes']
-        dropout = param_combo['dropout']
-        output_size = len(param_combo['metrics_subset'])
-        model = sm.MLP(input_size=input_size, output_size=output_size, dropout=dropout, hidden_sizes=hidden_sizes)
-        model = model.to(device)
-    
-    if model_str == "KAN":
-        # build KAN
-        hidden_sizes = param_combo['hidden_sizes']
-        grid_size = param_combo['grid_size']
-        spline_order = param_combo['spline_order']
-        output_size = len(param_combo['metrics_subset'])
-        model = sm.KAN(input_size, output_size, hidden_sizes, spline_order=spline_order, grid_size=grid_size).to(device)
+    # build model
+    model = param_combo['model']
+    sig = inspect.signature(model.__init__)
+    filtered_params = {k: v for k, v in param_combo.items() if k in sig.parameters}
+    model = model(**filtered_params).to(device)
+
+    # build optimizer
+    params = model.parameters()
+    lr = param_combo['lr']
+    optimizer_func = partial(param_combo['optimizer'])
+    optimizer = optimizer_func(params=params, lr=lr)
 
     # build optimizer
     params = model.parameters()
@@ -127,57 +120,35 @@ def build_configuration(model_str, device, param_combo):
 
 # stores metrics csv file 
 def store_data(model_str, combo_num, metrics_df):
-    metrics_out = os.path.join(regressor_dir, f'{model_str}/gs_combos/c{combo_num}_metrics.csv')
+    metrics_out = os.path.join(classifier_dir, f'{model_str}/gs_combos/c{combo_num}_metrics.csv')
     os.makedirs(os.path.dirname(metrics_out), exist_ok=True)
     metrics_df.to_csv(metrics_out, index=False)
 
 
-# creates metrics dataframe with appropriate rows
-def create_metrics_df():
-    return pd.DataFrame(columns=[
-        'epoch_num',
-        'train_loss',
-        'val_loss',
-        'mse_uw_val_loss', 
-        'mse_iou_loss', 
-        'mse_giou_loss', 
-        'mse_diou_loss', 
-        'mse_ciou_loss', 
-        'mse_center_loss', 
-        'mse_size_loss', 
-        'mse_obj_loss', 
-        'mse_precision',
-        'mse_recall', 
-        'mse_f1_score',
-        'mse_average_precision',
-        'param_combo'
-    ])
-
-
-def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics):
+def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler):
     model.train()
 
     # actual surrogate training loss
     surrogate_train_loss = 0.0
     # mean taken for metric regression losses in train
     # criterion = nn.MSELoss()
-    criterion = nn.L1Loss()
+    y_true = []
+    y_pred = []
+
+    criterion = nn.BCEWithLogitsLoss()
 
     data_iter = tqdm(train_loader, desc='Training')
-    for i, (genomes, metrics) in enumerate(data_iter):
+    for i, (genomes, labels) in enumerate(data_iter):
 
         # genomes shape: (batch_size, 976)
         genomes = genomes.to(device)
         # metrics shape: (batch_size, 12)
-        metrics = metrics.to(device)
+        labels = labels.to(device)
 
         # forwards with mixed precision
         with autocast():
-            # outputs shape: (batch_size, 12)
             outputs = model(genomes)
-            clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
-            # metric regression loss is meaned, so is scalar tensor value
-            loss = criterion(clamped_outputs, metrics)
+            loss = criterion(outputs, labels.unsqueeze(1).float())
                    
         # backwards
         optimizer.zero_grad()
@@ -185,85 +156,107 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
         scaler.step(optimizer)
         scaler.update()
         surrogate_train_loss += loss.item()
+
+        y_true.extend(labels.cpu().numpy())
+        y_pred.extend(outputs.sigmoid().cpu().detach().numpy())
         data_iter.set_postfix(loss=loss.item())
         torch.cuda.empty_cache()
     
-    # step scheduler
-    e.step_scheduler(scheduler, loss)
+    # Convert lists to numpy arrays for metric calculation
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    y_pred_binary = (y_pred > 0.5).astype(int)  # Apply threshold to predictions
 
-    # calculate surrogate training loss per batch (NOTE batch loss already meaned by batch size)
+    # Compute metrics
+    precision = precision_score(y_true, y_pred_binary)
+    recall = recall_score(y_true, y_pred_binary)
+    accuracy = accuracy_score(y_true, y_pred_binary)
+
+    # Calculate average training loss
     num_batches = len(data_iter)
     surrogate_train_loss /= num_batches
 
-    return surrogate_train_loss
-
-
-def val_one_epoch(model, device, val_loader, metrics_subset, max_metrics, min_metrics):
-    model.eval()
-
-    # actual surrogate validation loss
-    surrogate_val_loss = 0.0
-    # mse loss matrx for each metric, where rows = num batches and cols = 12 for all predicted metrics
-    mse_metrics_per_batch = []
-    # no mean taken for losses in validation 
-    # criterion = nn.MSELoss(reduction='none')
-    criterion = nn.L1Loss(reduction='none')
-    
-    metric_names = [
-        'mse_uw_val_loss', 'mse_iou_loss', 'mse_giou_loss', 'mse_diou_loss', 
-        'mse_ciou_loss', 'mse_center_loss', 'mse_size_loss', 'mse_obj_loss', 
-        'mse_precision', 'mse_recall', 'mse_f1_score', 'mse_average_precision'
-    ]
-    selected_metric_names = [metric_names[i] for i in metrics_subset]
-
-    data_iter = tqdm(val_loader, 'Evaluating')
-    with torch.no_grad():
-        for genomes, metrics in data_iter:
-            # genomes shape: (batch_size, 976)
-            genomes = genomes.to(device)
-            # metrics shape: (batch_size, 12)
-            metrics = metrics.to(device)
-
-            # forwards with mixed precision
-            with autocast():
-                # outputs shape: (batch_size, 12)
-                outputs = model(genomes)
-                clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
-                loss_matrix = criterion(clamped_outputs, metrics)
-
-                # loss tensor shape: (12)
-                loss_tensor = torch.mean(loss_matrix, dim=0)
-                # loss is meaned, so is scalar tensor value
-                loss = torch.mean(loss_tensor)
-            
-            # update validation loss
-            surrogate_val_loss += loss.item()
-            # update matrix storing mse loss for each metric for each batch
-            mse_metrics_per_batch.append(loss_tensor)
-            data_iter.set_postfix(loss=loss)
-            torch.cuda.empty_cache()
-            
-    num_batches = len(data_iter)
-    surrogate_val_loss /= num_batches
-
-    # compute the mean of the mse losses for each metric based on num batches
-    mse_metrics_per_batch = torch.stack(mse_metrics_per_batch)
-    mse_metrics_meaned = mse_metrics_per_batch.mean(dim=0)
-
     epoch_metrics = {
-        'val_loss': surrogate_val_loss
+        'train_loss': surrogate_train_loss,
+        'train_prec': precision,
+        'train_rec': recall,
+        'train_acc': accuracy
     }
-    print(surrogate_val_loss)
-    epoch_metrics.update({
-        selected_metric_names[i]: mse_metrics_meaned[i].item() for i in range(len(metrics_subset))
-    })
 
     return epoch_metrics
 
 
+def val_one_epoch(model, device, val_loader, scheduler):
+    model.eval()
+
+    # actual surrogate validation loss
+    surrogate_val_loss = 0.0
+    y_true = []
+    y_pred = []
+
+    criterion = nn.BCEWithLogitsLoss()
+
+    data_iter = tqdm(val_loader, 'Evaluating')
+    data_iter = tqdm(val_loader, 'Evaluating')
+    with torch.no_grad():
+        for genomes, labels in data_iter:
+            genomes = genomes.to(device)
+            labels = labels.to(device)
+
+            # Forward pass with mixed precision
+            with autocast():
+                outputs = model(genomes)
+                loss = criterion(outputs, labels.unsqueeze(1).float())
+            
+            # Collect true and predicted labels
+            y_true.extend(labels.cpu().numpy())
+            y_pred.extend(outputs.sigmoid().cpu().numpy())
+
+            # Update validation loss
+            surrogate_val_loss += loss.item()
+            data_iter.set_postfix(loss=loss.item())
+            torch.cuda.empty_cache()
+
+    # Step scheduler
+    if type(scheduler) is optim.lr_scheduler.ReduceLROnPlateau:
+        scheduler.step(surrogate_val_loss)
+    else:
+        scheduler.step()
+
+    # Convert lists to numpy arrays for metric calculation
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    y_pred_binary = (y_pred > 0.5).astype(int)  # Apply threshold to predictions
+
+    # Compute metrics
+    precision = precision_score(y_true, y_pred_binary)
+    recall = recall_score(y_true, y_pred_binary)
+    accuracy = accuracy_score(y_true, y_pred_binary)
+
+    # Calculate average validation loss
+    num_batches = len(data_iter)
+    surrogate_val_loss /= num_batches
+
+    epoch_metrics = {
+        'val_loss': surrogate_val_loss,
+        'val_prec': precision,
+        'val_rec': recall,
+        'val_acc': accuracy
+    }
+
+    return epoch_metrics
+
+
+# creates metrics dataframe with appropriate rows
+def create_metrics_df():
+    return pd.DataFrame(columns=[
+        'epoch_num', 'val_loss', 'val_prec', 'val_rec', 'val_acc', 'train_loss', 'train_prec', 'train_rec', 'train_acc', 'param_combo'
+    ])
+
+
 # uses model string to concatenate grid search resulting metric csvs to one master file
 def cat_results(name, model_str):
-    search_dir = os.path.join(regressor_dir, f'{model_str}/gs_combos')
+    search_dir = os.path.join(classifier_dir, f'{model_str}/gs_combos')
     master_df = create_metrics_df()
 
     # change range as necessary for different grid search runs
@@ -274,31 +267,35 @@ def cat_results(name, model_str):
         except:
             continue
         master_df = pd.concat([master_df, metrics_df], ignore_index=True)
-    out_path = os.path.join(regressor_dir, f'{model_str}/{name}_gs.csv')
+    out_path = os.path.join(classifier_dir, f'{model_str}/{name}_gs.csv')
     master_df.to_csv(out_path, index=False)
     return None
 
 
+# cat_results('cls_surr', 'KAN')
+
+
 if __name__ == '__main__':
-    # define MLP-unique parameter grid
     mlp_param_grid = {
-                'dropout': [0.0, 0.2, 0.4, 0.6],
-                'hidden_sizes': [[512, 256], [1024, 512], [2048, 1024, 512]],
-                'optimizer': [optim.SGD, optim.Adam, optim.RMSprop, optim.Adagrad],
-                'lr': [0.0001, 0.001, 0.01, 0.1],
-                'scheduler': [lr.StepLR, lr.MultiStepLR, lr.CosineAnnealingLR, lr.ReduceLROnPlateau],
-                'metrics_subset': [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], [0, 4, 11], [11], [4], [0]]
+            'model': [sm.MLP],
+            'output_size': [1],
+            'dropout': [0.0, 0.2, 0.4, 0.6],
+            'hidden_sizes': [[512, 256], [1024, 512], [2048, 1024, 512]],
+            'optimizer': [optim.SGD, optim.Adam, optim.RMSprop, optim.Adagrad],
+            'lr': [0.0001, 0.001, 0.01, 0.1],
+            'scheduler': [lr.StepLR, lr.MultiStepLR, lr.CosineAnnealingLR, lr.ReduceLROnPlateau],
     }
-    # define unique KAN param grid
     kan_param_grid = {
                 'hidden_sizes': [[512, 256], [2048, 1024, 512], [2048], []],
-                'optimizer': [optim.SGD, optim.RMSprop, optim.AdamW],
-                'lr': [0.001, 0.01, 0.1],
+                'optimizer': [optim.SGD, optim.RMSprop, optim.AdamW, optim.Adagrad],
+                'lr': [0.001, 0.01, 0.1, 0.0001],
                 'scheduler': [lr.StepLR, lr.CosineAnnealingWarmRestarts, lr.ReduceLROnPlateau],
-                'metrics_subset': [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], [0, 4, 11], [11], [4], [0]],
-                'spline_order': [1, 2, 3, 5],
-                'grid_size': [1, 5, 10, 25]
+                'spline_order': [1, 2, 3, 4, 5],
+                'grid_size': [1, 5, 10, 25],
+                'model': [sm.KAN],
+                'output_size': [1]
     }
+    
     mlp_count = np.prod([len(val) for val in mlp_param_grid.values()])
     kan_count = np.prod([len(val) for val in kan_param_grid.values()])
     total_count = mlp_count + kan_count
@@ -343,7 +340,7 @@ if __name__ == '__main__':
     else:
         combo = combinations_dicts[combo_num]
         # run a train/eval engine if overwrite is true, else check if the file already exists
-        check_path = os.path.join(regressor_dir, f'{model_str}/gs_combos/c{combo_num}_metrics.csv')
+        check_path = os.path.join(classifier_dir, f'{model_str}/gs_combos/c{combo_num}_metrics.csv')
         if overwrite == True or not os.path.exists(check_path):
             engine(cfg=cfg, model_str=model_str, param_combo=combo, combo_num=combo_num, name=name)
             print(f'Checkpoint file written to: {check_path}')

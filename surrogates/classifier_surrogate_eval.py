@@ -56,8 +56,8 @@ def build_configuration(model_dict, device):
             scheduler = scheduler_func(optimizer=optimizer, T_max=10)
         elif scheduler_func == optim.lr_scheduler.ReduceLROnPlateau:
             scheduler = scheduler_func(optimizer=optimizer, mode='min', factor=0.5, patience=5)
-        else:
-            scheduler = scheduler_func(optimizer=optimizer)
+        elif scheduler_func == optim.lr_scheduler.CosineAnnealingWarmRestarts:
+            scheduler = scheduler_func(optimizer=optimizer, T_0=10, T_mult=2)
         scaler = GradScaler()
         
         return model, optimizer, scheduler, scaler

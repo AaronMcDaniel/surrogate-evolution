@@ -4,12 +4,15 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
 #SBATCH --time=4-00:00
-#SBATCH --output="/gv1/projects/GRIP_Precog_Opt/surrogates/MLP/gs_logs/output.%A.%a.log"
-#SBATCH --error="/gv1/projects/GRIP_Precog_Opt/surrogates/MLP/gs_logs/error.%A.%a.log"
-#SBATCH --array=0-3839%200
+#SBATCH --output="/gv1/projects/GRIP_Precog_Opt/surrogates/regressors/MLP/gs_logs/output.%A.%a.log"
+#SBATCH --error="/gv1/projects/GRIP_Precog_Opt/surrogates/regressors/MLP/gs_logs/error.%A.%a.log"
+#SBATCH --array=0-12480%200
 #SBATCH --exclude=ice139,ice146,ice200,ice180,ice137
 
 module load anaconda3/2023.07
 module load cuda/12.2.2
 
-conda run -n tv1 --no-capture-output python -u -m surrogates.grid_search -cn $((SLURM_ARRAY_TASK_ID)) -o 'true' -m 'MLP'
+conda_env=${1:-"grip"}
+dataset_name=${2:-"final_baseline_unseeded_surrogate_evolution"}
+
+conda run -n ${conda_env} --no-capture-output python -u -m surrogates.grid_search -cn $((SLURM_ARRAY_TASK_ID)) -o -n ${dataset_name}

@@ -42,6 +42,8 @@ Additional background and documentation can be found [here](https://wiki.gtri.ga
  - Different genome and surrogate encoding strategies
  - Variable length objective lists for graphing pareto fronts
  - Exploring KAN strategies (grid extension, pruning)
+ - Seeding deap so that it generates individuals in the same order
+ - Add a trust threshold for enabling surrogate only runs for improved efficiency
 
 ## Authors and acknowledgment
 Contributors:
