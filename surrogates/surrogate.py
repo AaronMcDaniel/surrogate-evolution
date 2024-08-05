@@ -111,19 +111,8 @@ class Surrogate():
               'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau,
               'metrics_subset': [0],
               'validation_subset': [0],
-              'grid_size': 1,
+              'grid_size': 10,
               'spline_order': 3
-            },
-            {
-                'name': 'mlp_best_uwvl_2',
-                'dropout': 0.0,
-                'hidden_sizes': [2048, 1024, 512],
-                'optimizer': optim.SGD,
-                'lr': 0.1,
-                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
-                'metrics_subset': [0],
-                'validation_subset': [0],
-                'model': sm.MLP
             },
             {
               'name': 'kan_best_cioul',

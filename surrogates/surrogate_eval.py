@@ -299,7 +299,7 @@ def main():
     reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_reg_train.pkl'))
     reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/us_surr_reg_val.pkl'))
     model_dict1 = {
-                    'name': 'mlp_best_overall',
+                    'name': 'mlp_best_overall_test',
                     'dropout': 0.2,
                     'hidden_sizes': [2048, 1024, 512],
                     'optimizer': optim.Adam,
