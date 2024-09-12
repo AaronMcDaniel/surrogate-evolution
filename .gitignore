@@ -34,6 +34,9 @@ dmytro_repo/output/models/
 dmytro_repo/predictions.pkl
 dmytro_metrics/*/
 dmytro_metrics/*.csv
+results_surrogate_evolution/
+aot_data/train/Images/*
+aot_data/val/Images/*
 **/*.jpg files
 **/*.pkl
 **/*.csv
