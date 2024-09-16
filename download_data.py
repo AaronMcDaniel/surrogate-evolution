@@ -93,7 +93,7 @@ def download_random_flights(part, target_images, output_dir):
 # download_random_flights(val_part, val_target_images, val_output_dir)
 
 # Num train images should be 40474
-print(count_images_in_dir('/home/hice1/tthakur9/scratch/surrogate-evolution/aot_data/train/Images'))
+print(count_images_in_dir('/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/train/Images'))
 
 # Num val images should be 10789
-print(count_images_in_dir('/home/hice1/tthakur9/scratch/surrogate-evolution/aot_data/val/Images'))
+print(count_images_in_dir('/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/val/Images'))
