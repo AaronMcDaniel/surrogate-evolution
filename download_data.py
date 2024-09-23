@@ -1,7 +1,9 @@
 import os
+import pickle
 import subprocess
 import random
 import numpy as np
+import aot_dataset as ad
 
 # Setup vars
 train_target_images = 40000
@@ -9,8 +11,12 @@ val_target_images = 10000
 train_part = 'part1'
 val_part = 'part2'
 aws_base_command = "s3://airborne-obj-detection-challenge-training/"
-train_output_dir = "aot_data/train"
-val_output_dir = "aot_data/val"
+train_output_dir = "aot_data/train/Images"
+val_output_dir = "aot_data/val/Images"
+train_label_dir = 'aot_data/train/Labels'
+val_label_dir = 'aot_data/val/Labels'
+train_pickle_path = '/home/hice1/tthakur9/scratch/surrogate-evolution/aot_data/train/Labels/part1_STRING_TENSORV2_labels.pkl'
+val_pickle_path = '/home/hice1/tthakur9/scratch/surrogate-evolution/aot_data/val/Labels/part2_STRING_TENSORV2_labels.pkl'
 
 # Make sure out dirs exist
 os.makedirs(train_output_dir, exist_ok=True)
@@ -19,11 +25,38 @@ os.makedirs(val_output_dir, exist_ok=True)
 # Random rng seed
 rng = np.random.default_rng(seed=42)
 
+def shrink_pickle(label_dir, pickle_path, part):
+    with open(pickle_path, 'rb') as f:
+            labels = pickle.load(f)
+    new_labels = []
+    for l in labels:
+        l = ad.eval_label(l)
+        path = l['path']
+        path = os.path.join((label_dir.split('/')[0]) + '/' + (label_dir.split('/')[1]) + '/' + path)
+        if os.path.exists(path):
+            serialized_label = repr(l)
+            new_labels.append(serialized_label)
+
+    os.makedirs(label_dir, exist_ok=True)
+    output_path = os.path.join(label_dir, f'{part}_STRING_TENSORV2_SHRUNKEN_labels.pkl')
+    with open(output_path, 'wb') as f:
+        pickle.dump(new_labels, f)
+    
+    print(f"Saved {len(new_labels)} labels to {output_path}")
+
+
 # Used to count the num images in flight folder
 def get_image_count(flight_dir):
     command = f"aws s3 ls {aws_base_command}{flight_dir} --no-sign-request --recursive | wc -l"
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
     return int(result.stdout.strip())
+
+def rename_folders(base_dir, part):
+    for flight in os.listdir(base_dir):
+        flight_folder = os.path.join(base_dir, flight)
+        if os.path.isdir(flight_folder):
+            new_name = os.path.join(base_dir, f'{part}{flight}')
+            os.rename(flight_folder, new_name)
 
 # Used to verify the train/val splits are the same for group members
 def count_images_in_dir(directory):
@@ -46,7 +79,7 @@ def download_flight(flight_id, part, output_dir):
     if os.path.exists(flight_dir):
         print(f"Flight {flight_id} already exists, skipping...")
         return 0
-    command = f"aws s3 sync {aws_base_command}{part}/Images/{flight_id} {output_dir}/Images/{flight_id} --no-sign-request"
+    command = f"aws s3 sync {aws_base_command}{part}/Images/{flight_id} {output_dir}/Images/{part}{flight_id} --no-sign-request"
     subprocess.run(command, shell=True)
 
     # Get num images for the flight
@@ -93,7 +126,15 @@ def download_random_flights(part, target_images, output_dir):
 # download_random_flights(val_part, val_target_images, val_output_dir)
 
 # Num train images should be 40474
-print(count_images_in_dir('/home/hice1/tthakur9/scratch/surrogate-evolution/aot_data/train/Images'))
+# print(count_images_in_dir('/home/hice1/tthakur9/scratch/surrogate-evolution/aot_data/train/Images'))
 
-# Num val images should be 10789
-print(count_images_in_dir('/home/hice1/tthakur9/scratch/surrogate-evolution/aot_data/val/Images'))
+# # # Num val images should be 10789
+# print(count_images_in_dir('/home/hice1/tthakur9/scratch/surrogate-evolution/aot_data/val/Images'))
+
+# TEAM NEEDS TO RENAME FOLDERS TOO
+# rename_folders(train_output_dir, train_part)
+# rename_folders(val_output_dir, val_part)
+
+## SHRINKING PICKLE FILES
+# shrink_pickle(train_label_dir, train_pickle_path, train_part)
+# shrink_pickle(val_label_dir, val_pickle_path, val_part)
