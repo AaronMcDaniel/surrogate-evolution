@@ -40,7 +40,7 @@ train_epochs = 10
 # batch size
 batch_size = 2
 # number of batches in one epoch
-batches_per_epoch = 1
+batches_per_epoch = 500
 # number of target classes in AOT
 num_classes = 7
 # iou threshold for determining detection

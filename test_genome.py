@@ -259,7 +259,6 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
     obj_loss /= (num_preds + 1e-9)
     uw_val_epoch_loss = iou_loss + giou_loss + diou_loss + ciou_loss + center_loss + size_loss + obj_loss
     epoch_f1, epoch_pre, epoch_rec = u.f1_score(total_tp, total_fn, total_fp)
-    breakpoint()
     pre_curve, rec_curve = u.precision_recall_curve(confidences, confusion_status, num_labels)
     epoch_avg_pre = u.AP(pre_curve, rec_curve)
     u.plot_PR_curve(pre_curve, rec_curve, epoch_avg_pre)
@@ -294,12 +293,13 @@ if __name__ == '__main__':
     batch_size = 2
     num_epochs = 1
 
-    hash_path = '/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/generation_6/46ca466104'
-    split_list = hash_path.split('/')
-    hash = split_list[-1]
-    input_path = '/'.join(split_list[:-2]) + '/eval_inputs/' + f'eval_input_gen{split_list[-2].split("_")[-1]}.csv'
-    input_df = pd.read_csv(input_path)
-    genome_str = input_df.loc[input_df['hash'] == hash].to_dict('records')[0]['genome']
+    # hash_path = '/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/generation_6/46ca466104'
+    # split_list = hash_path.split('/')
+    # hash = split_list[-1]
+    # input_path = '/'.join(split_list[:-2]) + '/eval_inputs/' + f'eval_input_gen{split_list[-2].split("_")[-1]}.csv'
+    # input_df = pd.read_csv(input_path)
+    # genome_str = input_df.loc[input_df['hash'] == hash].to_dict('records')[0]['genome']
+    genome_str = 'RetinaNet_Head(ShuffleNet_V2(IN0, 1, dummyOp(dummyOp(1))), Adamax(add(mul(toPNorm(toProbFloat(60.54122570557243)), protectedSub(toPNorm(2.8443292514386997), toPNorm(2.817300550812048))), protectedSub(50.35135976648382, protectedDiv(add(75.4527089535834, 1.8243742324118206), 0.9093641567720875))), mul(toPNorm(toProbFloat(add(1.1889698968202882, 1.2194740372302766))), protectedSub(58.956401623147514, add(toPNorm(1.0346735167366718), protectedSub(1.925692343180225, 91.87198790275639))))), CosineAnnealingWarmRestarts(protectedSub(protectedDiv(protectedSub(mul(10, 92), add(60, 23)), protectedDiv(add(70, 23), protectedDiv(43, 5))), protectedSub(mul(protectedDiv(67, 21), add(73, 31)), protectedDiv(mul(76, 67), mul(50, 99)))), toDilation(protectedSub(protectedDiv(protectedSub(93, protectedSub(protectedDiv(protectedSub(mul(10, 92), add(60, 23)), protectedDiv(add(70, 23), protectedDiv(43, 5))), protectedSub(protectedSub(93, 50), protectedDiv(mul(76, 67), mul(50, 99))))), protectedDiv(64, 31)), mul(mul(17, 90), protectedDiv(68, 20)))), protectedDiv(toProbFloat(toProbFloat(add(82.63801922630367, 21.48224559973766))), toProbFloat(toProbFloat(toProbFloat(0.021911876368932992))))), toProbFloat(toProbFloat(add(1.9122178866741912, add(0.8496883481747264, add(0.6280893434113874, 0.3248237649847071))))), toPNorm(protectedSub(add(mul(protectedDiv(0.0606959401065581, 1.048399365709773), protectedSub(33.64554719574383, 2.927965350979159)), protectedDiv(add(0.6639998380873098, 0.032584655107806504), 6.1293457101932125)), toPNorm(toProbFloat(16.735550722464374)))), mul(toProbFloat(mul(toPNorm(add(1.0214160242454293, 9.438419850275393)), protectedDiv(add(0.6972808323068186, 0.6995389191523296), 53.59084939034291))), toPNorm(toPNorm(protectedDiv(42.481488214998045, toPNorm(0.6822951344514893))))), protectedSub(protectedSub(add(protectedDiv(add(31.376223864702357, 60.26136649271289), add(protectedDiv(11.999929853507707, toProbFloat(79.6337898180717)), 94.0997161500316)), 1.9651753601893134), protectedSub(1.1023644082396744, mul(1.2459967790508886, 0.9695225566806472))), toPNorm(protectedSub(1.0352059945560574, toProbFloat(mul(2.398084048956734, 80.16392809791449))))), toProbFloat(add(toPNorm(protectedDiv(mul(26.082726016186484, 15.976116022348052), toPNorm(26.458132278457956))), add(protectedDiv(11.999929853507707, toProbFloat(79.6337898180717)), 2.322681226511547))), protectedSub(24, 73), protectedDiv(toProbFloat(toPNorm(toProbFloat(0.6538964399436925))), protectedDiv(protectedSub(27.07029895368268, 0.6075518274021888), toPNorm(30.449649439163863))))'
 
     codec = Codec(7)
     model_dict = codec.decode_genome(genome_str, 7)
@@ -321,15 +321,16 @@ if __name__ == '__main__':
     data_config = configs["data"]
     all_config = model_config | codec_config | data_config
     train_loader, val_loader = e.prepare_data(all_config, train_seed, val_seed, batch_size)
-    model = load_model_weights(model, device, os.path.join(hash_path, 'best_epoch.pth'))
+    # model = load_model_weights(model, device, os.path.join(hash_path, 'best_epoch.pth'))
 
-    # epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, max_batch=500)
+    epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, max_batch=500)
+    print(epoch_metrics)
 
     for i in range(10):
         # train_epoch_loss = custom_train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler,
         #                                       custom_loss=True, loss_weights=loss_weights, iou_type=iou_type, max_batch=500)
         # print(f"epoch {i} train loss: {train_epoch_loss}")
         epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, max_batch=500, epoch_stop=i)
-        # print(f"epoch {i} eval metrics: {epoch_metrics}")
+        print(f"epoch {i} eval metrics: {epoch_metrics}")
 
     
