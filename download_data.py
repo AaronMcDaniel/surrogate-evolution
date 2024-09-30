@@ -18,6 +18,24 @@ train_pickle_path = '/storage/ice-shared/vip-vvk/data/AOT/aot_data/train/Labels/
 val_pickle_path = '/storage/ice-shared/vip-vvk/data/AOT/aot_data/val/Labels/part2_STRING_TENSORV2_labels.pkl'
 
 
+def remove_unused_images(output_dir,pickle_path):
+    print("Processing Labels...")
+    with open(pickle_path,"rb") as f:
+        labels = pickle.load(f)
+
+
+    included_paths = list(map(lambda x: ad.eval_label(x)["path"],labels))
+    print("Done processing labels...")
+    #Loop through paths and delete those that aren't present in the pickle file
+    count = 0
+    output_dir = "/".join(output_dir.split("/")[:-1])
+    for file in glob.glob("Images/**/*.png",root_dir=output_dir):
+        if file not in included_paths:
+            count+=1
+            os.remove(os.path.join(output_dir,file))
+
+    print(count)
+
 def shrink_pickle(label_dir, pickle_path, part,output_dir):
     #This shrink pickle won't work
     print("Processing Labels...")
@@ -93,7 +111,8 @@ if __name__ == "__main__":
     # download_data(val_output_dir,val_label_dir,val_pickle_path,val_target_images,val_part)
     # download_data(train_output_dir,train_label_dir,train_pickle_path,train_target_images,train_part)
     # shrink_pickle(val_label_dir,val_pickle_path,val_part,val_output_dir)
-    shrink_pickle(train_label_dir,train_pickle_path,train_part,train_output_dir)
+    # shrink_pickle(train_label_dir,train_pickle_path,train_part,train_output_dir)
+    # remove_unused_images(train_output_dir,train_pickle_path)
 
 
 
