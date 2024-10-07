@@ -2,6 +2,9 @@ import os
 import subprocess
 import random
 import numpy as np
+import pickle
+import aot_dataset as ad
+
 
 # Setup vars
 train_target_images = 40000
@@ -9,8 +12,12 @@ val_target_images = 10000
 train_part = 'part1'
 val_part = 'part2'
 aws_base_command = "s3://airborne-obj-detection-challenge-training/"
-train_output_dir = "aot_data/train"
-val_output_dir = "aot_data/val"
+train_output_dir = "aot_data/train/Images"
+val_output_dir = "aot_data/val/Images"
+train_label_dir = 'aot_data/train/Labels'
+val_label_dir = 'aot_data/val/Labels'
+train_pickle_path = '/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/train/Labels/part1_STRING_TENSORV2_labels.pkl'
+val_pickle_path = '/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/val/Labels/part2_STRING_TENSORV2_labels.pkl'
 
 # Make sure out dirs exist
 os.makedirs(train_output_dir, exist_ok=True)
@@ -46,7 +53,7 @@ def download_flight(flight_id, part, output_dir):
     if os.path.exists(flight_dir):
         print(f"Flight {flight_id} already exists, skipping...")
         return 0
-    command = f"aws s3 sync {aws_base_command}{part}/Images/{flight_id} {output_dir}/Images/{flight_id} --no-sign-request"
+    command = f"aws s3 sync {aws_base_command}{part}/Images/{flight_id} {output_dir}/Images/{part}{flight_id} --no-sign-request"
     subprocess.run(command, shell=True)
 
     # Get num images for the flight
@@ -89,11 +96,68 @@ def download_random_flights(part, target_images, output_dir):
     
     print(f"Completed downloading {total_images} images from {len(selected_flights)} flights in {part}.")
 
+# def rename_folders(base_dir):
+#     for flight in os.listdir(base_dir):
+#         flight_folder = os.path.join(base_dir, flight)
+#         if os.path.isdir(flight_folder):
+#             new_name = os.path.join(base_dir, f'{part}{flight}')
+#             os.rename(flight_folder, new_name)
+
+def rename_folders(base_dir):
+    for flight in os.listdir(base_dir):
+        flight_folder = os.path.join(base_dir, flight)
+        if os.path.isdir(flight_folder):
+            new_name = os.path.join(base_dir, flight[2:])  # Remove the first 8 characters
+            os.rename(flight_folder, new_name)
+
+def shrink_pickle(label_dir, pickle_path, part):
+    with open(pickle_path, 'rb') as f:
+            labels = pickle.load(f)
+    new_labels = []
+    for l in labels:
+        l = ad.eval_label(l)
+        path = l['path']
+        path = os.path.join((label_dir.split('/')[0]) + '/' + (label_dir.split('/')[1]) + '/' + path)
+        if os.path.exists(path):
+            serialized_label = repr(l)
+            new_labels.append(serialized_label)
+    os.makedirs(label_dir, exist_ok=True)
+    output_path = os.path.join(label_dir, f'{part}_STRING_TENSORV2_SHRUNKEN_labels.pkl')
+    with open(output_path, 'wb') as f:
+        pickle.dump(new_labels, f)
+    
+    print(f"Saved {len(new_labels)} labels to {output_path}")
+
 # download_random_flights(train_part, train_target_images, train_output_dir)
 # download_random_flights(val_part, val_target_images, val_output_dir)
 
 # Num train images should be 40474
 print(count_images_in_dir('/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/train/Images'))
+# print(count_images_in_dir('/storage/ice-shared/vip-vvk/data/AOT'))
 
 # Num val images should be 10789
 print(count_images_in_dir('/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/val/Images'))
+# print(count_images_in_dir('/storage/ice-shared/vip-vvk/data/AOT'))
+
+# TEAM NEEDS TO RENAME FOLDERS TOO
+# rename_folders(train_output_dir)
+# rename_folders(val_output_dir)
+
+# SHRINKING PICKLE FILES
+shrink_pickle(train_label_dir, train_pickle_path, train_part)
+shrink_pickle(val_label_dir, val_pickle_path, val_part)
+
+import pickle
+
+with open('/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/train/Labels/part1_STRING_TENSORV2_SHRUNKEN_labels.pkl', 'rb') as file:
+    data = pickle.load(file)
+
+# Print or inspect the data
+print(data)
+
+
+with open('/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/val/Labels/part2_STRING_TENSORV2_SHRUNKEN_labels.pkl', 'rb') as file:
+    data = pickle.load(file)
+
+# Print or inspect the data
+print(data)

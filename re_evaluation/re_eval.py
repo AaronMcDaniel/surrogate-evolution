@@ -77,7 +77,7 @@ def engine(outdir, excluded_gens):
 if __name__ == '__main__':
     # parses arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('-o', '--outdir', required=False, default='/gv1/projects/GRIP_Precog_Opt/outputs')
+    parser.add_argument('-o', '--outdir', required=False, default='/home/hice1/hweston3/scratch/surrogate-evolution/baseline_evolution')
     parser.add_argument('-x', '--exclude', required=False, default = '')
     args = parser.parse_args()
     outdir = args.outdir

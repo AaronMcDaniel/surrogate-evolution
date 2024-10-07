@@ -5,8 +5,8 @@
 #SBATCH --mem=32GB
 #SBATCH --time=08:00:00
 #SBATCH -G 1
-#SBATCH --output="/gv1/projects/GRIP_Precog_Opt/evolution_logs/re_evals/eval.%A.%a.log"
-#SBATCH --error="/gv1/projects/GRIP_Precog_Opt/evolution_logs/re_evals/eval_error.%A.%a.log"
+#SBATCH --output="~/scratch/surrogate-evolution/evolution_logs/re_evals/eval.%A.%a.log"
+#SBATCH --error="~/scratch/surrogate-evolution/evolution_logs/re_evals/eval_error.%A.%a.log"
 
 # Parse command line arguments
 output_dir=""
@@ -24,7 +24,7 @@ while getopts ":o:c:g:" opt; do
   esac
 done
 
-module load anaconda3/2023.07
+module load anaconda3/2023.03
 module load cuda/12.1.1
 
 # Run the Python script with the parsed arguments

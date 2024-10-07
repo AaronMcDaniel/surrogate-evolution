@@ -38,3 +38,8 @@ dmytro_metrics/*.csv
 **/*.pkl
 **/*.csv
 **/*.png
+release/
+test_eval/*
+baseline_evolution/*
+**/*.log
+t_evo_*

@@ -30,7 +30,7 @@ from torch.utils.data import DataLoader
 from torch.cuda.amp import autocast, GradScaler
 from sklearn.metrics import precision_score, recall_score, accuracy_score
 
-classifier_dir = '/gv1/projects/GRIP_Precog_Opt/surrogates/classifiers'
+classifier_dir = '~/scratch/surrogate-evolution/surrogates/classifiers'
 
 def engine(cfg, model_str, param_combo, combo_num, **kwargs):
 

@@ -71,8 +71,8 @@ def main(input_folder, output_file, cfg_path, is_classifier):
         
 
 if __name__ == "__main__":
-    regressor_dir = '/gv1/projects/GRIP_Precog_Opt/surrogates/regressors'
-    classifier_dir = '/gv1/projects/GRIP_Precog_Opt/surrogates/classifiers'
+    regressor_dir = '/home/hice1/hweston3/scratch/surrogate-evolution/surrogates/regressors'
+    classifier_dir = '/home/hice1/hweston3/scratch/surrogate-evolution/surrogates/classifiers'
 
     parser = argparse.ArgumentParser(f'Aggrigates all grid search results into one CSV and shows the best individuals from it')
     parser.add_argument('--input-folder', type=str, default=regressor_dir,  help=f'The folder containing surrogate outputs from a agrid search to summarize.')

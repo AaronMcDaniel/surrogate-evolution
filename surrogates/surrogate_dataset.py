@@ -105,8 +105,8 @@ class ClassifierSurrogateDataset(Dataset):
 # WORKS BUT SHOULD BE PROOFREAD
 def build_dataset(
         name,
-        infile='/gv1/projects/GRIP_Precog_Opt/outputs/out.csv',
-        working_dir='/gv1/projects/GRIP_Precog_Opt/outputs', 
+        infile='/home/hice1/hweston3/scratch/surrogate-evolution/outputs/out.csv',
+        working_dir='/home/hice1/hweston3/scratch/surrogate-evolution/outputs', 
         outdir='surrogate_dataset', 
         metrics='uw_val_epoch_loss,iou_loss,giou_loss,diou_loss,ciou_loss,center_loss,size_loss,obj_loss,precision,recall,f1_score,average_precision', 
         exclude=[], include_only=None, val_ratio=0.3, seed=0
@@ -326,7 +326,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser("Generates datasets for training surrogates")
     parser.add_argument('name', type=str, help='The prefix added to generated .pkl dataset files')
-    parser.add_argument('--working-dir', type=str, default='/gv1/projects/GRIP_Precog_Opt/outputs', help='The working directory for the evolution to turn into a dataset')
+    parser.add_argument('--working-dir', type=str, default='~/scratch/surrogate-evolution/outputs', help='The working directory for the evolution to turn into a dataset')
     parser.add_argument('--infile', type=str, default=None, help='The input file, which is an out.csv file from a previous run. Defaults to the out.csv file in the working-dir')
     parser.add_argument('--outdir', type=str, default='surrogate_dataset', help='The directory to save the surrogate dataset to')
     parser.add_argument('--metrics', type=str, default='uw_val_epoch_loss,iou_loss,giou_loss,diou_loss,ciou_loss,center_loss,size_loss,obj_loss,precision,recall,f1_score,average_precision', help='Comma seperated list of metric header names in the out.csv file')
