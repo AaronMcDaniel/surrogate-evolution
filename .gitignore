@@ -42,3 +42,5 @@ aot_data/val/Images/*
 **/*.csv
 **/*.png
 test_eval/*
+release3/*
+surrogate_weights/*
