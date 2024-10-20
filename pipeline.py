@@ -15,6 +15,7 @@ import time
 import numpy as np
 import toml
 import os
+import re
 
 import pandas as pd
 from deap import creator, gp, base, tools
@@ -81,8 +82,11 @@ class Pipeline:
         self.cls_genome_scaler_file = os.path.join(self.checkpoint_path,'cls_genome_scaler.pkl')
         self.sub_surrogate_selection_file = os.path.join(self.checkpoint_path,'sub_surrogate_selection.pkl')
 
-        self.elites_history_file = os.path.join(self.checkpoint_path,'elites_history.pkl')
-        self.hof_history_file = os.path.join(self.checkpoint_path,'hof_history.pkl')
+        # self.elites_history_file = os.path.join(self.checkpoint_path,'elites_history.pkl')
+        # self.hof_history_file = os.path.join(self.checkpoint_path,'hof_history.pkl')
+
+        self.elites_history_file = os.path.join(self.output_dir,'elites_history.pkl')
+        self.hof_history_file = os.path.join(self.output_dir,'hof_history.pkl')
 
         # Check if output location already exists
         if os.path.exists(self.output_dir):
@@ -90,7 +94,7 @@ class Pipeline:
                 self.attempt_resume = True
             else:
                 self.clear_outputs()
-                os.makedirs(self.logs_dir)
+                os.makedirs(self.logs_dir) #, exist_ok=True)
                 shutil.copy(config_dir, output_dir)
         else:
             os.makedirs(self.output_dir)
@@ -293,26 +297,53 @@ class Pipeline:
 
         # dispatch job
         print('    Dispatching jobs...')
-        os.popen(f"sbatch {JOB_NAME}_{self.gen_count}.job" )
+        sbatch_result = os.popen(f"sbatch {JOB_NAME}_{self.gen_count}.job" ).read()
+        
+        #parse sbatch_result for job id:
+        match = re.search(r'Submitted batch job (\d+)', sbatch_result)
+
+        if match:
+            job_id = match.group(1)
+            print(f"Job ID: {job_id}")
+        else:
+            print("Failed to submit job or parse job id" )
+            print(sbatch_result)
+        
         if self.surrogate_enabled:
             print('    Preparing surrogate...')
             all_subsurrogate_metrics = self.prepare_surrogate()
                         
         print('    Waiting for jobs...')
-        # wait for job to finish
+        # wait for job to finish: where job name has gen count
         while True:
             time.sleep(5)
-            p = subprocess.Popen(['squeue', '-n', JOB_NAME], stdout=subprocess.PIPE)
+            p = subprocess.Popen(['squeue', '-n', f'{JOB_NAME}_{self.gen_count}'], stdout=subprocess.PIPE)
             text = p.stdout.read().decode('utf-8')
+            # print(f'text:', text)
             jobs = text.split('\n')[1:-1]
+            # print(f'jobs:', jobs)
             if len(jobs) == 0:
+                print("ZERO JOBS REMAINING")
                 break
+
+        # wait for job to finish, using job_id
+        # while True:
+        #     time.sleep(5)
+        #     p = subprocess.Popen(['squeue', '-j', job_id], stdout=subprocess.PIPE)
+        #     text = p.stdout.read().decode('utf-8')
+        #     # print(text)
+        #     jobs = text.split('\n')[1:-1]
+        #     # print(jobs)
+        #     if len(jobs) == 0:
+        #         break
         print('    Done!')
 
         fails = 0
         # read eval_gen output file
         for hash, genome in self.current_population.items():
             try:
+                path = f'{self.output_dir}/generation_{self.gen_count}/{hash}/metrics.csv'
+                #print(path)
                 dataframe = pd.read_csv(f'{self.output_dir}/generation_{self.gen_count}/{hash}/metrics.csv')
                 if (self.best_epoch_criteria[1].lower() == 'max'):
                     data = dataframe.nlargest(1, self.best_epoch_criteria[0]).squeeze().to_dict()
@@ -738,10 +769,10 @@ class Pipeline:
         os.system(f'rm -rf {self.output_dir}/*')
         print('Done!')
 
-
+# alternate solution to waiting for generations to finish is have --job-name={JOB_NAME}_{gen_num} and check for same job-name in wait loop
     def create_job_file(self, num_jobs, gen_num):
         batch_script = f"""#!/bin/bash
-#SBATCH --job-name={JOB_NAME}
+#SBATCH --job-name={JOB_NAME}_{gen_num}
 #SBATCH --nodes={NODES}
 #SBATCH -G 1
 #SBATCH --cpus-per-task={CORES}

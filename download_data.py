@@ -132,32 +132,38 @@ def shrink_pickle(label_dir, pickle_path, part):
 # download_random_flights(val_part, val_target_images, val_output_dir)
 
 # Num train images should be 40474
+print("Train images in scratch")
 print(count_images_in_dir('/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/train/Images'))
-# print(count_images_in_dir('/storage/ice-shared/vip-vvk/data/AOT'))
+
+print("Train images in shared")
+print(count_images_in_dir('/storage/ice-shared/vip-vvk/data/AOT'))
 
 # Num val images should be 10789
+print("Val images in scratch")
 print(count_images_in_dir('/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/val/Images'))
-# print(count_images_in_dir('/storage/ice-shared/vip-vvk/data/AOT'))
+
+print("Val images in scratch")
+print(count_images_in_dir('/storage/ice-shared/vip-vvk/data/AOT'))
 
 # TEAM NEEDS TO RENAME FOLDERS TOO
 # rename_folders(train_output_dir)
 # rename_folders(val_output_dir)
 
 # SHRINKING PICKLE FILES
-shrink_pickle(train_label_dir, train_pickle_path, train_part)
-shrink_pickle(val_label_dir, val_pickle_path, val_part)
+# shrink_pickle(train_label_dir, train_pickle_path, train_part)
+# shrink_pickle(val_label_dir, val_pickle_path, val_part)
 
-import pickle
+# import pickle
 
-with open('/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/train/Labels/part1_STRING_TENSORV2_SHRUNKEN_labels.pkl', 'rb') as file:
-    data = pickle.load(file)
+# with open('/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/train/Labels/part1_STRING_TENSORV2_SHRUNKEN_labels.pkl', 'rb') as file:
+#     data = pickle.load(file)
 
-# Print or inspect the data
-print(data)
+# # Print or inspect the data
+# print(data)
 
 
-with open('/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/val/Labels/part2_STRING_TENSORV2_SHRUNKEN_labels.pkl', 'rb') as file:
-    data = pickle.load(file)
+# with open('/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/val/Labels/part2_STRING_TENSORV2_SHRUNKEN_labels.pkl', 'rb') as file:
+#     data = pickle.load(file)
 
-# Print or inspect the data
-print(data)
+# # Print or inspect the data
+# print(data)

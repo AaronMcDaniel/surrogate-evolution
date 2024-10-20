@@ -40,7 +40,7 @@ train_epochs = 10
 # batch size
 batch_size = 2
 # number of batches in one epoch
-batches_per_epoch = 1
+batches_per_epoch = 500
 # number of target classes in AOT
 num_classes = 7
 # iou threshold for determining detection
@@ -91,5 +91,4 @@ pretrained_dir = '/home/hice1/hweston3/scratch/surrogate-evolution/surrogate_dat
 # time in hours the dataset cache is valid for
 cache_thresh = 1
 # size of the dataset
-max_size = 2
-
+max_size = 1000

@@ -32,11 +32,15 @@ class AOTDataset(Dataset):
                     self.image_folder = '/gv1/projects/GRIP_Precog_Opt/data_loading/airborne-detection-starter-kit-master/data/part3/'
             else:
                 if mode == 'train':
-                    self.pickle_path = '/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/train/Labels/part1_STRING_TENSORV2_SHRUNKEN_labels.pkl'
-                    self.image_folder = '/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/train'
+                    # self.pickle_path = '/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/train/Labels/part1_STRING_TENSORV2_SHRUNKEN_labels.pkl'
+                    self.pickle_path = '/storage/ice-shared/vip-vvk/data/AOT/aot_data/train/Labels/part1_STRING_TENSORV2_SHRUNKEN_labels.pkl'
+                    # self.image_folder = '/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/train'
+                    self.image_folder = '/storage/ice-shared/vip-vvk/data/AOT/aot_data/train'
                 elif mode == 'val':
-                    self.pickle_path = '/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/val/Labels/part2_STRING_TENSORV2_SHRUNKEN_labels.pkl'
-                    self.image_folder = '/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/val'
+                    # self.pickle_path = '/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/val/Labels/part2_STRING_TENSORV2_SHRUNKEN_labels.pkl'
+                    self.pickle_path = '/storage/ice-shared/vip-vvk/data/AOT/aot_data/val/Labels/part2_STRING_TENSORV2_SHRUNKEN_labels.pkl'
+                    # self.image_folder = '/home/hice1/hweston3/scratch/surrogate-evolution/aot_data/val'
+                    self.image_folder = '/storage/ice-shared/vip-vvk/data/AOT/aot_data/val'
                 elif mode == 'test':
                     self.pickle_path = '/gv1/projects/GRIP_Precog_Opt/data_loading/airborne-detection-starter-kit-master/data/part3/pickles/labels/part3_STRING_TENSORV2_labels.pkl'
                     self.image_folder = '/gv1/projects/GRIP_Precog_Opt/data_loading/airborne-detection-starter-kit-master/data/part3/'
@@ -51,14 +55,14 @@ class AOTDataset(Dataset):
         
         print(f'{mode} LABELS LOADED!')
 
-        # TEMPORARY FIX
-        init_len = len(self.labels)
-        self.labels = [label for label in self.labels if self.image_exists(label)]
-        final_len = len(self.labels)
-        print(f"Init len: {init_len}, final_len: {final_len}")
-        print(f"Filtered {init_len - final_len} labels with missing images.")
-        ###
-
+        # # TEMPORARY FIX
+        # init_len = len(self.labels)
+        # self.labels = [label for label in self.labels if self.image_exists(label)]
+        # final_len = len(self.labels)
+        # print(f"Init len: {init_len}, final_len: {final_len}")
+        # print(f"Filtered {init_len - final_len} labels with missing images.")
+        # ###
+        print(f"label length:", len(self.labels))
         # initialize a random generator
         self.np_gen = np.random.default_rng(seed)
         # a cache to store faulty filenames and the time threshold they are valid for
