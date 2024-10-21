@@ -36,7 +36,13 @@ dmytro_repo/predictions.pkl
 dmytro_repo/siam-mot/*
 dmytro_metrics/*/
 dmytro_metrics/*.csv
+results_surrogate_evolution/
+aot_data/train/Images/*
+aot_data/val/Images/*
 **/*.jpg files
 **/*.pkl
 **/*.csv
 **/*.png
+test_eval/*
+release3/*
+surrogate_weights/*

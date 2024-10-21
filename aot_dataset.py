@@ -32,11 +32,11 @@ class AOTDataset(Dataset):
                     self.image_folder = '/gv1/projects/GRIP_Precog_Opt/data_loading/airborne-detection-starter-kit-master/data/part3/'
             else:
                 if mode == 'train':
-                    self.pickle_path = '/gv1/projects/GRIP_Precog_Opt/data_loading/airborne-detection-starter-kit-master/data/part1/pickles/labels/part1_STRING_TENSORV2_labels.pkl'
-                    self.image_folder = '/gv1/projects/GRIP_Precog_Opt/data_loading/airborne-detection-starter-kit-master/data/part1/'
+                    self.pickle_path = 'aot_data/train/Labels/part1_STRING_TENSORV2_SHRUNKEN_labels.pkl'
+                    self.image_folder = 'aot_data/train'
                 elif mode == 'val':
-                    self.pickle_path = '/gv1/projects/GRIP_Precog_Opt/data_loading/airborne-detection-starter-kit-master/data/part2/pickles/labels/part2_STRING_TENSORV2_labels.pkl'
-                    self.image_folder = '/gv1/projects/GRIP_Precog_Opt/data_loading/airborne-detection-starter-kit-master/data/part2/'
+                    self.pickle_path = 'aot_data/val/Labels/part2_STRING_TENSORV2_SHRUNKEN_labels.pkl'
+                    self.image_folder = 'aot_data/val'
                 elif mode == 'test':
                     self.pickle_path = '/gv1/projects/GRIP_Precog_Opt/data_loading/airborne-detection-starter-kit-master/data/part3/pickles/labels/part3_STRING_TENSORV2_labels.pkl'
                     self.image_folder = '/gv1/projects/GRIP_Precog_Opt/data_loading/airborne-detection-starter-kit-master/data/part3/'
@@ -50,8 +50,15 @@ class AOTDataset(Dataset):
             self.labels = pickle.load(f)
         
         print(f'{mode} LABELS LOADED!')
+        # TEMPORARY FIX
+        init_len = len(self.labels)
+        self.labels = [label for label in self.labels if self.image_exists(label)]
+        final_len = len(self.labels)
+        print(f"Filtered {init_len - final_len} labels with missing images.")
+
         # initialize a random generator
         self.np_gen = np.random.default_rng(seed)
+
         # a cache to store faulty filenames and the time threshold they are valid for
         self.flight_mapping = {}
         self.cache_thresh = cache_thresh
@@ -65,7 +72,13 @@ class AOTDataset(Dataset):
             labels_subset = np.array(labels_subset)
             self.np_gen.shuffle(labels_subset)
             self.labels = list(labels_subset[:max_size])
-    
+
+    def image_exists(self, label):
+        if isinstance(label, str):
+            label = eval_label(label)
+        image_path = os.path.join(self.image_folder, label['path'])
+        return os.path.exists(image_path)
+
     def __len__(self):
         return len(self.labels)
 
@@ -74,9 +87,13 @@ class AOTDataset(Dataset):
         # if labels were serialized as a string, evaluate it back into a dictionary
         if self.string is not None:
             label = eval_label(label)
-        # load the image as a tensor using the path stored in the label     
-        image_path = label['path']
-        image = cv2.imread(self.image_folder + image_path)
+        # load the image as a tensor using the path stored in the label  
+        image_path = os.path.join(self.image_folder, label['path'])   
+        # image_path_str = self.image_folder + label['path']
+        # if not os.path.exists(os.path.join(image_path_str)):
+        #     print('Image does not exist')
+        #     return None
+        image = cv2.imread(image_path)
         image = np.array(image)
         image = torch.from_numpy(image)
         
@@ -214,4 +231,3 @@ class AOTSampler(Sampler):
             return False
         else:
             return True
-
