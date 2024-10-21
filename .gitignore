@@ -22,6 +22,7 @@ kan/
 kaneffKAN/
 kanKAN
 eval.job
+data_handling_1.ipynb
 test_eval.job
 precog_eval.job
 dmytro_repo/data/models/*.pth
@@ -32,6 +33,7 @@ dmytro_repo/old_logs/
 dmytro_repo/output/checkpoints/
 dmytro_repo/output/models/
 dmytro_repo/predictions.pkl
+dmytro_repo/siam-mot/*
 dmytro_metrics/*/
 dmytro_metrics/*.csv
 **/*.jpg files
