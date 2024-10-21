@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=precog_evolution
+#SBATCH --job-name=test_surr_evo
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
-#SBATCH --time=10-00:00
-#SBATCH --output="/gv1/projects/GRIP_Precog_Opt/evolution_logs/evolution.%A.%a.log"
-#SBATCH --error="/gv1/projects/GRIP_Precog_Opt/evolution_logs/evolution_error.%A.%a.log"
+#SBATCH --time=18:00:00
+#SBATCH --output="/storage/ice-shared/vip-vvk/data/AOT/evolution_logs/evolution.%A.%a.log"
+#SBATCH --error="/storage/ice-shared/vip-vvk/data/AOT/evolution_logs/evolution_error.%A.%a.log"
 
 # Parse command line arguments
 output_dir=""
@@ -13,7 +13,7 @@ conf_file=""
 num_generations=1
 force_wipe=""
 clear_dir=""
-conda_environment="myenv"  # default value
+conda_environment="pco"  # default value
 
 while getopts ":o:c:n:e:fr" opt; do
   case $opt in
@@ -36,7 +36,7 @@ while getopts ":o:c:n:e:fr" opt; do
   esac
 done
 
-module load anaconda3/2023.07
+module load anaconda3/2023.03
 module load cuda/12.1.1
 
 # Run the Python script with the parsed arguments

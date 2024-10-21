@@ -44,3 +44,4 @@ aot_data/val/Images/*
 test_eval/*
 release3/*
 surrogate_weights/*
+test_evo*

@@ -316,7 +316,7 @@ def engine(cfg, genome):
         epoch_preds = {}
 
         train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, loss_weights, iou_type, max_batch=batches_per_epoch)
-        epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds, max_batch=None)
+        epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds, max_batch=batches_per_epoch)
 
         # update metrics_df and all_preds with current epoch's data
         epoch_metrics['epoch_num'] = epoch

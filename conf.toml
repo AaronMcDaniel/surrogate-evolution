@@ -40,7 +40,7 @@ train_epochs = 10
 # batch size
 batch_size = 2
 # number of batches in one epoch
-batches_per_epoch = 500
+batches_per_epoch = 1
 # number of target classes in AOT
 num_classes = 7
 # iou threshold for determining detection
@@ -84,7 +84,7 @@ min_batch_in_val_data = 2
 # flag that determines whether surrogate 'pretrains' on prev run data
 pretrained = true
 # folder containing surrogate datasets used in pretraining the model
-pretrained_dir = '/home/tthakur9/precog-opt-grip/surrogate_dataset/'
+pretrained_dir = '/home/hice1/tthakur9/scratch/surrogate-evolution/surrogate_dataset'
 
 
 [data]

@@ -50,11 +50,11 @@ class AOTDataset(Dataset):
             self.labels = pickle.load(f)
         
         print(f'{mode} LABELS LOADED!')
-        # TEMPORARY FIX
-        init_len = len(self.labels)
-        self.labels = [label for label in self.labels if self.image_exists(label)]
-        final_len = len(self.labels)
-        print(f"Filtered {init_len - final_len} labels with missing images.")
+        # # TEMPORARY FIX
+        # init_len = len(self.labels)
+        # self.labels = [label for label in self.labels if self.image_exists(label)]
+        # final_len = len(self.labels)
+        # print(f"Filtered {init_len - final_len} labels with missing images.")
 
         # initialize a random generator
         self.np_gen = np.random.default_rng(seed)

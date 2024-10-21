@@ -34,9 +34,8 @@ CORES = 8
 MEM = '32GB'
 JOB_TIME = '08:00:00'
 SCRIPT = 'eval.py'
-ENV_NAME = 'tv1'
-EXCEPTED_NODES = ['ice109', 'ice111', 'ice161', 'ice113', 'ice116', 'ice114', 'ice170', 'ice149', 'ice158', 'ice177', 'ice178', 'ice120']
-GPUS = ["TeslaV100-PCIE-32GB", "TeslaV100S-PCIE-32GB", "NVIDIAA100-SXM4-80GB", "NVIDIAA10080GBPCIe", "TeslaP100-SXM2-16GB", "TeslaK80"]
+ENV_NAME = 'pco'
+GPUS = ["V100-16GB", "V100-32GB", "L40S", "A100-40GB", "H100"]
 # ALLOWED_NODES = ['ice108', 'ice107', 'ice110', 'ice143', 'ice144', 'ice145', 'ice151', 'ice162', 'ice163', 'ice164', 'ice165', 'ice175', 'ice176', 'ice179', 'ice183', 'ice185', 'ice191', 'ice192', 'ice193']
 
 
@@ -82,6 +81,8 @@ class Pipeline:
         self.reg_genome_scaler_file = os.path.join(self.checkpoint_path,'reg_genome_scaler.pkl')
         self.cls_genome_scaler_file = os.path.join(self.checkpoint_path,'cls_genome_scaler.pkl')
         self.sub_surrogate_selection_file = os.path.join(self.checkpoint_path,'sub_surrogate_selection.pkl')
+        self.elites_history_file = os.path.join(self.output_dir,'elites_history.pkl')
+        self.hof_history_file = os.path.join(self.output_dir,'hof_history.pkl')
 
         # Check if output location already exists
         if os.path.exists(self.output_dir):
@@ -305,6 +306,7 @@ class Pipeline:
             text = p.stdout.read().decode('utf-8')
             jobs = text.split('\n')[1:-1]
             if len(jobs) == 0:
+                print(f'JOBS FINISHED{text}')
                 break
         print('    Done!')
 
@@ -327,7 +329,7 @@ class Pipeline:
                     if str(g) == genome['genome']:
                         g.fitness.values = tuple([data[key] for key in self.objectives.keys()])
             except FileNotFoundError as e:
-                import pdb; pdb.set_trace()
+                # import pdb; pdb.set_trace()
                 # in the case the file isn't found we generate a file with bad metrics and then use that
                 print(f'    Couldn\'t find individual {hash} evaluation... Assuming genome failure and assigning bad metrics')
                 self.num_genome_fails += 1
@@ -511,9 +513,9 @@ class Pipeline:
             print('----Warning: not enough valid data for regressors... skipping surrogate preparation----')
         #first call train function and receive the scores, then find the best model for each objective plus cls, then calculate their trust
         print('    Training surrogate ensemble...')
-        if len(reg_val_df) < self.surrogate_config['surrogate_batch_size']*self.surrogate_config['min_batch_in_val_data']:
-            print('    ----Warning: not enough valid data for regressors... skipping surrogate preparation----')
-            return None
+        # if len(reg_val_df) < self.surrogate_config['surrogate_batch_size']*self.surrogate_config['min_batch_in_val_data']:
+        #     print('    ----Warning: not enough valid data for regressors... skipping surrogate preparation----')
+        #     return None
         scores, cls_genome_scaler, reg_genome_scaler = self.surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df, train_reg=train_reg)
             
         print('    Selecting best sub-surrogates...')
@@ -696,7 +698,7 @@ class Pipeline:
             # store current genome scalers to be used for downselect
             with open(self.cls_genome_scaler_file, 'wb') as f:
                 pickle.dump(self.cls_genome_scaler, f)
-            with open(self._reg_genome_scaler_file, 'wb') as f:
+            with open(self.reg_genome_scaler_file, 'wb') as f:
                 pickle.dump(self.reg_genome_scaler, f)
             # store current selected sub-surrogates
             with open(self.sub_surrogate_selection_file, 'wb') as f:
@@ -711,10 +713,10 @@ class Pipeline:
         holy_grail_expanded.to_csv(self.holy_grail_file, index=False)
         # get all entries from holy grail that share the same hashes as the elite pool members
         elites_df = holy_grail_expanded[holy_grail_expanded['hash'].isin([self.__get_hash(str(genome)) for genome in self.elite_pool])]
-        elites_df.to_csv(elites_file, index=False)
+        elites_df.to_csv(self.elites_file, index=False)
         # get all entries from holy grail that share the same hashes as the hall of fame members
         hof_df = holy_grail_expanded[holy_grail_expanded['hash'].isin([self.__get_hash(str(genome)) for genome in self.hall_of_fame.items])]
-        hof_df.to_csv(hall_of_fame_file, index=False)
+        hof_df.to_csv(self.hall_of_fame_file, index=False)
         if self.surrogate_enabled:
             # write surrogate information to file
             self.all_cls_surrogate_data.to_csv(self.cls_surrogate_data_file, index=False)
@@ -744,7 +746,6 @@ class Pipeline:
 #SBATCH --job-name={JOB_NAME}
 #SBATCH --nodes={NODES}
 #SBATCH -G 1
-#SBATCH -x {','.join(EXCEPTED_NODES)}
 #SBATCH --cpus-per-task={CORES}
 #SBATCH --mem={MEM}
 #SBATCH --time={JOB_TIME}
@@ -753,11 +754,12 @@ class Pipeline:
 #SBATCH --array=0-{num_jobs-1}
 #SBATCH --constraint="{'|'.join(GPUS)}"
 
-module load anaconda3/2023.07
+module load anaconda3/2023.03
 module load cuda/12.1.1
+mkdir -p {self.logs_dir}/generation_{gen_num}
 
 # Execute the Python script with SLURM_ARRAY_TASK_ID as argument. Script also has optional args -i and -o to specify input file and output directory respectively
-conda run -n {ENV_NAME} --no-capture-output python -u {SCRIPT} $((SLURM_ARRAY_TASK_ID)) -i {self.output_dir}/eval_inputs/eval_input_gen{gen_num}.csv -o {self.output_dir}
+conda run -n {ENV_NAME} --no-capture-output python -u {SCRIPT} $SLURM_ARRAY_TASK_ID -i {self.output_dir}/eval_inputs/eval_input_gen{gen_num}.csv -o {self.output_dir}
 """
         with open(f'{JOB_NAME}_{gen_num}.job', 'w') as fh:
             fh.write(batch_script)
