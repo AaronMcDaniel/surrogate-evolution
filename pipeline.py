@@ -83,6 +83,7 @@ class Pipeline:
         self.sub_surrogate_selection_file = os.path.join(self.checkpoint_path,'sub_surrogate_selection.pkl')
         self.elites_history_file = os.path.join(self.output_dir,'elites_history.pkl')
         self.hof_history_file = os.path.join(self.output_dir,'hof_history.pkl')
+        self.gen_status_file = os.path.join(self.output_dir, 'gen_status.txt')
 
         # Check if output location already exists
         if os.path.exists(self.output_dir):
@@ -283,7 +284,8 @@ class Pipeline:
         input_data.to_csv(eval_input_path, index=False)
 
         # create bash script for job file
-        self.create_job_file(len(self.current_population), self.gen_count)
+        gen_status_file = os.path.join(f'generation_{self.gen_count}_status.txt')
+        self.create_job_file(len(self.current_population), self.gen_count, gen_status_file)
 
         # create this gen's log diretory
         generation_string = f'generation_{self.gen_count}'
