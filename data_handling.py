@@ -8,13 +8,16 @@ import torch_geometric
 import pickle
 import shlex
 import sys
+from torch.utils.data import DataLoader, Dataset
 import os
 import re
+import torch.utils.data.dataset
 import glob
 import pandas as pd
 import numpy as np
 from collections import OrderedDict
 from codec import Codec #Only import from code-base, need to have a sub-repo etc.
+import torch.nn.functional as F
 from torch_geometric.data import HeteroData, Data
 import networkx as nx
 import plotly.graph_objects as go
@@ -162,12 +165,14 @@ def encode_module_repr_2(module,set_types):
 
 
 """Convert given backbone into a Torch Geometric data object"""
-def create_graph_repr(backbone):
+def create_graph_repr(backbone,set_types):
    
     device = "cuda" if torch.cuda.is_available() else "cpu"
     backbone = backbone.to(device)
-    dummy_input = torch.randn((1,3,1000,1000)).to(device) #Will need to find what the proper input size
-    backbone(dummy_input) #Carry out one iteration to ensure it works
+
+    #Is testing the model once necessary? Sometimes the dummy_input isn't of the right shape
+    #dummy_input = torch.randn((1,3,1000,1000)).to(device) #Will need to find what the proper input size
+    #backbone(dummy_input) #Carry out one iteration to ensure it works
     #May not even be needed ^^
 
     #Encode the model_info and pass in both as a tuple.
@@ -204,22 +209,87 @@ def create_graph_repr(backbone):
 
     return datum,node_index_to_name
 
+
+
+head_classes = ["FasterRCNN_Head", "FCOS_Head", "RetinaNet_Head",'SSD_Head']
+optimizer_classes = ['Adam', 'Adamax', 'SGD', 'RMSprop', 'Adagrad', 'Adadelta', 'NAdam','RAdam', 'AdamW', 'Rprop', 'ASGD']
+scheduler_classes = ['StepLR', 'ExponentialLR', 'CosineAnnealingLR', 'CosineAnnealingWarmRestarts', 'ReduceLROnPlateau', 'CyclicLR', 'OneCycleLR', 'MultiStepLR', 'ConstantLR', 'PolynomialLR','LinearLR']
+
+
+#One-hot encoding
+def encoder(types,name):
+  idx = types.index(name)
+  one_hot = F.one_hot(torch.tensor(idx), num_classes=len(types))
+  return one_hot
+#Not one-hot encoded features
+#There are certain scheduler specific parameters that haven't been included, because they depend on which scheduler is used
+def feature_vector(input_data):
+    optimizer_lr = torch.tensor(input_data['optimizer_lr'])
+    # optimizer_weight_decay = torch.tensor(input_data['optimizer_weight_decay'])
+    loss_weights = input_data['loss_weights']
+    feature_vector = torch.cat([
+        optimizer_lr.unsqueeze(0),
+        # optimizer_weight_decay.unsqueeze(0),
+        loss_weights
+    ])
+
+    return feature_vector
+
+def vectorize_model_info(model_info):
+    optimizer = encoder(optimizer_classes,model_info["optimizer"])
+    head = encoder(head_classes,model_info["head"])
+    scheduler = encoder(scheduler_classes,model_info["lr_scheduler"])
+    feature = feature_vector(model_info)
+
+    #Take the log and then normalize, should look into better ways to do this.
+    feature = torch.log(feature + 1e-6) #Small eps if 0
+    mu = torch.mean(feature)
+    std  = torch.std(feature)
+    feature = (feature - mu ) / std
+    information = torch.cat((optimizer,head,scheduler,feature))
+    return information
+
+
 """Convert a genome into torch geometric data object"""
-def create_data_object(genome):
+def create_data_object(genome,set_types):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     codec = Codec(num_classes=7,genome_encoding_strat='Tree')
     model_info = codec.decode_genome(genome,num_loss_components=7)
     model = model_info["model"]
     del model_info["model"]
     backbone = model._modules["backbone"].to(device)
-    model_info["head"] = model._modules["backbone"]._get_name()
+    model_info["head"] = genome.split("(")[0]
+    model_info_vector = vectorize_model_info(model_info)
+    datum, index_to_name = create_graph_repr(backbone,set_types)
+    return model_info_vector, datum, index_to_name
+
+
+class SurrogateData(Dataset):
+    def __init__(self,csv_path,set_types_pkl,selected_metrics):
+        #selected metrics is the list of desired metrics from the csv file, and the order they should be returned
+        self.selected_metrics =selected_metrics
+        self.dataframe = pd.read_csv(csv_path)
+        for metric in self.selected_metrics:
+            if metric not in self.dataframe.columns:
+                raise Exception(f"{metric} is not an actual metric")
+        with open("data/set_prims.pkl", "rb") as f:
+            self.set_types = pickle.load(f)
+        self.cache = [None for _ in range(self.__len__())]
     
-    datum, index_to_name = create_graph_repr(backbone)
-    return model_info, datum, index_to_name
+    def __len__(self):
+        return len(self.dataframe)
+    
+    def __getitem__(self,idx):
+        if self.cache[idx] == None:
 
+            genome = self.dataframe["genome"][idx]
+            label = torch.tensor(self.dataframe.loc[idx,self.selected_metrics])
 
-
-
+            model_info_vector, datum, _ = create_data_object(genome,self.set_types)
+            self.cache[idx] = model_info_vector, datum, label
+        else:
+            model_info_vector, datum, label = self.cache[idx]
+        return model_info_vector, datum, label
 
 def visualize_interactive_graph(data, node_names=None):
     """
@@ -305,39 +375,42 @@ def visualize_interactive_graph(data, node_names=None):
     # Show the plot in the browser
     fig.show()
 
-    
-# num_classes = 7
-# num_loss_components = 7
-# codec = Codec(num_classes=num_classes)
-# counter = 0
+if __name__ == "__main__":    
+    num_classes = 7
+    num_loss_components = 7
+    codec = Codec(num_classes=num_classes)
+    counter = 0
 
-# data_path = "./data/compiled_data_valid_only.csv"
-# df = pd.read_csv(data_path)
+    data_path = "./data/compiled_data_valid_only.csv"
+    df = pd.read_csv(data_path)
 
 
-# #Just temporary code for getting the set of everything, deal with this more formally later
-# def process_genome(genome):
-#     model_dict = codec.decode_genome(genome, num_loss_components)
-#     model = model_dict['model']
-#     return model
+    #Just temporary code for getting the set of everything, deal with this more formally later
+    def process_genome(genome):
+        model_dict = codec.decode_genome(genome, num_loss_components)
+        model = model_dict['model']
+        return model
 
-# def get_prim_types(model):
-#     model = model._modules["backbone"].to("cuda")
-#     model_dict = create_model_dict(model)
-#     types = set(type(val) for val in model_dict.values())
-#     return types
+    def get_prim_types(model):
+        model = model._modules["backbone"].to("cuda")
+        model_dict = create_model_dict(model)
+        types = set(type(val) for val in model_dict.values())
+        return types
 
-# df['processed_genome'] = df['genome'].apply(process_genome)
+    df['processed_genome'] = df['genome'].apply(process_genome)
 
-# all_types = set()
+    all_types = set()
 
-# for model in df['processed_genome']:
-#     counter += 1
-#     print(counter)
-#     model_types = get_prim_types(model)
-#     all_types.update(model_types)
-# print("saving")
-# output_path = "./data/all_unique_types.txt"
-# with open(output_path, 'w') as f:
-#     for t in all_types:
-#         f.write(f"{t}\n")
+    for model in df['processed_genome']:
+        counter += 1
+        print(counter)
+        try:
+            model_types = get_prim_types(model)
+            all_types.update(model_types)
+        except:
+            print(f"{counter} failed...")
+    print("saving")
+    output_path = "./data/all_unique_types.txt"
+    with open(output_path, 'w') as f:
+        for t in all_types:
+            f.write(f"{t}\n")
