@@ -23,6 +23,14 @@ import networkx as nx
 import plotly.graph_objects as go
 from torch_geometric.utils import to_networkx
 
+
+"""Names of all heads, schedulers, and optimizers"""
+
+head_classes = ["FasterRCNN_Head", "FCOS_Head", "RetinaNet_Head",'SSD_Head']
+optimizer_classes = ['Adam', 'Adamax', 'SGD', 'RMSprop', 'Adagrad', 'Adadelta', 'NAdam','RAdam', 'AdamW', 'Rprop', 'ASGD']
+scheduler_classes = ['StepLR', 'ExponentialLR', 'CosineAnnealingLR', 'CosineAnnealingWarmRestarts', 'ReduceLROnPlateau', 'CyclicLR', 'OneCycleLR', 'MultiStepLR', 'ConstantLR', 'PolynomialLR','LinearLR']
+
+
 """
 Creates a dictionary of all the modules in the model, where the key is the 
 name used in the symbolically traced graph and the value is the actual module.
@@ -182,7 +190,6 @@ def create_graph_repr(backbone,set_types):
 
     nodes = model_graph.graph.nodes
     #Temporary, eventually replace with set_type for all models so its consistent
-    set_types = get_prim_types(backbone)
     for node in nodes:
         node.value = encode_module_repr_2(model_dict.get(node.name),set_types)
         if node.name in model_dict:
@@ -208,12 +215,6 @@ def create_graph_repr(backbone,set_types):
     datum = Data(x=node_features, edge_index=edge_index)
 
     return datum,node_index_to_name
-
-
-
-head_classes = ["FasterRCNN_Head", "FCOS_Head", "RetinaNet_Head",'SSD_Head']
-optimizer_classes = ['Adam', 'Adamax', 'SGD', 'RMSprop', 'Adagrad', 'Adadelta', 'NAdam','RAdam', 'AdamW', 'Rprop', 'ASGD']
-scheduler_classes = ['StepLR', 'ExponentialLR', 'CosineAnnealingLR', 'CosineAnnealingWarmRestarts', 'ReduceLROnPlateau', 'CyclicLR', 'OneCycleLR', 'MultiStepLR', 'ConstantLR', 'PolynomialLR','LinearLR']
 
 
 #One-hot encoding
@@ -272,7 +273,7 @@ class SurrogateData(Dataset):
         for metric in self.selected_metrics:
             if metric not in self.dataframe.columns:
                 raise Exception(f"{metric} is not an actual metric")
-        with open("data/set_prims.pkl", "rb") as f:
+        with open(set_types_pkl, "rb") as f:
             self.set_types = pickle.load(f)
         self.cache = [None for _ in range(self.__len__())]
     
