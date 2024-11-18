@@ -5,7 +5,7 @@ Generates hypervolume and pareto front plots given out.csv's from evolutions
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from pymoo.indicators.hv import HV, Hypervolume
+# from pymoo.indicators.hv import HV, Hypervolume
 from matplotlib.ticker import MaxNLocator
 import toml
 
@@ -181,11 +181,11 @@ if __name__ == "__main__":
     
     # HERE IS WHERE YOU ADD FRONTS
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
-    baseline_path = '/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv'
-    df_baseline = pd.read_csv(baseline_path)
-    surrogate_path = '/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv'
+    # baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/baseline_evo_working/out.csv'
+    # df_baseline = pd.read_csv(baseline_path)
+    surrogate_path = '/storage/ice-shared/vip-vvk/data/AOT/tfs_se/out.csv'
     df_surrogate = pd.read_csv(surrogate_path)
-    effective_path = '/gv1/projects/GRIP_Precog_Opt/effective_hash_evolution/out.csv'
+    effective_path = '/storage/ice-shared/vip-vvk/data/AOT/baseline_evo_working/out.csv'
     df_effective = pd.read_csv(effective_path)
     # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
     dataframes = [

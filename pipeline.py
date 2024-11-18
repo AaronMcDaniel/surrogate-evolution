@@ -703,19 +703,23 @@ class Pipeline:
     
     def simulated_surrogate_injection(self, curr_pop):
         curr_pop = copy.deepcopy(curr_pop)
+        curr_deap_pop = list(curr_pop.values())
         for i in range(self.num_gens_ssi):
-            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, curr_deap_pop)
             parents = self.select_parents(valid) 
             unsustainable_pop = self.overpopulate(parents)
             if i == self.num_gens_ssi - 1:
                 curr_pop = unsustainable_pop
             else:
                 new_hashes = random.sample(list(unsustainable_pop.keys()), self.population_size)
-                new_pop = []
+                new_pop = {}
+                new_deap_pop = []
                 for hash in new_hashes:
-                    new_pop.append(unsustainable_pop[hash])
+                    new_deap_pop.append(unsustainable_pop[hash])
+                    new_pop[hash] = unsustainable_pop[hash]
                 curr_pop = new_pop
-        return curr_pop
+                curr_deap_pop = new_deap_pop
+        return curr_pop, new_deap_pop
 
 
     def log_info(self):
