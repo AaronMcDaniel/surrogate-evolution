@@ -33,6 +33,15 @@ train_pool_source = "All"
 trust_pool_source = "ElitePopMix"
 # criteria to select best epoch
 best_epoch_criteria = ["average_precision", "max"]
+# whether to use simulated surrogate injection (SSI)
+ssi = false
+# number of generations of simulation with surrogate-only
+num_gens_ssi = 5
+# frequency at which ssi occurs
+ssi_freq = 3
+# first generation to use SSI
+ssi_start_gen = 7
+
 
 [model]
 # number of epochs to train individuals for
@@ -40,7 +49,7 @@ train_epochs = 10
 # batch size
 batch_size = 2
 # number of batches in one epoch
-batches_per_epoch = 1
+batches_per_epoch = 500
 # number of target classes in AOT
 num_classes = 7
 # iou threshold for determining detection
@@ -91,5 +100,5 @@ pretrained_dir = '/home/hice1/tthakur9/scratch/surrogate-evolution/surrogate_dat
 # time in hours the dataset cache is valid for
 cache_thresh = 1
 # size of the dataset
-max_size = 2
+max_size = 2000
 

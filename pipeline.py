@@ -26,6 +26,7 @@ from primitive_tree import CustomPrimitiveTree
 from surrogates.surrogate_eval import engine, get_val_scores
 from surrogates.surrogate_dataset import build_dataset
 import numpy as np
+import re
 
 # job file params
 JOB_NAME = 't_evo'
@@ -64,7 +65,7 @@ class Pipeline:
         self.attempt_resume = False
         
         # init file names
-        # self.trust_file = os.path.join(self.output_dir, 'surrogate_trusts.csv')
+        self.trust_file = os.path.join(self.output_dir, 'surrogate_trusts.csv')
         self.cls_surrogate_data_file = os.path.join(self.output_dir, 'cls_surrogate_data.csv')
         self.reg_surrogate_data_file = os.path.join(self.output_dir, 'reg_surrogate_data.csv')
         self.selected_surrogate_data_file = os.path.join(self.output_dir, 'selected_surrogate_data.csv')
@@ -83,7 +84,6 @@ class Pipeline:
         self.sub_surrogate_selection_file = os.path.join(self.checkpoint_path,'sub_surrogate_selection.pkl')
         self.elites_history_file = os.path.join(self.output_dir,'elites_history.pkl')
         self.hof_history_file = os.path.join(self.output_dir,'hof_history.pkl')
-        self.gen_status_file = os.path.join(self.output_dir, 'gen_status.txt')
 
         # Check if output location already exists
         if os.path.exists(self.output_dir):
@@ -131,6 +131,7 @@ class Pipeline:
         self.train_pool_source = pipeline_config['train_pool_source']
         self.trust_pool_source = pipeline_config['trust_pool_source']
         self.best_epoch_criteria = pipeline_config['best_epoch_criteria']
+        self.num_gens_ssi = pipeline_config['num_gens_ssi']
 
         # Other useful attributes
         self.holy_grail = pd.DataFrame(columns=['gen', 'hash', 'genome', 'metrics']) # data regarding every evaluated individual; metrics are from best epoch since all other metric data is already stored by eval_script
@@ -225,7 +226,7 @@ class Pipeline:
                 print('Found sub_surrogate_selection.pkl!')
                 try:
                     self.all_cls_surrogate_data = pd.read_csv(self.cls_surrogate_data_file)
-                    self.all_reg_surrogate_data = pd.read_csv(self.reg_surrogate_data)
+                    self.all_reg_surrogate_data = pd.read_csv(self.reg_surrogate_data_file)
                     self.selected_surrogate_data = pd.read_csv(self.selected_surrogate_data_file)
                 except pd.errors.EmptyDataError:
                     pass 
@@ -284,8 +285,7 @@ class Pipeline:
         input_data.to_csv(eval_input_path, index=False)
 
         # create bash script for job file
-        gen_status_file = os.path.join(f'generation_{self.gen_count}_status.txt')
-        self.create_job_file(len(self.current_population), self.gen_count, gen_status_file)
+        self.create_job_file(len(self.current_population), self.gen_count)
 
         # create this gen's log diretory
         generation_string = f'generation_{self.gen_count}'
@@ -295,7 +295,18 @@ class Pipeline:
 
         # dispatch job
         print('    Dispatching jobs...')
-        os.popen(f"sbatch {JOB_NAME}_{self.gen_count}.job" )
+        # os.popen(f"sbatch {JOB_NAME}_{self.gen_count}.job" )
+        sbatch_result = os.popen(f"sbatch {JOB_NAME}_{self.gen_count}.job" ).read()
+        
+        #parse sbatch_result for job id:
+        match = re.search(r'Submitted batch job (\d+)', sbatch_result)
+        if match:
+            job_id = match.group(1)
+            print(f"Job ID: {job_id}")
+        else:
+            print("Failed to submit job or parse job id" )
+            print(sbatch_result)
+        
         if self.surrogate_enabled:
             print('    Preparing surrogate...')
             all_subsurrogate_metrics = self.prepare_surrogate()
@@ -303,8 +314,9 @@ class Pipeline:
         print('    Waiting for jobs...')
         # wait for job to finish
         while True:
-            time.sleep(5)
-            p = subprocess.Popen(['squeue', '-n', JOB_NAME], stdout=subprocess.PIPE)
+            time.sleep(300)
+            # p = subprocess.Popen(['squeue', '-n', JOB_NAME], stdout=subprocess.PIPE)
+            p = subprocess.Popen(['squeue', '-n', f'{JOB_NAME}_{self.gen_count}'], stdout=subprocess.PIPE)
             text = p.stdout.read().decode('utf-8')
             jobs = text.split('\n')[1:-1]
             if len(jobs) == 0:
@@ -503,10 +515,12 @@ class Pipeline:
         reg_train_df = pd.concat([reg_train_df, self.reg_surrogate_pretrained_data], axis=0)
         cls_train_df = pd.concat([cls_train_df, self.cls_surrogate_pretrained_data], axis=0)
         
-        # print('++++++++++++++++++++++++')
-        # print('reg train size:', reg_train_df.shape)
-        # print('cls train size:', cls_train_df.shape)
-        # print('++++++++++++++++++++++++')
+        print('++++++++++++++++++++++++')
+        print('reg train size:', reg_train_df.shape)
+        print('reg val size:', reg_val_df.shape)
+        print('cls train size:', cls_train_df.shape)
+        print('cls val size:', cls_val_df.shape)
+        print('++++++++++++++++++++++++')
         
         # check if there's enough data to train regressors
         train_reg = True
@@ -515,9 +529,10 @@ class Pipeline:
             print('----Warning: not enough valid data for regressors... skipping surrogate preparation----')
         #first call train function and receive the scores, then find the best model for each objective plus cls, then calculate their trust
         print('    Training surrogate ensemble...')
-        # if len(reg_val_df) < self.surrogate_config['surrogate_batch_size']*self.surrogate_config['min_batch_in_val_data']:
-        #     print('    ----Warning: not enough valid data for regressors... skipping surrogate preparation----')
-        #     return None
+        if len(reg_val_df) < self.surrogate_config['surrogate_batch_size']*self.surrogate_config['min_batch_in_val_data']:
+            print('    ----Warning: not enough valid data for regressors... skipping surrogate preparation----')
+            return None
+        # print(f'     Regression validation data shape: {reg_val_df.shape}      {reg_val_df.head()}')
         scores, cls_genome_scaler, reg_genome_scaler = self.surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df, train_reg=train_reg)
             
         print('    Selecting best sub-surrogates...')
@@ -555,8 +570,9 @@ class Pipeline:
         self.sub_surrogates = sub_surrogates
 
         # log trusts
-        if all_subsurrogate_metrics is not None:
-                self.add_metrics_to_dfs(all_subsurrogate_metrics)
+        # NOTE this should work but may need to log trusts as well
+        if scores is not None:
+                self.add_metrics_to_dfs(scores)
         print('    Done!')
         return scores
     
@@ -684,6 +700,23 @@ class Pipeline:
                 mutants += list(eval(f'self.toolbox.{mutation}')(mutant, self.pset))
         return mutants
 
+    
+    def simulated_surrogate_injection(self, curr_pop):
+        curr_pop = copy.deepcopy(curr_pop)
+        for i in range(self.num_gens_ssi):
+            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            parents = self.select_parents(valid) 
+            unsustainable_pop = self.overpopulate(parents)
+            if i == self.num_gens_ssi - 1:
+                curr_pop = unsustainable_pop
+            else:
+                new_hashes = random.sample(list(unsustainable_pop.keys()), self.population_size)
+                new_pop = []
+                for hash in new_hashes:
+                    new_pop.append(unsustainable_pop[hash])
+                curr_pop = new_pop
+        return curr_pop
+
 
     def log_info(self):
         print('Logging data...')
@@ -745,7 +778,7 @@ class Pipeline:
 
     def create_job_file(self, num_jobs, gen_num):
         batch_script = f"""#!/bin/bash
-#SBATCH --job-name={JOB_NAME}
+#SBATCH --job-name={JOB_NAME}_{gen_num}
 #SBATCH --nodes={NODES}
 #SBATCH -G 1
 #SBATCH --cpus-per-task={CORES}
