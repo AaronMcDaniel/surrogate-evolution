@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=test_surr_evo
+#SBATCH --job-name=ttest_se
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
