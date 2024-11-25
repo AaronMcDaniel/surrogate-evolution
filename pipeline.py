@@ -7,6 +7,7 @@ Makes calls to surrogate appropriately to train/validate and use for downselecti
 import copy
 import csv
 import hashlib
+import operator
 import pickle
 import random
 import shutil
@@ -114,6 +115,7 @@ class Pipeline:
         self.num_parents = pipeline_config['num_parents']
         self.crossovers = pipeline_config['crossovers']
         self.mutations = pipeline_config['mutations']
+        self.static_limits = pipeline_config['static_limits']
         self.surrogate_enabled = pipeline_config['surrogate_enabled']
         self.surrogate_temp_dataset_path = os.path.join(self.output_dir, 'temp_surrogate_datasets')
         self.surrogate_weights_dir = os.path.join(output_dir, 'surrogate_weights')
@@ -181,15 +183,29 @@ class Pipeline:
         for crossover in self.crossovers.keys():
             init, *temp = crossover.split('_')
             res = ''.join([init.lower(), *map(str.title, temp)]) # convert from readable snake_case config to camelCase function name 
-            self.toolbox.register(crossover, eval(f'gp.cx{str.upper(res[0])+res[1:]}'))
+            # self.toolbox.register(crossover, eval(f'gp.cx{str.upper(res[0])+res[1:]}'))
+            crossover_func = eval(f'gp.cx{str.upper(res[0])+res[1:]}')
+
+            if self.static_limits['enabled']:
+                crossover_func = gp.staticLimit(key=operator.attrgetter('height'), max_value=self.static_limits['max_depth'])(crossover_func) # depth limit
+                crossover_func = gp.staticLimit(key=len, max_value=self.static_limits['max_size'])(crossover_func) # size limit
+
+            self.toolbox.register(crossover, crossover_func)
 
         for mutation in self.mutations.keys():
             init, *temp = mutation.split('_')
             res = ''.join([init.lower(), *map(str.title, temp)]) # convert from readable snake_case config to camelCase function name 
-            self.toolbox.register(mutation, eval(f'gp.mut{str.upper(res[0])+res[1:]}'))
+            #self.toolbox.register(mutation, eval(f'gp.mut{str.upper(res[0])+res[1:]}'))
+            mutation_func = eval(f'gp.mut{str.upper(res[0])+res[1:]}')
 
+            if self.static_limits['enabled']:
+                mutation_func = gp.staticLimit(key=operator.attrgetter('height'), max_value=self.static_limits['max_depth'])(mutation_func) # depth limit
+                mutation_func = gp.staticLimit(key=len, max_value=self.static_limits['max_size'])(mutation_func) # size limit
+
+            self.toolbox.register(mutation, mutation_func)
 
     def initialize(self, seed_file = None):
+        print(f'Surrogate enabled {self.surrogate_enabled}')
         if self.attempt_resume:
             print('Attempting to resume...')
             self.holy_grail = pd.read_csv(self.holy_grail_file)
@@ -314,28 +330,17 @@ class Pipeline:
             all_subsurrogate_metrics = self.prepare_surrogate()
                         
         print('    Waiting for jobs...')
-        # wait for job to finish: where job name has gen count
+        # wait for jobs to finish
         while True:
-            time.sleep(5)
-            p = subprocess.Popen(['squeue', '-n', f'{JOB_NAME}_{self.gen_count}'], stdout=subprocess.PIPE)
+            time.sleep(120)
+            p = subprocess.Popen(['squeue', '-j', job_id], stdout=subprocess.PIPE)
             text = p.stdout.read().decode('utf-8')
-            # print(f'text:', text)
             jobs = text.split('\n')[1:-1]
-            # print(f'jobs:', jobs)
             if len(jobs) == 0:
                 print("ZERO JOBS REMAINING")
+                # print("SQUEUE COMMAND OUTPUT:")
+                # print(text)
                 break
-
-        # wait for job to finish, using job_id
-        # while True:
-        #     time.sleep(5)
-        #     p = subprocess.Popen(['squeue', '-j', job_id], stdout=subprocess.PIPE)
-        #     text = p.stdout.read().decode('utf-8')
-        #     # print(text)
-        #     jobs = text.split('\n')[1:-1]
-        #     # print(jobs)
-        #     if len(jobs) == 0:
-        #         break
         print('    Done!')
 
         fails = 0
@@ -449,25 +454,31 @@ class Pipeline:
                 os.popen(f'rm {self.output_dir}/generation_{gen}/{hash}/last_epoch.pth')
             print('Done!')
 
-
-    def overpopulate(self, mating_pool): # mating pool is selected_parents + elite pool
+    # introduces weighting to parent pair selection
+    def overpopulate(self, mating_pool):  # mating pool is selected_parents + elite pool
         print('Overpopulating...')
         new_pop = {}
-        # repeat till target overpopulation size is met
+
+        weights = [self.calculate_weight(str(individual)) for individual in mating_pool]
+        weights = np.array(weights) / sum(weights) # normalize
+
+        # repeat until target overpopulation size is met
         while len(new_pop) < self.unsustainable_population_size:
             copies = copy.deepcopy(mating_pool)
-            # make pairs of parents randomly
+
+            # make pairs of parents randomly, with weighting
             parent_pairs = []
-            while len(parent_pairs) < len(mating_pool)/2:
-                if (len(copies) >= 2):
-                    parent1 = copies.pop(random.randrange(0, len(copies)))
-                    parent2 = copies.pop(random.randrange(0, len(copies)))
+            while len(parent_pairs) < len(mating_pool) / 2:
+                if len(copies) >= 2:
+                    indices = np.random.choice(len(copies), size=2, replace=False, p=weights)
+                    parent1 = copies.pop(indices[0])
+                    parent2 = copies.pop(indices[1])
                     parent_pairs.append([parent1, parent2])
                 else:
                     break
             # mate pairs
             for pair in parent_pairs:
-                try: # try except due to errors with particular genomes when crossovering
+                try:  # try except due to errors with particular genomes when crossovering
                     offsprings = self.cross(pair)
                     mutants = []
                     # mutate on the offsprings
@@ -476,17 +487,29 @@ class Pipeline:
                         mutants += self.mutate(offspring)
                     for genome in offsprings + mutants:
                         hash = self.__get_hash(str(genome))
-                        if (hash in self.holy_grail.get('hash').to_list()): # avoid genomes that have been in the population before
+                        # avoid genomes that have been in the population before
+                        if hash in self.holy_grail.get('hash').to_list():
                             continue
                         new_pop[hash] = genome
-                        if (len(new_pop) == self.unsustainable_population_size):
+                        if len(new_pop) == self.unsustainable_population_size:
                             print('Done!')
                             return new_pop
                 except:
                     continue
         print('Done!')
         return new_pop
-    
+
+    def calculate_weight(self, individual_str):
+        # print(individual_str)
+        tuning_layers_count = self.count_hyperparam_layers(individual_str)
+        return np.exp(-tuning_layers_count)
+
+    def count_hyperparam_layers(self, individual_str):
+        # tuning_operations = ['mul', 'add', 'protectedSub', 'protectedDiv', 'toProbFloat', 'toPNorm', 'toBoundedFloat', 'dummyOp']
+        tuning_operations = ['mul(', 'add(', 'protectedSub(', 'protectedDiv(', 'toProbFloat(', 'toPNorm(', 'toBoundedFloat(', 'dummyOp(']
+        total = sum(individual_str.count(op) for op in tuning_operations)
+        # print(f"{individual_str} has {total} tuning operations")
+        return total
     
     # trains the surrogate (all sub-surrogates) and gets eval scores which are used to calculate a trustworthiness
     # surrogate weights are stored to be used for inference when downselecting

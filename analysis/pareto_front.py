@@ -141,7 +141,7 @@ def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds
     plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
     plt.tight_layout()
-    plt.savefig('analysis/graphs/pareto/pareto_gen' + str(gen) + '.jpg')
+    plt.savefig('/home/hice1/hweston3/scratch/surrogate-evolution/analysis/graphs/pareto/pareto_gen' + str(gen) + '.jpg')
     plt.close()
     print('plot ' + str(gen) + ' done')
 
@@ -170,7 +170,8 @@ def generate_fronts(df, objectives, directions, name, gen, colors, marker, reach
 
 if __name__ == "__main__":
     # grab the objectives and best epoch criteria from the config and transform them to how I was previously representing that data (True = want to minimize, False = maximize)
-    configs = toml.load('conf.toml')
+    # configs = toml.load('conf.toml')
+    configs = toml.load('/storage/ice-shared/vip-vvk/data/AOT/baseline_evo_working/conf.toml')
     pipeline_config = configs["pipeline"]
     cfg_objectives = pipeline_config['objectives']
     cfg_best_epoch = pipeline_config['best_epoch_criteria']
@@ -181,18 +182,15 @@ if __name__ == "__main__":
     
     # HERE IS WHERE YOU ADD FRONTS
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
-    baseline_path = '/gv1/projects/GRIP_Precog_Opt/unseeded_baseline_evolution/out.csv'
+    baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/baseline_evo_working/out.csv'
     df_baseline = pd.read_csv(baseline_path)
-    surrogate_path = '/gv1/projects/GRIP_Precog_Opt/unseeded_surrogate_evolution/out.csv'
-    df_surrogate = pd.read_csv(surrogate_path)
-    effective_path = '/gv1/projects/GRIP_Precog_Opt/effective_hash_evolution/out.csv'
-    df_effective = pd.read_csv(effective_path)
+    # surrogate_path = '/storage/ice-shared/vip-vvk/data/AOT/tfs_se_v2/out.csv'
+    # df_surrogate = pd.read_csv(surrogate_path)
     # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
     dataframes = [
-        {'df': df_effective, 'name': 'Baseline', 'colors': ['xkcd:lightblue', 'xkcd:blue', 'xkcd:grey', 'xkcd:charcoal'], 'marker': 'o'}, 
-        {'df': df_surrogate, 'name': 'Surrogate', 'colors': ['xkcd:orange', 'xkcd:dark orange', 'xkcd:grey', 'xkcd:charcoal'], 'marker': '^'}
-        #{'df': df_effective, 'name': 'Effective Hash', 'colors': ['xkcd:bright red', 'xkcd:red', 'xkcd:grey', 'xkcd:charcoal'], 'marker': 'P'}
-    ]
+        {'df': df_baseline, 'name': 'Baseline', 'colors': ['xkcd:lightblue', 'xkcd:blue', 'xkcd:grey', 'xkcd:charcoal'], 'marker': 'o'}, 
+        # {'df': df_surrogate, 'name': 'Surrogate', 'colors': ['xkcd:orange', 'xkcd:dark orange', 'xkcd:grey', 'xkcd:charcoal'], 'marker': '^'}
+            ]
 
     min_gens = []
     max_gens = []
@@ -224,15 +222,16 @@ if __name__ == "__main__":
     
     # HERE IS WHERE YOU ADD BENCHMARKS THAT HAVE NO FRONTS
     # same process as adding a front except it only takes in one color instead of a list of colors
-    reduced_path = 'dmytro_metrics/combined_metric.csv'
-    full_path = 'dmytro_metrics/metrics.csv'
-    df_simple = pd.read_csv(reduced_path)
-    df_complex = pd.read_csv(full_path)
+    # reduced_path = 'dmytro_metrics/combined_metric.csv'
+    # full_path = 'dmytro_metrics/metrics.csv'
+    # df_simple = pd.read_csv(reduced_path)
+    # df_complex = pd.read_csv(full_path)
     
-    benchmarks = [
-        {'df': df_simple, 'name': 'Reduced Dmytro',  'color': 'xkcd:purple', 'marker': 'X'}, 
-        {'df': df_complex,'name': 'Full Dmytro', 'color': 'xkcd:green', 'marker': 'X'}
-    ]
+    benchmarks = []
+    # benchmarks = [
+    #     {'df': df_simple, 'name': 'Reduced Dmytro',  'color': 'xkcd:purple', 'marker': 'X'}, 
+    #     {'df': df_complex,'name': 'Full Dmytro', 'color': 'xkcd:green', 'marker': 'X'}
+    # ]
 
     for benchmark in benchmarks:
         df = benchmark['df']
@@ -325,7 +324,7 @@ if __name__ == "__main__":
     plt.xlabel('Generation')
     plt.ylabel('Hypervolume')
     plt.tight_layout()
-    plt.savefig('analysis/graphs/pareto/pareto_hypervolume.jpg')
+    plt.savefig('/home/hice1/hweston3/scratch/surrogate-evolution/analysis/graphs/pareto/pareto_hypervolume.jpg')
     plt.close()
         
     
