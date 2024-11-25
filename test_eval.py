@@ -472,8 +472,7 @@ if __name__ == '__main__':
     # parses arguments from sbatch job
     parser = argparse.ArgumentParser()
     # parser.add_argument("index", type=int)
-    # parser.add_argument('-i', '--infile', required=False, default='/gv1/projects/GRIP_Precog_Opt/precog-opt-grip/eval_input.csv')
-    parser.add_argument('-o', '--outdir', required=False, default='/home/hice1/tthakur9/scratch/surrogate-evolution/test_eval')
+    parser.add_argument('-o', '--outdir', required=False, default='/home/hice1/hweston3/scratch/surrogate-evolution/test_eval')
     args = parser.parse_args()
     # index = args.index
     # infile = args.infile
@@ -501,14 +500,4 @@ if __name__ == '__main__':
     gen_num = 0
     
     # evaluate
-    eval_wrapper(all_config, gen_num, hash, genome, engine)
-
-
-
-
-
-
-
-
-
-
+    eval_wrapper(all_config, gen_num, hash, genome, engine) 
