@@ -304,7 +304,7 @@ class Pipeline:
 
         if match:
             job_id = match.group(1)
-            print(f"Job ID: {job_id}")
+            # print(f"Job ID: {job_id}")
         else:
             print("Failed to submit job or parse job id" )
             print(sbatch_result)
@@ -314,28 +314,15 @@ class Pipeline:
             all_subsurrogate_metrics = self.prepare_surrogate()
                         
         print('    Waiting for jobs...')
-        # wait for job to finish: where job name has gen count
         while True:
-            time.sleep(5)
-            p = subprocess.Popen(['squeue', '-n', f'{JOB_NAME}_{self.gen_count}'], stdout=subprocess.PIPE)
+            time.sleep(120)
+            p = subprocess.Popen(['squeue', '-j', job_id], stdout=subprocess.PIPE)
             text = p.stdout.read().decode('utf-8')
-            # print(f'text:', text)
             jobs = text.split('\n')[1:-1]
-            # print(f'jobs:', jobs)
             if len(jobs) == 0:
-                print("ZERO JOBS REMAINING")
+                # print("SQUEUE COMMAND OUTPUT:")
+                # print(text)
                 break
-
-        # wait for job to finish, using job_id
-        # while True:
-        #     time.sleep(5)
-        #     p = subprocess.Popen(['squeue', '-j', job_id], stdout=subprocess.PIPE)
-        #     text = p.stdout.read().decode('utf-8')
-        #     # print(text)
-        #     jobs = text.split('\n')[1:-1]
-        #     # print(jobs)
-        #     if len(jobs) == 0:
-        #         break
         print('    Done!')
 
         fails = 0
