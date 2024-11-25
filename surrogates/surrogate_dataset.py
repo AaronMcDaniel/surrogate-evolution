@@ -106,9 +106,9 @@ class ClassifierSurrogateDataset(Dataset):
 # WORKS BUT SHOULD BE PROOFREAD
 def build_dataset(
         name,
-        infile='/home/hice1/hweston3/scratch/surrogate-evolution/outputs/out.csv',
-        working_dir='/home/hice1/hweston3/scratch/surrogate-evolution/outputs', 
-        outdir='surrogate_dataset', 
+        infile='/home/hice1/hweston3/scratch/surrogate-evolution/two_stage_surr_evolution_v2/out.csv',
+        working_dir='/home/hice1/hweston3/scratch/surrogate-evolution/two_stage_surr_evolution_v2', 
+        outdir='/storage/ice-shared/vip-vvk/data/AOT/surrogate_data', 
         metrics='uw_val_epoch_loss,iou_loss,giou_loss,diou_loss,ciou_loss,center_loss,size_loss,obj_loss,precision,recall,f1_score,average_precision', 
         exclude=[], include_only=None, val_ratio=0.3, seed=0
     ):
@@ -327,9 +327,9 @@ def main():
     import argparse
     parser = argparse.ArgumentParser("Generates datasets for training surrogates")
     parser.add_argument('name', type=str, help='The prefix added to generated .pkl dataset files')
-    parser.add_argument('--working-dir', type=str, default='~/scratch/surrogate-evolution/outputs', help='The working directory for the evolution to turn into a dataset')
-    parser.add_argument('--infile', type=str, default=None, help='The input file, which is an out.csv file from a previous run. Defaults to the out.csv file in the working-dir')
-    parser.add_argument('--outdir', type=str, default='surrogate_dataset', help='The directory to save the surrogate dataset to')
+    parser.add_argument('--working-dir', type=str, default='/home/hice1/hweston3/scratch/surrogate-evolution/two_stage_surr_evolution_v2', help='The working directory for the evolution to turn into a dataset')
+    parser.add_argument('--infile', type=str, default='/home/hice1/hweston3/scratch/surrogate-evolution/two_stage_surr_evolution_v2/out.csv', help='The input file, which is an out.csv file from a previous run. Defaults to the out.csv file in the working-dir')
+    parser.add_argument('--outdir', type=str, default='/storage/ice-shared/vip-vvk/data/AOT/surrogate_data', help='The directory to save the surrogate dataset to')
     parser.add_argument('--metrics', type=str, default='uw_val_epoch_loss,iou_loss,giou_loss,diou_loss,ciou_loss,center_loss,size_loss,obj_loss,precision,recall,f1_score,average_precision', help='Comma seperated list of metric header names in the out.csv file')
     parser.add_argument('--exclude', type=str, default='', help='Comma seperated generation numbers to exclude from the dataset, corresponding to the gen field in the out.csv file')
     parser.add_argument('--include-only', type=str, default='', help='Comma seperated generation numbers to exclusively include from the dataset, corresponding to the gen field in the out.csv file')
