@@ -5,7 +5,7 @@ Generates hypervolume and pareto front plots given out.csv's from evolutions
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from pymoo.indicators.hv import HV, Hypervolume
+# from pymoo.indicators.hv import HV, Hypervolume
 from matplotlib.ticker import MaxNLocator
 import toml
 

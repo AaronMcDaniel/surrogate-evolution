@@ -54,17 +54,15 @@ class AOTDataset(Dataset):
             self.labels = pickle.load(f)
         
         print(f'{mode} LABELS LOADED!')
-
         # # TEMPORARY FIX
         # init_len = len(self.labels)
         # self.labels = [label for label in self.labels if self.image_exists(label)]
         # final_len = len(self.labels)
-        # print(f"Init len: {init_len}, final_len: {final_len}")
         # print(f"Filtered {init_len - final_len} labels with missing images.")
-        # ###
-        print(f"label length:", len(self.labels))
+
         # initialize a random generator
         self.np_gen = np.random.default_rng(seed)
+
         # a cache to store faulty filenames and the time threshold they are valid for
         self.flight_mapping = {}
         self.cache_thresh = cache_thresh
@@ -84,7 +82,7 @@ class AOTDataset(Dataset):
             label = eval_label(label)
         image_path = os.path.join(self.image_folder, label['path'])
         return os.path.exists(image_path)
-    
+
     def __len__(self):
         return len(self.labels)
 
@@ -93,16 +91,12 @@ class AOTDataset(Dataset):
         # if labels were serialized as a string, evaluate it back into a dictionary
         if self.string is not None:
             label = eval_label(label)
-
         # load the image as a tensor using the path stored in the label  
         image_path = os.path.join(self.image_folder, label['path'])   
         # image_path_str = self.image_folder + label['path']
         # if not os.path.exists(os.path.join(image_path_str)):
         #     print('Image does not exist')
         #     return None
-        image = cv2.imread(image_path)
-
-        # load the image as a tensor using the path stored in the label     
         image = cv2.imread(image_path)
         image = np.array(image)
         image = torch.from_numpy(image)

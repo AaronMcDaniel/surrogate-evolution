@@ -418,12 +418,16 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
 
                 curve_matches, curve_fp, _ = u.match_boxes(pred_boxes, true_boxes, iou_thresh, 0.0, 'val', iou_type)
 
-                for _, (true_pos, _) in curve_matches.items():
-                    confidences.append(true_pos[4].item())
-                    confusion_status.append(True)
-                for false_pos in curve_fp:
-                    confidences.append(false_pos[4].item())
-                    confusion_status.append(False)
+                try:
+                    for _, (true_pos, _) in curve_matches.items():
+                        confidences.append(true_pos[4].item())
+                        confusion_status.append(True)
+                    for false_pos in curve_fp:
+                        confidences.append(false_pos[4].item())
+                        confusion_status.append(False)
+                except:
+                    print(confidences)
+                    print(curve_fp)
 
             data_iter.set_postfix(loss=val_batch_loss)
             torch.cuda.empty_cache()
@@ -469,7 +473,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # parser.add_argument("index", type=int)
     # parser.add_argument('-i', '--infile', required=False, default='/gv1/projects/GRIP_Precog_Opt/precog-opt-grip/eval_input.csv')
-    parser.add_argument('-o', '--outdir', required=False, default='/home/hice1/hweston3/scratch/surrogate-evolution/test_eval')
+    parser.add_argument('-o', '--outdir', required=False, default='/home/hice1/tthakur9/scratch/surrogate-evolution/test_eval')
     args = parser.parse_args()
     # index = args.index
     # infile = args.infile
@@ -498,3 +502,13 @@ if __name__ == '__main__':
     
     # evaluate
     eval_wrapper(all_config, gen_num, hash, genome, engine)
+
+
+
+
+
+
+
+
+
+

@@ -55,8 +55,9 @@ class SurrogateDataset(Dataset):
             self.metrics = best_epochs_df.iloc[:, metrics_subset].values
             self.genomes = self.genomes_scaler.transform(self.genomes)
             
-        if np.isnan(self.genomes).any() or np.isnan(self.metrics).any():
-            breakpoint()
+        # NOTE commented out for debugging
+        # if np.isnan(self.genomes).any() or np.isnan(self.metrics).any():
+        #     breakpoint()
 
     # returns num samples in dataset
     def __len__(self):

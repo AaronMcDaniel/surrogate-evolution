@@ -332,3 +332,5 @@ if __name__ == '__main__':
         # print(f"epoch {i} train loss: {train_epoch_loss}")
         epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, max_batch=500, epoch_stop=i)
         print(f"epoch {i} eval metrics: {epoch_metrics}")
+
+    
