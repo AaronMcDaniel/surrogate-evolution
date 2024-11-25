@@ -40,8 +40,11 @@ num_gens_ssi = 5
 # frequency at which ssi occurs
 ssi_freq = 3
 # first generation to use SSI
-ssi_start_gen = 7
-
+ssi_start_gen = 3
+# size of unsustainable population during ssi
+ssi_unsustainable_population_size = 2000
+# size of sustainable population during ssi
+ssi_sustainable_population_size = 500
 
 [model]
 # number of epochs to train individuals for
@@ -100,5 +103,5 @@ pretrained_dir = '/home/hice1/tthakur9/scratch/surrogate-evolution/surrogate_dat
 # time in hours the dataset cache is valid for
 cache_thresh = 1
 # size of the dataset
-max_size = 2000
+max_size = 1000
 
