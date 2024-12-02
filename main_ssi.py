@@ -48,9 +48,11 @@ while GaPipeline.gen_count <= num_gen:
         GaPipeline.update_hof()
         GaPipeline.log_info()
     selected_parents = GaPipeline.select_parents(elites + GaPipeline.current_deap_pop) 
-    unsustainable_pop = GaPipeline.overpopulate(selected_parents) # returns dict {hash: genome}
+    unsustainable_pop = GaPipeline.overpopulate(selected_parents) # returns pop dict {hash: genome}
     if ssi and (GaPipeline.gen_count >= ssi_start_gen) and ((GaPipeline.gen_count - ssi_start_gen) % ssi_freq == 0):
+        # returns pop dict
         unsustainable_pop = GaPipeline.simulated_surrogate_injection(unsustainable_pop)
+    # takes in pop dict
     GaPipeline.downselect(unsustainable_pop) # population is replaced by a completely new one
     GaPipeline.step_gen()
 

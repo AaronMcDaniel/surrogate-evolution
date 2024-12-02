@@ -132,6 +132,8 @@ class Pipeline:
         self.trust_pool_source = pipeline_config['trust_pool_source']
         self.best_epoch_criteria = pipeline_config['best_epoch_criteria']
         self.num_gens_ssi = pipeline_config['num_gens_ssi']
+        self.ssi_unsus_pop_size = pipeline_config['ssi_unsustainable_population_size']
+        self.ssi_sus_pop_size = pipeline_config['ssi_sustainable_population_size']
 
         # Other useful attributes
         self.holy_grail = pd.DataFrame(columns=['gen', 'hash', 'genome', 'metrics']) # data regarding every evaluated individual; metrics are from best epoch since all other metric data is already stored by eval_script
@@ -435,11 +437,12 @@ class Pipeline:
             print('Done!')
 
 
-    def overpopulate(self, mating_pool): # mating pool is selected_parents + elite pool
+    def overpopulate(self, mating_pool, ssi=False): # mating pool is selected_parents + elite pool
         print('Overpopulating...')
         new_pop = {}
         # repeat till target overpopulation size is met
-        while len(new_pop) < self.unsustainable_population_size:
+        unsus_pop_size = self.unsustainable_population_size if not ssi else self.ssi_unsus_pop_size
+        while len(new_pop) < unsus_pop_size:
             copies = copy.deepcopy(mating_pool)
             # make pairs of parents randomly
             parent_pairs = []
@@ -464,7 +467,7 @@ class Pipeline:
                         if (hash in self.holy_grail.get('hash').to_list()): # avoid genomes that have been in the population before
                             continue
                         new_pop[hash] = genome
-                        if (len(new_pop) == self.unsustainable_population_size):
+                        if (len(new_pop) == unsus_pop_size):
                             print('Done!')
                             return new_pop
                 except:
@@ -704,23 +707,19 @@ class Pipeline:
     
     def simulated_surrogate_injection(self, curr_pop):
         curr_pop = copy.deepcopy(curr_pop)
-        curr_deap_pop = list(curr_pop.values())
         for i in range(self.num_gens_ssi):
-            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, curr_deap_pop)
+            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
             parents = self.select_parents(valid) 
-            unsustainable_pop = self.overpopulate(parents)
+            unsustainable_pop = self.overpopulate(parents, ssi=True)
             if i == self.num_gens_ssi - 1:
                 curr_pop = unsustainable_pop
             else:
-                new_hashes = random.sample(list(unsustainable_pop.keys()), self.population_size)
+                new_hashes = random.sample(list(unsustainable_pop.keys()), self.ssi_sus_pop_size)
                 new_pop = {}
-                new_deap_pop = []
                 for hash in new_hashes:
-                    new_deap_pop.append(unsustainable_pop[hash])
                     new_pop[hash] = unsustainable_pop[hash]
                 curr_pop = new_pop
-                curr_deap_pop = new_deap_pop
-        return curr_pop, new_deap_pop
+        return curr_pop
 
 
     def log_info(self):
