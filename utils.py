@@ -688,7 +688,8 @@ def create_seed_file(output_dir, csv_file, save_name):
     print(f"Seed file created at: {seed_file_path}")
     return seed_file_path
 
-# output_dir = '/storage/ice-shared/vip-vvk/data/AOT/seed_files'
-# csv_file = '/storage/ice-shared/vip-vvk/data/AOT/baseline_evo_working/eval_inputs/eval_input_gen1.csv'
-# save_name = 'baseline_comp'
-# create_seed_file(output_dir, csv_file, save_name)
+if __name__ == "__main__":
+    output_dir = '/storage/ice-shared/vip-vvk/data/AOT/hweston3'
+    csv_file = '/storage/ice-shared/vip-vvk/data/AOT/baseline_evo_working/eval_inputs/eval_input_gen1.csv'
+    seed_name = 'seed_test2'
+    create_seed_file(output_dir, csv_file, seed_name)

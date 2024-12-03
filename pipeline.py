@@ -189,7 +189,8 @@ class Pipeline:
             self.toolbox.register(mutation, eval(f'gp.mut{str.upper(res[0])+res[1:]}'))
 
 
-    def initialize(self, seed_file = None):
+    def initialize(self, seed_file=None):
+        seed_file = None if seed_file == '' else seed_file
         if self.attempt_resume:
             print('Attempting to resume...')
             self.holy_grail = pd.read_csv(self.holy_grail_file)
@@ -247,14 +248,14 @@ class Pipeline:
 
         # if surrogate should be "pretrained", load existing data
         if self.surrogate_pretrained:
-            self.cls_surrogate_pretrained_data = pd.read_pickle(f'{self.surrogate_pretrained_dir}/surr_evolution_gen9_cls_train.pkl')
-            self.reg_surrogate_pretrained_data = pd.read_pickle(f'{self.surrogate_pretrained_dir}/surr_evolution_gen9_reg_train.pkl')
+            self.cls_surrogate_pretrained_data = pd.read_pickle(f'{self.surrogate_pretrained_dir}/pretrain_cls_train.pkl')
+            self.reg_surrogate_pretrained_data = pd.read_pickle(f'{self.surrogate_pretrained_dir}/pretrain_reg_train.pkl')
         else:
             self.cls_surrogate_pretrained_data = pd.DataFrame()
             self.reg_surrogate_pretrained_data = pd.DataFrame()
             
 
-    def init_pop(self, seed_file = None):
+    def init_pop(self, seed_file=None):
         print('Initializing population...')
         seeded_individuals = []
         if seed_file is not None:
