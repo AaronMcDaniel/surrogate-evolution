@@ -12,7 +12,7 @@ num_parents = 30
 # types of crossovers and their probabilities
 crossovers = {one_point = 0.5, one_point_leaf_biased = 0.3}
 # types of mutations and their probabilities
-mutations = {node_replacement = 0.2}
+mutations = {node_replacement = 0.2, type_fixed_mut = 0.3}
 # whether to use surrogate
 surrogate_enabled = true
 # GA objectives to optimize for and their weights (matter only relative to each other)
@@ -34,13 +34,13 @@ trust_pool_source = "ElitePopMix"
 # criteria to select best epoch
 best_epoch_criteria = ["average_precision", "max"]
 # whether to use simulated surrogate injection (SSI)
-ssi = false
+ssi = true
 # number of generations of simulation with surrogate-only
 num_gens_ssi = 5
 # frequency at which ssi occurs
-ssi_freq = 3
+ssi_freq = 2
 # first generation to use SSI
-ssi_start_gen = 3
+ssi_start_gen = 4
 # size of unsustainable population during ssi
 ssi_unsustainable_population_size = 2000
 # size of sustainable population during ssi

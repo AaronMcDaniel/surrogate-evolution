@@ -22,7 +22,7 @@ from deap import creator, gp, base, tools
 import primitives
 from codec import Codec
 from surrogates.surrogate import Surrogate
-from primitive_tree import CustomPrimitiveTree
+from primitive_tree import CustomPrimitiveTree, type_fixed_mut
 from surrogates.surrogate_eval import engine, get_val_scores
 from surrogates.surrogate_dataset import build_dataset
 import numpy as np
@@ -184,9 +184,12 @@ class Pipeline:
             self.toolbox.register(crossover, eval(f'gp.cx{str.upper(res[0])+res[1:]}'))
 
         for mutation in self.mutations.keys():
-            init, *temp = mutation.split('_')
-            res = ''.join([init.lower(), *map(str.title, temp)]) # convert from readable snake_case config to camelCase function name 
-            self.toolbox.register(mutation, eval(f'gp.mut{str.upper(res[0])+res[1:]}'))
+            if mutation == "type_fixed_mut":
+                self.toolbox.register("type_fixed_mut", eval("type_fixed_mut"))
+            else:
+                init, *temp = mutation.split('_')
+                res = ''.join([init.lower(), *map(str.title, temp)]) # convert from readable snake_case config to camelCase function name 
+                self.toolbox.register(mutation, eval(f'gp.mut{str.upper(res[0])+res[1:]}'))
 
 
     def initialize(self, seed_file = None):
@@ -611,7 +614,7 @@ class Pipeline:
 
     def downselect(self, unsustainable_pop):
         print('Downselecting...')
-        if self.surrogate_enabled and self.gen_count != 1:
+        if self.surrogate_enabled and self.gen_count != 1 and os.listdir(self.surrogate_weights_dir):
             unsustainable_pop_copy = copy.deepcopy(unsustainable_pop)
 
             # get surrogate inferred fitnesses using classification and regression
@@ -703,9 +706,10 @@ class Pipeline:
                 mutants += list(eval(f'self.toolbox.{mutation}')(mutant, self.pset))
         return mutants
 
-    
+
     def simulated_surrogate_injection(self, curr_pop):
         curr_pop = copy.deepcopy(curr_pop)
+        print('Beginning Simulated Surrogate Injection')
         for i in range(self.num_gens_ssi):
             _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
             parents = self.select_parents(valid) 
@@ -718,6 +722,7 @@ class Pipeline:
                 for hash in new_hashes:
                     new_pop[hash] = unsustainable_pop[hash]
                 curr_pop = new_pop
+            print(f'{i + 1} Generations of SSI Completed')
         return curr_pop
 
 
