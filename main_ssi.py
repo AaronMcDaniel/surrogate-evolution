@@ -14,6 +14,7 @@ parser.add_argument('-f', '--force', action='store_true', help='Force overwrite 
 parser.add_argument('-n', '--num_generations', type=int, required=True, help='The number of generations to run the evolution for')
 parser.add_argument('-r', '--remove', action='store_true', help='Cleans output directory of non-pareto-optimal individual weights')
 parser.add_argument('-conf', '--configuration', type=str, required=True, help='The path to the configuration file')
+parser.add_argument('-s', '--seed_file', type=str, required=False, help='The path to seeding .txt file')
 args = parser.parse_args()
 
 output_dir = args.outputs
@@ -21,6 +22,7 @@ config_dir = args.configuration
 force_flag = args.force
 num_gen = args.num_generations
 clean = args.remove
+seed_file = args.seed_file
 
 configs = toml.load(config_dir)
 pipeline_config = configs["pipeline"]
@@ -31,7 +33,7 @@ ssi_freq = pipeline_config['ssi_freq']
 num_evals = 0
 
 GaPipeline = Pipeline(output_dir, config_dir, force_flag, clean)
-GaPipeline.initialize()
+GaPipeline.initialize(seed_file)
 while GaPipeline.gen_count <= num_gen:
     print(f'---------- Generation {GaPipeline.gen_count} ----------')
     if not GaPipeline.attempt_resume:
