@@ -186,11 +186,14 @@ if __name__ == "__main__":
     df_baseline = pd.read_csv(baseline_path)
     surrogate_path = '/storage/ice-shared/vip-vvk/data/AOT/tfs_se_v2/out.csv'
     df_surrogate = pd.read_csv(surrogate_path)
+    ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/tfs_ssi_v2/out.csv'
+    df_ssi = pd.read_csv(ssi_path)
     # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
     dataframes = [
-        {'df': df_baseline, 'name': 'Baseline', 'colors': ['xkcd:lightblue', 'xkcd:blue', 'xkcd:grey', 'xkcd:charcoal'], 'marker': 'o'}, 
-        {'df': df_surrogate, 'name': 'Surrogate', 'colors': ['xkcd:orange', 'xkcd:dark orange', 'xkcd:grey', 'xkcd:charcoal'], 'marker': '^'}
-            ]
+        {'df': df_baseline, 'name': 'Baseline', 'colors': ['xkcd:cerulean', 'xkcd:azure', 'xkcd:slate grey', 'xkcd:dark slate grey'], 'marker': 'o'}, 
+        {'df': df_surrogate, 'name': 'Surrogate', 'colors': ['xkcd:gold', 'xkcd:amber', 'xkcd:dark grey', 'xkcd:charcoal'], 'marker': '^'},
+        {'df': df_ssi, 'name': 'Injection', 'colors': ['xkcd:lime green', 'xkcd:forest green', 'xkcd:grey', 'xkcd:slate'], 'marker': 's'}
+        ]
 
     min_gens = []
     max_gens = []
