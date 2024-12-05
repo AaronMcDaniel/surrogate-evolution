@@ -83,3 +83,47 @@ def type_fixed_mut(individual, pset, type_prob=0.9):
         individual[index] = random.choice(prims)
 
     return individual,
+
+
+def type_fixed_mut_shrink(individual, pset, type_prob=0.9):
+    if len(individual) < 3 or individual.height <= 1:
+        return individual,
+
+    arch_prim_names = set(
+        primitive.name for primitive in itertools.chain(
+            pset.primitives[primitives.Tensor3D],
+            pset.primitives[primitives.FinalTensor],
+            pset.primitives[primitives.Optimizer],
+            pset.primitives[primitives.Scheduler]
+        )
+    )
+    arch_indices = [i for i, node in enumerate(individual) if node.name in arch_prim_names]
+    hyperparam_indices = [i for i, node in enumerate(individual) if node.name not in arch_prim_names]
+
+    if not arch_indices or not hyperparam_indices:
+        return individual,
+
+    if random.random() < type_prob and hyperparam_indices:
+        target_indices = hyperparam_indices
+    else:
+        target_indices = arch_indices
+
+    iprims = [
+        (i, node)
+        for i, node in enumerate(individual[1:], 1)
+        if isinstance(node, Primitive) and node.ret in node.args and i in target_indices
+    ]
+
+    if iprims:
+        index, prim = random.choice(iprims)
+        arg_idx = random.choice([i for i, type_ in enumerate(prim.args) if type_ == prim.ret])
+        rindex = index + 1
+        for _ in range(arg_idx + 1):
+            rslice = individual.searchSubtree(rindex)
+            subtree = individual[rslice]
+            rindex += len(subtree)
+
+        slice_ = individual.searchSubtree(index)
+        individual[slice_] = subtree
+
+    return individual,

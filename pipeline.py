@@ -24,7 +24,7 @@ from deap import creator, gp, base, tools
 import primitives
 from codec import Codec
 from surrogates.surrogate import Surrogate
-from primitive_tree import CustomPrimitiveTree, type_fixed_mut
+from primitive_tree import CustomPrimitiveTree, type_fixed_mut, type_fixed_mut_shrink
 from surrogates.surrogate_eval import engine, get_val_scores
 from surrogates.surrogate_dataset import build_dataset
 import numpy as np
@@ -196,6 +196,8 @@ class Pipeline:
         for mutation in self.mutations.keys():
             if mutation == "type_fixed_mut":
                 self.toolbox.register("type_fixed_mut", eval("type_fixed_mut"))
+            elif mutation == "type_fixed_mut_shrink":
+                self.toolbox.register("type_fixed_mut_shrink", eval("type_fixed_mut_shrink"))
             else:
                 init, *temp = mutation.split('_')
                 res = ''.join([init.lower(), *map(str.title, temp)]) # convert from readable snake_case config to camelCase function name 
