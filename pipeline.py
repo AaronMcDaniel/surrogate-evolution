@@ -460,7 +460,7 @@ class Pipeline:
                 os.popen(f'rm {self.output_dir}/generation_{gen}/{hash}/last_epoch.pth')
             print('Done!')
 
-def overpopulate(self, mating_pool): # mating pool is selected_parents + elite pool
+    def overpopulate(self, mating_pool): # mating pool is selected_parents + elite pool
         print('Overpopulating...')
         new_pop = {}
         # repeat till target overpopulation size is met
@@ -481,7 +481,9 @@ def overpopulate(self, mating_pool): # mating pool is selected_parents + elite p
                     offsprings = self.cross(pair)
                     mutants = []
                     # mutate on the offsprings
-                    mutants += self.mutate(offspring)
+                    for offspring in offsprings:
+                        offspring = copy.deepcopy(offspring)
+                        mutants += self.mutate(offspring)
                     for genome in offsprings + mutants:
                         hash = self.__get_hash(str(genome))
                         if (hash in self.holy_grail.get('hash').to_list()): # avoid genomes that have been in the population before
@@ -494,18 +496,6 @@ def overpopulate(self, mating_pool): # mating pool is selected_parents + elite p
                     continue
         print('Done!')
         return new_pop
-
-    def calculate_weight(self, individual_str):
-        # print(individual_str)
-        tuning_layers_count = self.count_hyperparam_layers(individual_str)
-        return np.exp(-tuning_layers_count)
-
-    def count_hyperparam_layers(self, individual_str):
-        # tuning_operations = ['mul', 'add', 'protectedSub', 'protectedDiv', 'toProbFloat', 'toPNorm', 'toBoundedFloat', 'dummyOp']
-        tuning_operations = ['mul(', 'add(', 'protectedSub(', 'protectedDiv(', 'toProbFloat(', 'toPNorm(', 'toBoundedFloat(', 'dummyOp(']
-        total = sum(individual_str.count(op) for op in tuning_operations)
-        # print(f"{individual_str} has {total} tuning operations")
-        return total
     
     # trains the surrogate (all sub-surrogates) and gets eval scores which are used to calculate a trustworthiness
     # surrogate weights are stored to be used for inference when downselecting
