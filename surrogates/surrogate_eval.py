@@ -103,11 +103,23 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
     # grad_mask_tensor = torch.from_numpy(grad_mask)
     # grad_mask_tensor = grad_mask_tensor.to(device)
 
+    reg_lambda_dict = {
+        'mlp_best_overall': 10**(-3),
+        'mlp_best_uwvl': 10**(-2.5),
+        'mlp_best_cioul': 10**(-3),
+        'mlp_best_ap': 10**(0),
+        'kan_best_uwvl': 10**(-3.5),
+        'kan_best_cioul': 10**(0),
+        'kan_best_ap': 10**(1.5),
+        'kan_best_overall': 10**(-4)
+    }
+    reg_lambda = reg_lambda_dict[model_dict['name']]
+
     # create metrics_df
     metrics_df = create_metrics_df(cfg)
     for epoch in range(1, num_epochs + 1):
         # train and validate for one epoch
-        train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics)
+        train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics, reg_lambda)
         epoch_metrics = val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, min_metrics)
         #print(epoch_metrics)
         
@@ -181,7 +193,7 @@ def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir)
     return val_inf
     
 
-def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics):
+def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics, reg_lambda):
     model.train()
 
     # actual surrogate training loss
@@ -214,11 +226,11 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
             # take l2 norm of gradient of output wrt input and compute gradient regularization term
             # grad_norm = (genomes.grad * grad_mask_tensor).norm(2)
             grad_norm = genomes.grad.norm(2)
-            grad_regu = 0.0001*grad_norm**2
+            grad_regu = reg_lambda*grad_norm**2
 
             # metric regression loss is meaned, so is scalar tensor value
             loss = criterion(clamped_outputs, metrics)
-            # print(grad_regu, loss)
+            print(reg_lambda*grad_norm**2, loss)
 
             # add normal l1 loss with the regularization term for implicit unsupervised data augmentation
             total_loss = loss + grad_regu

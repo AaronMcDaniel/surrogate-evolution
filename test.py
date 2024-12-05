@@ -266,5 +266,6 @@ genome = np.array([ 2.54720777e-01,  0.00000000e+00,  0.00000000e+00, -5.2607297
    0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,
    0.00000000e+00])
 
-mask = np.where(genome == 0, 0, 1)
-np.savetxt("mask.txt", mask)
+# mask = np.where(genome == 0, 0, 1)
+# np.savetxt("mask.txt", mask)
+print(len(genome))
