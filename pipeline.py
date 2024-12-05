@@ -458,44 +458,34 @@ class Pipeline:
                 os.popen(f'rm {self.output_dir}/generation_{gen}/{hash}/last_epoch.pth')
             print('Done!')
 
-    # introduces weighting to parent pair selection
-    def overpopulate(self, mating_pool):  # mating pool is selected_parents + elite pool
+def overpopulate(self, mating_pool): # mating pool is selected_parents + elite pool
         print('Overpopulating...')
         new_pop = {}
-
-        weights = [self.calculate_weight(str(individual)) for individual in mating_pool]
-        weights = np.array(weights) / sum(weights) # normalize
-
-        # repeat until target overpopulation size is met
+        # repeat till target overpopulation size is met
         while len(new_pop) < self.unsustainable_population_size:
             copies = copy.deepcopy(mating_pool)
-
-            # make pairs of parents randomly, with weighting
+            # make pairs of parents randomly
             parent_pairs = []
-            while len(parent_pairs) < len(mating_pool) / 2:
-                if len(copies) >= 2:
-                    indices = np.random.choice(len(copies), size=2, replace=False, p=weights)
-                    parent1 = copies.pop(indices[0])
-                    parent2 = copies.pop(indices[1])
+            while len(parent_pairs) < len(mating_pool)/2:
+                if (len(copies) >= 2):
+                    parent1 = copies.pop(random.randrange(0, len(copies)))
+                    parent2 = copies.pop(random.randrange(0, len(copies)))
                     parent_pairs.append([parent1, parent2])
                 else:
                     break
             # mate pairs
             for pair in parent_pairs:
-                try:  # try except due to errors with particular genomes when crossovering
+                try: # try except due to errors with particular genomes when crossovering
                     offsprings = self.cross(pair)
                     mutants = []
                     # mutate on the offsprings
-                    for offspring in offsprings:
-                        offspring = copy.deepcopy(offspring)
-                        mutants += self.mutate(offspring)
+                    mutants += self.mutate(offspring)
                     for genome in offsprings + mutants:
                         hash = self.__get_hash(str(genome))
-                        # avoid genomes that have been in the population before
-                        if hash in self.holy_grail.get('hash').to_list():
+                        if (hash in self.holy_grail.get('hash').to_list()): # avoid genomes that have been in the population before
                             continue
                         new_pop[hash] = genome
-                        if len(new_pop) == self.unsustainable_population_size:
+                        if (len(new_pop) == self.unsustainable_population_size):
                             print('Done!')
                             return new_pop
                 except:
