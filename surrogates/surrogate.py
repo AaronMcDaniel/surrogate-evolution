@@ -28,7 +28,8 @@ import random
 import os
 
 file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
-repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
+# repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
+repo_dir = "/storage/ice-shared/vip-vvk/data/AOT/"
 
 
 def ensure_deap_classes(objectives, codec_config):
@@ -264,10 +265,10 @@ class Surrogate():
         cls_genome_scaler = None
         reg_genome_scaler = None
         # loop through the classifier models
-        for classifier_dict in self.classifier_models:
-            metrics, gs = cse.engine(self.surrogate_config, classifier_dict, classifier_train_df, classifier_val_df, self.weights_dir)
-            if cls_genome_scaler is None: cls_genome_scaler = gs
-            scores['classifiers'][classifier_dict['name']] = metrics
+        # for classifier_dict in self.classifier_models:
+        #     metrics, gs = cse.engine(self.surrogate_config, classifier_dict, classifier_train_df, classifier_val_df, self.weights_dir)
+        #     if cls_genome_scaler is None: cls_genome_scaler = gs
+        #     scores['classifiers'][classifier_dict['name']] = metrics
         
         # loop through regressor models
         if train_reg:
@@ -438,7 +439,7 @@ class Surrogate():
     
     
 def main():
-    surrogate = Surrogate('conf.toml', os.path.join(repo_dir, 'test/weights/surrogate_weights'))
+    surrogate = Surrogate('conf.toml', os.path.join(repo_dir, 'psomu3/test/weights/surrogate_weights'))
     reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_reg_train.pkl'))
     reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_reg_val.pkl'))
     cls_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_cls_train.pkl'))
@@ -455,7 +456,7 @@ def main():
     # print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
     # print(surrogate.calc_trust(-2, genome_scaler, individuals))
 
-    surrogate = Surrogate('conf.toml', '/storage/ice-shared/vip-vvk/data/AOT/test_surr_evo/surrogate_weights')
+    surrogate = Surrogate('conf.toml', os.path.join(repo_dir, 'psomu3/uda/grad_regu/surrogate_weights'))
     cls_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_cls_train.pkl'))
     cls_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_cls_val.pkl'))
     reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_reg_train.pkl'))
@@ -465,7 +466,7 @@ def main():
     cls_genome_scaler = cls_train_dataset.genomes_scaler
     reg_genome_scaler = reg_train_dataset.genomes_scaler
     scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df)
-    # print(scores)
+    print(scores)
     
     
     # print(surrogate.calc_trust([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df))

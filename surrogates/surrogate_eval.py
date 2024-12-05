@@ -99,6 +99,10 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     model, optimizer, scheduler, scaler, val_subset = build_configuration(model_dict=model_dict, device=device)
 
+    # grad_mask = np.loadtxt(os.path.join(repo_dir, 'surrogates/grad_mask.txt'), dtype=np.float16)
+    # grad_mask_tensor = torch.from_numpy(grad_mask)
+    # grad_mask_tensor = grad_mask_tensor.to(device)
+
     # create metrics_df
     metrics_df = create_metrics_df(cfg)
     for epoch in range(1, num_epochs + 1):
@@ -185,31 +189,50 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
     # mean taken for metric regression losses in train
     criterion = nn.L1Loss()
     # criterion = nn.MSELoss()
-
+    
     data_iter = tqdm(train_loader, desc='Training')
     for genomes, metrics in data_iter:
-
         # genomes shape: (batch_size, 976)
         genomes = genomes.to(device)
+        genomes.requires_grad_(True)
         # metrics shape: (batch_size, 12)
         metrics = metrics.to(device)
 
+        # clear gradients stored in genome, to compute them fresh in this iteration
+        if genomes.grad is not None:
+            genomes.grad.zero_()
         # forwards with mixed precision
         with autocast():
             # outputs shape: (batch_size, 12)
             outputs = model(genomes)
             clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
+
+            # compute a simple scalar derived from model output and do backward to compute gradient of output wrt input
+            y_pred_sum = clamped_outputs.sum()
+            y_pred_sum.backward(retain_graph=True)
+
+            # take l2 norm of gradient of output wrt input and compute gradient regularization term
+            # grad_norm = (genomes.grad * grad_mask_tensor).norm(2)
+            grad_norm = genomes.grad.norm(2)
+            grad_regu = 0.0001*grad_norm**2
+
             # metric regression loss is meaned, so is scalar tensor value
             loss = criterion(clamped_outputs, metrics)
+            # print(grad_regu, loss)
+
+            # add normal l1 loss with the regularization term for implicit unsupervised data augmentation
+            total_loss = loss + grad_regu
+            assert genomes.grad is not None
         
         # backwards
         optimizer.zero_grad()
-        scaler.scale(loss).backward()
+        scaler.scale(total_loss).backward()
         scaler.step(optimizer)
         scaler.update()
-        surrogate_train_loss += loss.item()
-        data_iter.set_postfix(loss=loss.item())
+        surrogate_train_loss += total_loss.item()
+        data_iter.set_postfix(loss=total_loss.item())
         torch.cuda.empty_cache()
+
 
     # calculate surrogate training loss per batch (NOTE batch loss already meaned by batch size)
     num_batches = len(data_iter)
