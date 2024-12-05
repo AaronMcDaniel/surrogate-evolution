@@ -12,8 +12,7 @@ num_parents = 30
 # types of crossovers and their probabilities
 crossovers = {one_point = 0.5, one_point_leaf_biased = 0.3}
 # types of mutations and their probabilities
-# mutations = {node_replacement = 0.2, shrink = 0.2}
-mutations = {node_replacement = 0.2}
+mutations = {node_replacement = 0.2, type_fixed_mut = 0.3, shrink = 0.2}
 # whether to use staticLimit() for crossover and mutation functions, and the maximum length and depth for individuals
 static_limits = {enabled = false, max_depth = 20, max_size = 70}
 # whether to use surrogate
@@ -43,7 +42,7 @@ train_epochs = 10
 # batch size
 batch_size = 2
 # number of batches in one epoch
-batches_per_epoch = 10
+batches_per_epoch = 500
 # number of target classes in AOT
 num_classes = 7
 # iou threshold for determining detection

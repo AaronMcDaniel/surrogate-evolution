@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=precog_evolution
+#SBATCH --job-name=ttest_se
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
@@ -11,11 +11,12 @@
 output_dir=""
 conf_file=""
 num_generations=1
+seed_file=""
 force_wipe=""
 clear_dir=""
 conda_environment="nas"  # default value
 
-while getopts ":o:c:n:e:fr" opt; do
+while getopts ":o:c:n:e:s:fr" opt; do
   case $opt in
     o) output_dir="$OPTARG"
     ;;
@@ -24,6 +25,8 @@ while getopts ":o:c:n:e:fr" opt; do
     n) num_generations="$OPTARG"
     ;;
     e) conda_environment="$OPTARG"
+    ;;
+    s) seed_file="$OPTARG"
     ;;
     f) force_wipe="-f"
     ;;
@@ -40,4 +43,4 @@ module load anaconda3/2023.03
 module load cuda/12.1.1
 
 # Run the Python script with the parsed arguments
-conda run -n ${conda_environment} --no-capture-output python -u main.py -o "$output_dir" -conf "$conf_file" -n "$num_generations" $force_wipe $clear_dir
+conda run -n ${conda_environment} --no-capture-output python -u main.py -o "$output_dir" -conf "$conf_file" -n "$num_generations" -s "$seed_file" $force_wipe $clear_dir

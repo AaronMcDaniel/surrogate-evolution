@@ -24,10 +24,11 @@ from deap import creator, gp, base, tools
 import primitives
 from codec import Codec
 from surrogates.surrogate import Surrogate
-from primitive_tree import CustomPrimitiveTree
+from primitive_tree import CustomPrimitiveTree, type_fixed_mut
 from surrogates.surrogate_eval import engine, get_val_scores
 from surrogates.surrogate_dataset import build_dataset
 import numpy as np
+import re
 
 # job file params
 JOB_NAME = 't_evo'
@@ -193,9 +194,12 @@ class Pipeline:
             self.toolbox.register(crossover, crossover_func)
 
         for mutation in self.mutations.keys():
-            init, *temp = mutation.split('_')
-            res = ''.join([init.lower(), *map(str.title, temp)]) # convert from readable snake_case config to camelCase function name 
-            #self.toolbox.register(mutation, eval(f'gp.mut{str.upper(res[0])+res[1:]}'))
+            if mutation == "type_fixed_mut":
+                self.toolbox.register("type_fixed_mut", eval("type_fixed_mut"))
+            else:
+                init, *temp = mutation.split('_')
+                res = ''.join([init.lower(), *map(str.title, temp)]) # convert from readable snake_case config to camelCase function name 
+                #self.toolbox.register(mutation, eval(f'gp.mut{str.upper(res[0])+res[1:]}'))
             mutation_func = eval(f'gp.mut{str.upper(res[0])+res[1:]}')
 
             if self.static_limits['enabled']:

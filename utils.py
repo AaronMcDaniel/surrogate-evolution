@@ -676,3 +676,19 @@ def cat_scores(pred_boxes, scores):
     scores = scores.view(-1, 1)
     # concatenate tensor along the last dimension
     return torch.cat((pred_boxes, scores), dim=1)
+
+def create_seed_file(output_dir, csv_file, save_name):
+    df = pd.read_csv(csv_file)
+    genome_strs = df['genome']
+    seed_file_path = os.path.join(output_dir, f"{save_name}.txt")
+    with open(seed_file_path, 'w') as seed_file:
+        for genome in genome_strs:
+            seed_file.write(f"{genome}\n")
+    print(f"Seed file created at: {seed_file_path}")
+    return seed_file_path
+
+if __name__ == "__main__":
+    output_dir = '/storage/ice-shared/vip-vvk/data/AOT/hweston3'
+    csv_file = '/storage/ice-shared/vip-vvk/data/AOT/baseline_evo_working/eval_inputs/eval_input_gen1.csv'
+    seed_name = 'seed_test2'
+    create_seed_file(output_dir, csv_file, seed_name)
