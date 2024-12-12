@@ -26,6 +26,7 @@ from surrogates import surrogate_eval as se
 from surrogates import surrogate_eval as rse
 import random
 import os
+import json
 
 file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
 # repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
@@ -265,17 +266,17 @@ class Surrogate():
         cls_genome_scaler = None
         reg_genome_scaler = None
         # loop through the classifier models
-        # for classifier_dict in self.classifier_models:
-        #     metrics, gs = cse.engine(self.surrogate_config, classifier_dict, classifier_train_df, classifier_val_df, self.weights_dir)
-        #     if cls_genome_scaler is None: cls_genome_scaler = gs
-        #     scores['classifiers'][classifier_dict['name']] = metrics
+        for classifier_dict in self.classifier_models:
+            metrics, gs = cse.engine(self.surrogate_config, classifier_dict, classifier_train_df, classifier_val_df, self.weights_dir)
+            if cls_genome_scaler is None: cls_genome_scaler = gs
+            scores['classifiers'][classifier_dict['name']] = metrics
         
         # loop through regressor models
-        if train_reg:
-            for regressor_dict in self.models:
-                metrics, best_epoch_metrics, best_epoch_num, gs = rse.engine(self.surrogate_config, regressor_dict, regressor_train_df, regressor_val_df, self.weights_dir)
-                if reg_genome_scaler is None: reg_genome_scaler = gs
-                scores['regressors'][regressor_dict['name']] = best_epoch_metrics
+        # if train_reg:
+        #     for regressor_dict in self.models:
+        #         metrics, best_epoch_metrics, best_epoch_num, gs = rse.engine(self.surrogate_config, regressor_dict, regressor_train_df, regressor_val_df, self.weights_dir)
+        #         if reg_genome_scaler is None: reg_genome_scaler = gs
+        #         scores['regressors'][regressor_dict['name']] = best_epoch_metrics
             
         return scores, cls_genome_scaler, reg_genome_scaler
     
@@ -455,18 +456,39 @@ def main():
     # print(surrogate.calc_ensemble_trust([4, 5, 6], reg_genome_scaler, individuals))
     # print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
     # print(surrogate.calc_trust(-2, genome_scaler, individuals))
+    scores_record = {}
+    for i in range(32):
+        surrogate = Surrogate('conf.toml', os.path.join(repo_dir, 'psomu3/uda/no_uda_class/surrogate_weights'))
+        cls_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_cls_train.pkl'))
+        cls_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_cls_val.pkl'))
+        reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_reg_train.pkl'))
+        reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_reg_val.pkl'))
+        cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
+        reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
+        cls_genome_scaler = cls_train_dataset.genomes_scaler
+        reg_genome_scaler = reg_train_dataset.genomes_scaler
+        scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df)
+        print(scores)
+        # if not scores_record:
+        #     for class_reg in scores:
+        #         scores_record[class_reg] = {}
+        #         for model_type in scores[class_reg]:
+        #             scores_record[class_reg][model_type] = {}
+        #             for cur_metric in scores[class_reg][model_type]:
+        #                 scores_record[class_reg][model_type][cur_metric] = []
+        # else:
+        #     for class_reg in scores:
+        #         for model_type in scores[class_reg]:
+        #             for cur_metric in scores[class_reg][model_type]:
+        #                 scores_record[class_reg][model_type][cur_metric].append(scores[class_reg][model_type][cur_metric])
 
-    surrogate = Surrogate('conf.toml', os.path.join(repo_dir, 'psomu3/uda/grad_regu/surrogate_weights'))
-    cls_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_cls_train.pkl'))
-    cls_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_cls_val.pkl'))
-    reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_reg_train.pkl'))
-    reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_reg_val.pkl'))
-    cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
-    reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
-    cls_genome_scaler = cls_train_dataset.genomes_scaler
-    reg_genome_scaler = reg_train_dataset.genomes_scaler
-    scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df)
-    print(scores)
+        with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/no_uda_class/scores.txt", 'a') as f:
+            json.dump(scores, f)
+            f.write('\n')
+    # with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked/scores_dynamic_mask.txt", 'a') as f:
+    #     f.write('\n')
+    #     json.dump(scores_record, f)
+    #     f.write('\n')
     
     
     # print(surrogate.calc_trust([0, 5, 6, 7], cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df))

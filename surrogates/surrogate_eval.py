@@ -104,14 +104,14 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
     # grad_mask_tensor = grad_mask_tensor.to(device)
 
     reg_lambda_dict = {
-        'mlp_best_overall': 10**(-3),
-        'mlp_best_uwvl': 10**(-2.5),
-        'mlp_best_cioul': 10**(-3),
-        'mlp_best_ap': 10**(0),
-        'kan_best_uwvl': 10**(-3.5),
-        'kan_best_cioul': 10**(0),
-        'kan_best_ap': 10**(1.5),
-        'kan_best_overall': 10**(-4)
+        'mlp_best_overall': 10**(-5),
+        'mlp_best_uwvl': 10**(-3.5),
+        'mlp_best_cioul': 10**(-4),
+        'mlp_best_ap': 10**(-1),
+        'kan_best_uwvl': 10**(-5),
+        'kan_best_cioul': 10**(-1),
+        'kan_best_ap': 10**(0.5),
+        'kan_best_overall': 10**(-5)
     }
     reg_lambda = reg_lambda_dict[model_dict['name']]
 
@@ -202,6 +202,10 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
     criterion = nn.L1Loss()
     # criterion = nn.MSELoss()
     
+    # 0 in one hot encoding of layer type, 1 else
+    grad_mask_54_14 = np.hstack((np.array([0]), np.vstack((np.zeros((54, 15)), np.ones((14, 15)))).flatten()))
+    grad_mask_54_14 = torch.tensor(grad_mask_54_14).to(device)
+    
     data_iter = tqdm(train_loader, desc='Training')
     for genomes, metrics in data_iter:
         # genomes shape: (batch_size, 976)
@@ -210,12 +214,16 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
         # metrics shape: (batch_size, 12)
         metrics = metrics.to(device)
 
+        
         # clear gradients stored in genome, to compute them fresh in this iteration
         if genomes.grad is not None:
             genomes.grad.zero_()
         # forwards with mixed precision
         with autocast():
             # outputs shape: (batch_size, 12)
+            # 1 if float, 0 if int
+            grad_mask = (genomes != torch.floor(genomes)).int() * grad_mask_54_14
+            assert torch.count_nonzero(grad_mask) > 0 and torch.count_nonzero(grad_mask) < torch.numel(grad_mask)
             outputs = model(genomes)
             clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
 
@@ -224,13 +232,13 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
             y_pred_sum.backward(retain_graph=True)
 
             # take l2 norm of gradient of output wrt input and compute gradient regularization term
-            # grad_norm = (genomes.grad * grad_mask_tensor).norm(2)
-            grad_norm = genomes.grad.norm(2)
+            grad_norm = (genomes.grad * grad_mask).norm(2)
+            # grad_norm = genomes.grad.norm(2)
             grad_regu = reg_lambda*grad_norm**2
 
             # metric regression loss is meaned, so is scalar tensor value
             loss = criterion(clamped_outputs, metrics)
-            print(reg_lambda*grad_norm**2, loss)
+            # print(reg_lambda*grad_norm**2, loss)
 
             # add normal l1 loss with the regularization term for implicit unsupervised data augmentation
             total_loss = loss + grad_regu

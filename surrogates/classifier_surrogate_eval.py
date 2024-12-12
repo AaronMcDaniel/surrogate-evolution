@@ -79,10 +79,16 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     model, optimizer, scheduler, scaler = build_configuration(model_dict=model_dict, device=device)
     genome_scaler = train_dataset.genomes_scaler
+
+    reg_lambda_dict = {
+        'best_mlp_classifier': 10**(-2),
+        'best_kan_classifier': 10**(-3.5),
+    }
+    reg_lambda = reg_lambda_dict[model_dict['name']]
     
     for epoch in range(1, num_epochs + 1):
         # train and validate for one epoch
-        train_metrics = train_one_epoch(model, device, train_loader, optimizer, scaler)
+        train_metrics = train_one_epoch(model, device, train_loader, optimizer, scaler, reg_lambda)
         val_metrics = val_one_epoch(model, device, val_loader, scheduler)
         # print(f"---- Epoch {epoch} ----")
         # print(f"train : loss = {train_metrics['loss']:.4f} | accuracy = {train_metrics['acc']:.4f} | precision = {train_metrics['prec']:.4f} | recall = {train_metrics['rec']:.4f}")
@@ -100,7 +106,7 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
     return best_epoch_metrics, genome_scaler             
 
 
-def train_one_epoch(model, device, train_loader, optimizer, scaler):
+def train_one_epoch(model, device, train_loader, optimizer, scaler, reg_lambda):
     model.train()
 
     # Initialize variables
@@ -113,12 +119,20 @@ def train_one_epoch(model, device, train_loader, optimizer, scaler):
     data_iter = tqdm(train_loader, desc='Training')
     for genomes, labels in data_iter:
         genomes = genomes.to(device)
+        genomes.requires_grad_(True)
         labels = labels.to(device)
 
         # Forward pass with mixed precision
         with autocast():
             outputs = model(genomes)
+            # grad_mask = (genomes != torch.floor(genomes)).int()
+            # y_pred_sum = outputs.sum()
+            # y_pred_sum.backward(retain_graph=True)
+            # grad_norm = (genomes.grad * grad_mask).norm(2)
+            # grad_regu = reg_lambda*grad_norm**2
             loss = criterion(outputs, labels.unsqueeze(1).float())
+            # print(grad_regu, loss)
+            # total_loss = loss + grad_regu
         
         # Backward pass
         optimizer.zero_grad()
