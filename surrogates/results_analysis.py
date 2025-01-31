@@ -9,7 +9,7 @@ scores_record_uda = {}
 num_samples_normal = 0
 num_samples_uda = 0
 
-with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/no_uda_class/scores.txt", 'r') as f:
+with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/no_uda/scores.txt", 'r') as f:
 # with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked/scores_dynamic_mask.txt", 'r') as f:
     for line in f:
         # print(line.strip())
@@ -28,7 +28,7 @@ with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/no_uda_class/scores.t
                         scores_record_normal[class_reg][model_type][cur_metric].append(scores[class_reg][model_type][cur_metric])
         num_samples_normal += 1
 
-with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked_class/scores.txt", 'r') as f:
+with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked/scores_dynamic_mask.txt", 'r') as f:
     for line in f:
         # print(line.strip())
         scores = json.loads(line.strip())
@@ -79,7 +79,7 @@ for class_reg in scores_record_normal:
 
             cm = sms.CompareMeans(sms.DescrStatsW(data_uda), sms.DescrStatsW(data))
             print("        confidence interval for diff in means:", cm.tconfint_diff(usevar='unequal'))
-        print("        PERC overall decrease from normal to uda: ", perc)
+        print("    PERC overall decrease from normal to uda: ", perc)
 
 
             

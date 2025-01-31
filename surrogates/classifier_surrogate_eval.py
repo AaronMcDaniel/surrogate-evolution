@@ -65,7 +65,7 @@ def build_configuration(model_dict, device):
 # used to train and evaluate a classifier surrogate
 # calling this function will train and validate the model represented by the passed-in model dict
 # returns the genome scaler used (for getting inferences later) and saves best epoch weights by best accuracy
-def engine(cfg, model_dict, train_df, val_df, weights_dir):
+def engine(cfg, model_dict, train_df, val_df, weights_dir, reg_lambda):
     best_acc = 0
     best_epoch = None
     best_epoch_num = None

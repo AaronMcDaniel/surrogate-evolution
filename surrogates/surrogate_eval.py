@@ -81,7 +81,7 @@ def create_metrics_df(cfg):
 # the model dict includes a metrics_subset and a validation_subset which represent the metrics used to train the model
 # and the metrics on which the model makes inferences on respectively.
 # returns the genome scaler used (for getting inferences later) and saves best epoch weights by best sum of validation subset losses
-def engine(cfg, model_dict, train_df, val_df, weights_dir):
+def engine(cfg, model_dict, train_df, val_df, weights_dir, reg_lambda):
     best_loss_metric = np.inf
     best_epoch = None
     best_epoch_num = None
@@ -113,7 +113,7 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
         'kan_best_ap': 10**(0.5),
         'kan_best_overall': 10**(-5)
     }
-    reg_lambda = reg_lambda_dict[model_dict['name']]
+    # reg_lambda = reg_lambda_dict[model_dict['name']]
 
     # create metrics_df
     metrics_df = create_metrics_df(cfg)

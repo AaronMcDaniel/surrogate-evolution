@@ -71,111 +71,111 @@ class Surrogate():
                 'validation_subset': [0, 4, 11],
                 'model': sm.MLP
             },
-            {
-                'name': 'mlp_best_uwvl',
-                'dropout': 0.2,
-                'hidden_sizes': [1024, 512],
-                'optimizer': optim.RMSprop,
-                'lr': 0.01,
-                'scheduler': optim.lr_scheduler.CosineAnnealingLR,
-                'metrics_subset': [0],
-                'validation_subset': [0],
-                'model': sm.MLP
-            },
-            {
-                'name': 'mlp_best_cioul',
-                'dropout': 0.0,
-                'hidden_sizes': [2048, 1024, 512],
-                'optimizer': optim.Adam,
-                'lr': 0.01,
-                'scheduler': optim.lr_scheduler.StepLR,
-                'metrics_subset': [0, 4, 11],
-                'validation_subset': [4],
-                'model': sm.MLP
-            },
-            {
-              'name': 'mlp_best_ap',
-              'dropout': 0.0,
-              'hidden_sizes': [512, 256],
-              'optimizer': optim.RMSprop,
-              'lr': 0.01,
-              'scheduler': optim.lr_scheduler.CosineAnnealingLR,
-              'metrics_subset': [11],
-              'validation_subset': [11],
-              'model': sm.MLP
-            },
-            {
-              'name': 'kan_best_uwvl',
-              'model': sm.KAN,
-              'hidden_sizes': [2048, 1024, 512],
-              'optimizer': torch.optim.RMSprop,
-              'lr': 0.001,
-              'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau,
-              'metrics_subset': [0],
-              'validation_subset': [0],
-              'grid_size': 10,
-              'spline_order': 3
-            },
-            {
-              'name': 'kan_best_cioul',
-              'model': sm.KAN,
-              'hidden_sizes': [512, 256],
-              'optimizer': torch.optim.AdamW,
-              'lr': 0.001,
-              'scheduler': torch.optim.lr_scheduler.StepLR,
-              'metrics_subset': [4],
-              'validation_subset': [4],
-              'grid_size': 25,
-              'spline_order': 1
-            },
-            {
-              'name': 'kan_best_ap',
-              'hidden_sizes': [2048, 1024, 512],
-              'optimizer': optim.AdamW,
-              'lr': 0.001,
-              'scheduler': optim.lr_scheduler.CosineAnnealingWarmRestarts,
-              'metrics_subset': [11],
-              'validation_subset': [11],
-              'model': sm.KAN,
-              'spline_order': 1,
-              'grid_size': 25,
-              'model': sm.KAN
-            },
-            {
-                'name': 'kan_best_overall',
-                'hidden_sizes': [2048, 1024, 512],
-                'optimizer': optim.RMSprop,
-                'lr': 0.001,
-                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
-                'metrics_subset': [0, 4, 11],
-                'validation_subset': [0, 4, 11],
-                'spline_order': 1,
-                'grid_size': 10,
-                'model': sm.KAN
-            }
+            # {
+            #     'name': 'mlp_best_uwvl',
+            #     'dropout': 0.2,
+            #     'hidden_sizes': [1024, 512],
+            #     'optimizer': optim.RMSprop,
+            #     'lr': 0.01,
+            #     'scheduler': optim.lr_scheduler.CosineAnnealingLR,
+            #     'metrics_subset': [0],
+            #     'validation_subset': [0],
+            #     'model': sm.MLP
+            # },
+            # {
+            #     'name': 'mlp_best_cioul',
+            #     'dropout': 0.0,
+            #     'hidden_sizes': [2048, 1024, 512],
+            #     'optimizer': optim.Adam,
+            #     'lr': 0.01,
+            #     'scheduler': optim.lr_scheduler.StepLR,
+            #     'metrics_subset': [0, 4, 11],
+            #     'validation_subset': [4],
+            #     'model': sm.MLP
+            # },
+            # {
+            #   'name': 'mlp_best_ap',
+            #   'dropout': 0.0,
+            #   'hidden_sizes': [512, 256],
+            #   'optimizer': optim.RMSprop,
+            #   'lr': 0.01,
+            #   'scheduler': optim.lr_scheduler.CosineAnnealingLR,
+            #   'metrics_subset': [11],
+            #   'validation_subset': [11],
+            #   'model': sm.MLP
+            # },
+            # {
+            #   'name': 'kan_best_uwvl',
+            #   'model': sm.KAN,
+            #   'hidden_sizes': [2048, 1024, 512],
+            #   'optimizer': torch.optim.RMSprop,
+            #   'lr': 0.001,
+            #   'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau,
+            #   'metrics_subset': [0],
+            #   'validation_subset': [0],
+            #   'grid_size': 10,
+            #   'spline_order': 3
+            # },
+            # {
+            #   'name': 'kan_best_cioul',
+            #   'model': sm.KAN,
+            #   'hidden_sizes': [512, 256],
+            #   'optimizer': torch.optim.AdamW,
+            #   'lr': 0.001,
+            #   'scheduler': torch.optim.lr_scheduler.StepLR,
+            #   'metrics_subset': [4],
+            #   'validation_subset': [4],
+            #   'grid_size': 25,
+            #   'spline_order': 1
+            # },
+            # {
+            #   'name': 'kan_best_ap',
+            #   'hidden_sizes': [2048, 1024, 512],
+            #   'optimizer': optim.AdamW,
+            #   'lr': 0.001,
+            #   'scheduler': optim.lr_scheduler.CosineAnnealingWarmRestarts,
+            #   'metrics_subset': [11],
+            #   'validation_subset': [11],
+            #   'model': sm.KAN,
+            #   'spline_order': 1,
+            #   'grid_size': 25,
+            #   'model': sm.KAN
+            # },
+            # {
+            #     'name': 'kan_best_overall',
+            #     'hidden_sizes': [2048, 1024, 512],
+            #     'optimizer': optim.RMSprop,
+            #     'lr': 0.001,
+            #     'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+            #     'metrics_subset': [0, 4, 11],
+            #     'validation_subset': [0, 4, 11],
+            #     'spline_order': 1,
+            #     'grid_size': 10,
+            #     'model': sm.KAN
+            # }
         ]
         self.classifier_models = [
-            {
-                'name': 'best_mlp_classifier',
-                'dropout': 0.0,
-                'hidden_sizes': [2048, 1024, 512],
-                'optimizer': optim.Adam,
-                'lr': 0.0001,
-                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
-                'model': sm.MLP,
-                'output_size': 1
-            },
-            {
-                'name': 'best_kan_classifier',
-                'output_size': 1,
-                'model': sm.KAN,
-                'hidden_sizes': [512, 256],
-                'optimizer': optim.Adagrad,
-                'scheduler': optim.lr_scheduler.CosineAnnealingWarmRestarts,
-                'lr': 0.1,
-                'spline_order': 2,
-                'grid_size': 1
-            }
+            # {
+            #     'name': 'best_mlp_classifier',
+            #     'dropout': 0.0,
+            #     'hidden_sizes': [2048, 1024, 512],
+            #     'optimizer': optim.Adam,
+            #     'lr': 0.0001,
+            #     'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+            #     'model': sm.MLP,
+            #     'output_size': 1
+            # },
+            # {
+            #     'name': 'best_kan_classifier',
+            #     'output_size': 1,
+            #     'model': sm.KAN,
+            #     'hidden_sizes': [512, 256],
+            #     'optimizer': optim.Adagrad,
+            #     'scheduler': optim.lr_scheduler.CosineAnnealingWarmRestarts,
+            #     'lr': 0.1,
+            #     'spline_order': 2,
+            #     'grid_size': 1
+            # }
         ]
         self.trust_calc_strategy = surrogate_config["trust_calc_strategy"]
         self.trust_calc_ratio = surrogate_config["trust_calc_ratio"]
@@ -258,7 +258,7 @@ class Surrogate():
     '''
     
     # trains all the classifiers and regressors and stores their individual weights and metrics
-    def train(self, classifier_train_df, classifier_val_df, regressor_train_df, regressor_val_df, train_reg=True):
+    def train(self, classifier_train_df, classifier_val_df, regressor_train_df, regressor_val_df, train_reg=True, reg_lambda=0.001):
         scores = {
             'classifiers': {},
             'regressors': {}
@@ -266,17 +266,17 @@ class Surrogate():
         cls_genome_scaler = None
         reg_genome_scaler = None
         # loop through the classifier models
-        for classifier_dict in self.classifier_models:
-            metrics, gs = cse.engine(self.surrogate_config, classifier_dict, classifier_train_df, classifier_val_df, self.weights_dir)
-            if cls_genome_scaler is None: cls_genome_scaler = gs
-            scores['classifiers'][classifier_dict['name']] = metrics
+        # for classifier_dict in self.classifier_models:
+        #     metrics, gs = cse.engine(self.surrogate_config, classifier_dict, classifier_train_df, classifier_val_df, self.weights_dir)
+        #     if cls_genome_scaler is None: cls_genome_scaler = gs
+        #     scores['classifiers'][classifier_dict['name']] = metrics
         
         # loop through regressor models
-        # if train_reg:
-        #     for regressor_dict in self.models:
-        #         metrics, best_epoch_metrics, best_epoch_num, gs = rse.engine(self.surrogate_config, regressor_dict, regressor_train_df, regressor_val_df, self.weights_dir)
-        #         if reg_genome_scaler is None: reg_genome_scaler = gs
-        #         scores['regressors'][regressor_dict['name']] = best_epoch_metrics
+        if train_reg:
+            for regressor_dict in self.models:
+                metrics, best_epoch_metrics, best_epoch_num, gs = rse.engine(self.surrogate_config, regressor_dict, regressor_train_df, regressor_val_df, self.weights_dir, reg_lambda)
+                if reg_genome_scaler is None: reg_genome_scaler = gs
+                scores['regressors'][regressor_dict['name']] = best_epoch_metrics
             
         return scores, cls_genome_scaler, reg_genome_scaler
     
@@ -457,34 +457,42 @@ def main():
     # print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
     # print(surrogate.calc_trust(-2, genome_scaler, individuals))
     scores_record = {}
-    for i in range(32):
-        surrogate = Surrogate('conf.toml', os.path.join(repo_dir, 'psomu3/uda/no_uda_class/surrogate_weights'))
-        cls_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_cls_train.pkl'))
-        cls_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_cls_val.pkl'))
-        reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_reg_train.pkl'))
-        reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_reg_val.pkl'))
-        cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
-        reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
-        cls_genome_scaler = cls_train_dataset.genomes_scaler
-        reg_genome_scaler = reg_train_dataset.genomes_scaler
-        scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df)
-        print(scores)
-        # if not scores_record:
-        #     for class_reg in scores:
-        #         scores_record[class_reg] = {}
-        #         for model_type in scores[class_reg]:
-        #             scores_record[class_reg][model_type] = {}
-        #             for cur_metric in scores[class_reg][model_type]:
-        #                 scores_record[class_reg][model_type][cur_metric] = []
-        # else:
-        #     for class_reg in scores:
-        #         for model_type in scores[class_reg]:
-        #             for cur_metric in scores[class_reg][model_type]:
-        #                 scores_record[class_reg][model_type][cur_metric].append(scores[class_reg][model_type][cur_metric])
+    reg_lambda = 0.000208 / 1.3**9 #10 ** -7
+    while reg_lambda <= 0.0028:
+        with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked_class/scores_0.000208.txt", 'a') as f:
+            f.write(f"Reg lambda is {reg_lambda}\n")
+        for i in range(30):
+            surrogate = Surrogate('conf.toml', os.path.join(repo_dir, 'psomu3/uda/no_uda_class/surrogate_weights'))
+            cls_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_cls_train.pkl'))
+            cls_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_cls_val.pkl'))
+            reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_reg_train.pkl'))
+            reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_reg_val.pkl'))
+            cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
+            reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
+            cls_genome_scaler = cls_train_dataset.genomes_scaler
+            reg_genome_scaler = reg_train_dataset.genomes_scaler
+            scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df, reg_lambda=reg_lambda)
+            print(scores)
+            # if not scores_record:
+            #     for class_reg in scores:
+            #         scores_record[class_reg] = {}
+            #         for model_type in scores[class_reg]:
+            #             scores_record[class_reg][model_type] = {}
+            #             for cur_metric in scores[class_reg][model_type]:
+            #                 scores_record[class_reg][model_type][cur_metric] = []
+            # else:
+            #     for class_reg in scores:
+            #         for model_type in scores[class_reg]:
+            #             for cur_metric in scores[class_reg][model_type]:
+            #                 scores_record[class_reg][model_type][cur_metric].append(scores[class_reg][model_type][cur_metric])
 
-        with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/no_uda_class/scores.txt", 'a') as f:
-            json.dump(scores, f)
-            f.write('\n')
+            with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked_class/scores_0.000208.txt", 'a') as f:
+                json.dump(scores, f)
+                f.write('\n')
+        
+        with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked_class/scores_0.000208.txt", 'a') as f:
+            f.write(f"\n")
+        reg_lambda *= 1.3
     # with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked/scores_dynamic_mask.txt", 'a') as f:
     #     f.write('\n')
     #     json.dump(scores_record, f)
