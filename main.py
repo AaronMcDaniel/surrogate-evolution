@@ -5,6 +5,7 @@ Launches an evolution.
 
 import argparse
 from pipeline import Pipeline
+import toml
 
 
 parser = argparse.ArgumentParser()
@@ -25,6 +26,9 @@ num_gen = args.num_generations
 clean = args.remove
 seed_file = args.seed_file
 
+configs = toml.load(config_dir)
+pipeline_config = configs["pipeline"]
+surrogate_enabled = pipeline_config['surrogate_enabled']
 num_evals = 0
 
 GaPipeline = Pipeline(output_dir, config_dir, force_flag, clean)
@@ -36,7 +40,8 @@ while GaPipeline.gen_count <= num_gen:
         num_evals += 1
     else:
         # just train the surrogate, don't evaluate generation on resume
-        all_subsurrogate_metrics = GaPipeline.prepare_surrogate()
+        if surrogate_enabled:
+            all_subsurrogate_metrics = GaPipeline.prepare_surrogate()
     if not GaPipeline.attempt_resume:
         elites = GaPipeline.update_elite_pool() # elites are selected from existing elite pool and current pop
     else :

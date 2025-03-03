@@ -132,7 +132,6 @@ def build_dataset(
 
     all_reg_data = []
     all_cls_data = []
-    print(f"Building dataset from {len(data)} individuals")
 
 
     for line in data:
@@ -264,6 +263,13 @@ def build_dataset(
     complete_reg_set = pd.concat([reg_train_set, reg_val_set], axis=0).reset_index(drop=True)
     complete_cls_set = pd.concat([cls_train_set, cls_val_set], axis=0).reset_index(drop=True)
 
+    print("train_reg_data: ", train_reg_data[:2])
+    print("val_reg_data: ", val_reg_data[:2])
+    print("reg_train_set: ", reg_train_set.head())
+    print("reg_val_set: ",  reg_val_set.head())
+    print("complete_reg_set: ",  complete_reg_set.head())
+    print("complete_reg_set cols: ",  complete_reg_set.columns.tolist())
+
     complete_reg_set, reg_num_train_rem = remove_dupes(complete_reg_set, 'genome', reg_concat_idx)
     complete_cls_set, cls_num_train_rem = remove_dupes(complete_cls_set, 'genome', cls_concat_idx)
 
@@ -277,10 +283,22 @@ def build_dataset(
 
     # write train/val sets to file
     os.makedirs(outdir, exist_ok=True)
-    reg_train_set.to_pickle(os.path.join(outdir, f'{name}_reg_train.pkl'))
-    reg_val_set.to_pickle(os.path.join(outdir, f'{name}_reg_val.pkl'))
-    cls_train_set.to_pickle(os.path.join(outdir, f'{name}_cls_train.pkl'))
-    cls_val_set.to_pickle(os.path.join(outdir, f'{name}_cls_val.pkl'))
+    if not reg_train_set.empty:
+        reg_train_set.to_pickle(os.path.join(outdir, f'{name}_reg_train.pkl'))
+    else:
+        print("reg_train_set empty, didnt pickle it")
+    if not reg_val_set.empty:
+        reg_val_set.to_pickle(os.path.join(outdir, f'{name}_reg_val.pkl'))
+    else:
+        print("reg_val_set empty, didnt pickle it")
+    if not cls_train_set.empty:
+        cls_train_set.to_pickle(os.path.join(outdir, f'{name}_cls_train.pkl'))
+    else:
+        print("cls_train_set empty, didnt pickle it")
+    if not cls_val_set.empty:
+        cls_val_set.to_pickle(os.path.join(outdir, f'{name}_cls_val.pkl'))
+    else:
+        print("cls_val_set empty, didnt pickle it")
 
     return reg_train_set, reg_val_set, cls_train_set, cls_val_set
 

@@ -35,7 +35,7 @@ CORES = 8
 MEM = '32GB'
 JOB_TIME = '08:00:00'
 SCRIPT = 'eval.py'
-ENV_NAME = 'pco'
+ENV_NAME = 'nas'
 GPUS = ["V100-16GB", "V100-32GB", "L40S", "A100-40GB", "H100"]
 # ALLOWED_NODES = ['ice108', 'ice107', 'ice110', 'ice143', 'ice144', 'ice145', 'ice151', 'ice162', 'ice163', 'ice164', 'ice165', 'ice175', 'ice176', 'ice179', 'ice183', 'ice185', 'ice191', 'ice192', 'ice193']
 
@@ -63,6 +63,9 @@ class Pipeline:
         self.clean = clean
         self.logs_dir = os.path.join(self.output_dir, 'logs')
         self.attempt_resume = False
+
+        np.random.seed(0)
+        random.seed(0)
         
         # init file names
         self.trust_file = os.path.join(self.output_dir, 'surrogate_trusts.csv')
@@ -220,19 +223,25 @@ class Pipeline:
                 self.hall_of_fame = pickle.load(f)
             print('Found hof.pkl!')
             if self.surrogate_enabled:
-                with open(self.reg_genome_scaler_file, 'rb') as f:
-                    self.reg_genome_scaler = pickle.load(f)
-                print('Found reg_genome_scaler.pkl!')
-                with open(self.cls_genome_scaler_file, 'rb') as f:
-                    self.cls_genome_scaler = pickle.load(f)
-                print('Found cls_genome_scaler.pkl!')
-                with open(self.sub_surrogate_selection_file, 'rb') as f:
-                    self.sub_surrogates = pickle.load(f)
-                print('Found sub_surrogate_selection.pkl!')
+                if os.path.exists(self.reg_genome_scaler_file):
+                    with open(self.reg_genome_scaler_file, 'rb') as f:
+                        self.reg_genome_scaler = pickle.load(f)
+                    print('Found reg_genome_scaler.pkl!')
+                if os.path.exists(self.cls_genome_scaler_file):
+                    with open(self.cls_genome_scaler_file, 'rb') as f:
+                        self.cls_genome_scaler = pickle.load(f)
+                    print('Found cls_genome_scaler.pkl!')
+                if os.path.exists(self.sub_surrogate_selection_file):
+                    with open(self.sub_surrogate_selection_file, 'rb') as f:
+                        self.sub_surrogates = pickle.load(f)
+                    print('Found sub_surrogate_selection.pkl!')
                 try:
-                    self.all_cls_surrogate_data = pd.read_csv(self.cls_surrogate_data_file)
-                    self.all_reg_surrogate_data = pd.read_csv(self.reg_surrogate_data_file)
-                    self.selected_surrogate_data = pd.read_csv(self.selected_surrogate_data_file)
+                    if os.path.exists(self.cls_surrogate_data_file):
+                        self.all_cls_surrogate_data = pd.read_csv(self.cls_surrogate_data_file)
+                    if os.path.exists(self.reg_surrogate_data_file):
+                        self.all_reg_surrogate_data = pd.read_csv(self.reg_surrogate_data_file)
+                    if os.path.exists(self.selected_surrogate_data_file):
+                        self.selected_surrogate_data = pd.read_csv(self.selected_surrogate_data_file)
                 except pd.errors.EmptyDataError:
                     pass 
                 if os.path.exists(self.trust_file):
@@ -480,7 +489,7 @@ class Pipeline:
     
     # trains the surrogate (all sub-surrogates) and gets eval scores which are used to calculate a trustworthiness
     # surrogate weights are stored to be used for inference when downselecting
-    def prepare_surrogate(self):
+    def prepare_surrogate(self, rebuild=True):
         seen_gens = list(range(1, self.gen_count))
         if self.gen_count == 1:
             return None
@@ -488,7 +497,8 @@ class Pipeline:
         # implement growing sliding window till gen 7 (then use prev 5 gens as val and everything before that as train)
         name = 'surr_evolution'
         if self.gen_count == 2: # use train val split from gen 1 at gen 2
-            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0.2, include_only=[1])
+            if rebuild:
+                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0.2, include_only=[1])
             reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
             reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
             # reg_subset_val_df = reg_val_df
@@ -496,20 +506,24 @@ class Pipeline:
             cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
             # cls_subset_val_df = cls_val_df
         elif self.gen_count < 7: # grows here
-            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=[1])
+            if rebuild:
+                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=[1])
             reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
             cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
-            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[1:])
+            if rebuild:
+                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[1:])
             reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
             cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
             # build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
             # reg_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
             # cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
         else: # slides here
-            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=seen_gens[:-5])
+            if rebuild:
+                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=seen_gens[:-5])
             reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
             cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
-            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-5:])
+            if rebuild:
+                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-5:])
             reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
             cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
             # build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
@@ -711,6 +725,9 @@ class Pipeline:
         curr_pop = copy.deepcopy(curr_pop)
         print('Beginning Simulated Surrogate Injection')
         for i in range(self.num_gens_ssi):
+            # if i!=0:
+            #     print(type(list(curr_pop.values())[0]), flush=True)
+            #     print(list(curr_pop.values())[0], flush=True)
             _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
             parents = self.select_parents(valid) 
             unsustainable_pop = self.overpopulate(parents, ssi=True)
@@ -724,6 +741,234 @@ class Pipeline:
                 curr_pop = new_pop
             print(f'{i + 1} Generations of SSI Completed')
         return curr_pop
+
+
+    def simulated_surrogate_injection_new(self, curr_pop):
+        curr_pop = copy.deepcopy(curr_pop)
+        print('Beginning Simulated Surrogate Injection with NSGA Downselection')
+        for i in range(self.num_gens_ssi):
+            # if i!=0:
+            #     print(list(curr_pop.values())[0], flush=True)
+            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            parents = self.select_parents(valid) 
+            unsustainable_pop = self.overpopulate(parents, ssi=True)
+            if i == self.num_gens_ssi - 1:
+                curr_pop = unsustainable_pop
+            else:
+                self.downselect(unsustainable_pop)
+                # new_hashes = random.sample(list(unsustainable_pop.keys()), self.ssi_sus_pop_size)
+                # new_pop = {}
+                # for hash in new_hashes:
+                #     new_pop[hash] = unsustainable_pop[hash]
+                curr_pop = {self.__get_hash(str(x)):x for x in self.current_deap_pop}
+                print(len(curr_pop.keys()))
+            print(f'{i + 1} Generations of SSI Completed')
+        return curr_pop
+    
+    def simulated_surrogate_injection_islands(self, curr_pop):
+        """
+        A complete implementation of surrogate-assisted evolutionary algorithm using an island model.
+        This approach evolves separate sub-populations (islands) that periodically exchange individuals.
+        """
+        curr_pop = copy.deepcopy(curr_pop)
+        print('Beginning Simulated Surrogate Injection with Island Model')
+        
+        # Configuration parameters - these could be moved to class initialization
+        num_islands = 3
+        migration_interval = 2  # How often to perform migration (every n generations)
+        migration_rate = 0.2    # Fraction of population to migrate
+        
+        # Split initial population into islands
+        islands = self.split_into_islands(curr_pop, num_islands)
+        island_size = len(curr_pop) // num_islands  # Approximate size per island
+        
+        for i in range(self.num_gens_ssi):
+            print(f'Starting generation {i+1} of SSI with Island Model')
+            new_islands = []
+            
+            # Process each island separately
+            for island_idx, island in enumerate(islands):
+                print(f'Processing island {island_idx+1}/{num_islands}')
+                
+                # Set fitness values using surrogate model
+                _, valid = self.surrogate.set_fitnesses(
+                    self.sub_surrogates,
+                    self.cls_genome_scaler, 
+                    self.reg_genome_scaler, 
+                    list(island.values())
+                )
+                
+                # Select parents within this island
+                parents = self.select_parents(valid)
+                
+                # Generate offspring
+                island_offspring = self.overpopulate(parents, ssi=True)
+                
+                # Select new population for this island
+                if i == self.num_gens_ssi - 1:
+                    # For the final generation, keep all offspring
+                    new_island = island_offspring
+                else:
+                    # Otherwise, maintain the island size
+                    new_hashes = random.sample(
+                        list(island_offspring.keys()), 
+                        min(island_size, len(island_offspring))
+                    )
+                    new_island = {hash: island_offspring[hash] for hash in new_hashes}
+                
+                new_islands.append(new_island)
+            
+            # Perform migration between islands at specified intervals
+            if i > 0 and i % migration_interval == 0 and i < self.num_gens_ssi - 1:
+                print(f'Performing migration at generation {i+1}')
+                new_islands = self.migrate_between_islands(new_islands, migration_rate)
+                
+                # Optional: Log island statistics for monitoring
+                # stats = self.get_island_statistics(new_islands)
+                # for stat in stats:
+                #     print(f"Island {stat['island_index']+1}: "
+                #         f"Avg fitness: {stat['avg_fitness']:.4f}, "
+                #         f"Best: {stat['best_fitness']:.4f}")
+            
+            islands = new_islands
+            print(f'{i + 1} Generations of SSI with Island Model Completed')
+        
+        # For the final output, merge all islands
+        final_pop = self.merge_islands(islands)
+        
+        # If the merged population is larger than desired, sample it down
+        if len(final_pop) > self.ssi_sus_pop_size:
+            selected_hashes = random.sample(list(final_pop.keys()), self.ssi_sus_pop_size)
+            final_pop = {hash: final_pop[hash] for hash in selected_hashes}
+        
+        print(f'Completed Island Model SSI with final population size: {len(final_pop)}')
+        return final_pop
+
+    def split_into_islands(self, population, num_islands):
+        """
+        Split the population into roughly equal-sized islands.
+        
+        Args:
+            population (dict): Dictionary of genome hashes to genomes
+            num_islands (int): Number of islands to create
+        
+        Returns:
+            list: List of dictionaries, each representing an island population
+        """
+        all_hashes = list(population.keys())
+        random.shuffle(all_hashes)  # Randomize population before splitting
+        
+        # Calculate base size and remainder for uneven splits
+        base_size = len(all_hashes) // num_islands
+        remainder = len(all_hashes) % num_islands
+        
+        islands = []
+        start_idx = 0
+        
+        for i in range(num_islands):
+            # Add one extra individual to some islands if population size isn't perfectly divisible
+            island_size = base_size + (1 if i < remainder else 0)
+            island_hashes = all_hashes[start_idx:start_idx + island_size]
+            
+            # Create island population dictionary
+            island_pop = {hash: population[hash] for hash in island_hashes}
+            islands.append(island_pop)
+            
+            start_idx += island_size
+        
+        return islands
+
+    def migrate_between_islands(self, islands, migration_rate=0.1):
+        """
+        Perform migration between islands using a ring topology.
+        
+        Args:
+            islands (list): List of dictionaries representing island populations
+            migration_rate (float): Fraction of population to migrate (default: 0.1)
+        
+        Returns:
+            list: Updated list of island populations after migration
+        """
+        new_islands = []
+        num_islands = len(islands)
+        
+        for i in range(num_islands):
+            current_island = islands[i]
+            next_island_idx = (i + 1) % num_islands  # Ring topology
+            
+            # Calculate number of individuals to migrate
+            num_migrants = max(1, int(len(current_island) * migration_rate))
+            
+            # Select random migrants from current island
+            migrant_hashes = random.sample(list(current_island.keys()), num_migrants)
+            
+            # Remove migrants from current island
+            remaining_pop = {hash: current_island[hash] 
+                            for hash in current_island 
+                            if hash not in migrant_hashes}
+            
+            # Add migrants from previous island
+            prev_island_idx = (i - 1) % num_islands
+            prev_island_migrants = random.sample(
+                list(islands[prev_island_idx].keys()),
+                num_migrants
+            )
+            
+            for hash in prev_island_migrants:
+                remaining_pop[hash] = islands[prev_island_idx][hash]
+            
+            new_islands.append(remaining_pop)
+        
+        return new_islands
+
+    def merge_islands(self, islands):
+        """
+        Merge all islands back into a single population.
+        
+        Args:
+            islands (list): List of dictionaries representing island populations
+        
+        Returns:
+            dict: Merged population
+        """
+        merged_population = {}
+        
+        # Simple merge of all island populations
+        for island in islands:
+            merged_population.update(island)
+        
+        return merged_population
+
+    def get_island_statistics(self, islands):
+        """
+        Calculate statistics for each island to monitor diversity.
+        
+        Args:
+            islands (list): List of dictionaries representing island populations
+        
+        Returns:
+            list: List of dictionaries containing statistics for each island
+        """
+        stats = []
+        
+        for i, island in enumerate(islands):
+            island_genomes = list(island.values())
+            
+            # Calculate fitness statistics
+            fitness_values = [genome.fitness for genome in island_genomes]
+            
+            island_stats = {
+                'island_index': i,
+                'population_size': len(island),
+                'avg_fitness': np.mean(fitness_values),
+                'fitness_std': np.std(fitness_values),
+                'best_fitness': max(fitness_values),
+                'worst_fitness': min(fitness_values)
+            }
+            
+            stats.append(island_stats)
+        
+        return stats
 
 
     def log_info(self):
@@ -764,7 +1009,9 @@ class Pipeline:
             # write surrogate information to file
             self.all_cls_surrogate_data.to_csv(self.cls_surrogate_data_file, index=False)
             self.all_reg_surrogate_data.to_csv(self.reg_surrogate_data_file, index=False)
-            self.selected_surrogate_data.to_csv(self.selected_surrogate_data_file, index=False)                
+            self.selected_surrogate_data.to_csv(self.selected_surrogate_data_file, index=False)          
+            df = pd.DataFrame(self.surrogate_trusts)      
+            df.to_csv(self.trust_file, index=False)                
         print('Done!')
 
 
