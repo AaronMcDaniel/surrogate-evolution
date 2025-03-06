@@ -184,9 +184,9 @@ if __name__ == "__main__":
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
     baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline/out.csv'
     df_baseline = pd.read_csv(baseline_path)
-    surrogate_path = '/storage/ice-shared/vip-vvk/data/AOT/tfs_se_v2/out.csv'
+    surrogate_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline2/testing_baseline/out.csv'
     df_surrogate = pd.read_csv(surrogate_path)
-    ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/ssi_logs_2-9-25/out.csv'
+    ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline_ssi/testing_baseline/out.csv'
     df_ssi = pd.read_csv(ssi_path)
     # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
     dataframes = [

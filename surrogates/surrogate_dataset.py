@@ -263,8 +263,8 @@ def build_dataset(
     complete_reg_set = pd.concat([reg_train_set, reg_val_set], axis=0).reset_index(drop=True)
     complete_cls_set = pd.concat([cls_train_set, cls_val_set], axis=0).reset_index(drop=True)
 
-    print("train_reg_data: ", train_reg_data[:2])
-    print("val_reg_data: ", val_reg_data[:2])
+    # print("train_reg_data: ", train_reg_data[:2])
+    # print("val_reg_data: ", val_reg_data[:2])
     print("reg_train_set: ", reg_train_set.head())
     print("reg_val_set: ",  reg_val_set.head())
     print("complete_reg_set: ",  complete_reg_set.head())
