@@ -48,8 +48,8 @@ HEADS = [
     "SSD_Head"
 ]
 
-STRONG_INDEX_MAPPING = {'LazyConv2d': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13], 'LazyConvTranspose2d': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13], 'MaxPool2d': [1, 2, 3, 4, 5, 6, 11, 12], 'AvgPool2d': [1, 2, 3, 4, 5, 6], 'FractionalMaxPool2d': [1, 2, 14, 15], 'LPPool2d': [16, 1, 2, 3, 4], 'AdaptiveMaxPool2d': [17, 18], 'AdaptiveAvgPool2d': [17, 18], 'ReLU_2D': [], 'LeakyReLU_2D': [19], 'LogSigmoid_2D': [], 'Sigmoid_2D': [], 'Tanh_2D': [], 'Threshold_2D': [19, 20], 'LazyBatchNorm2d': [19, 20], 'Dropout_2D': [14], 'FasterRCNN_Head': [21, 22, 14, 15, 23, 24, 25, 26, 27], 'FCOS_Head': [21, 22, 14, 15, 23, 24, 25, 26, 27], 'RetinaNet_Head': [21, 22, 14, 15, 23, 24, 25, 26, 27], 'Upsample_2D': [19, 28, 29, 30, 31, 32], 'ConvNeXt': [33, 34, 35, 36, 37, 38], 'DenseNet': [39, 40, 41, 42, 37, 38], 'EfficientNet_V2': [43, 44, 45, 37, 38], 'Inception_V3': [37, 38], 'MobileNet_V3': [46, 47, 37, 38], 'RegNet_X': [48, 49, 50, 51, 52, 53, 54, 55, 56, 57], 'RegNet_Y': [48, 49, 50, 51, 52, 53, 54, 55, 56, 57], 'ResNeXt': [58, 59, 55, 56, 57], 'ResNet': [60, 61, 62, 55, 56, 57], 'ShuffleNet_V2': [63, 64, 65, 66, 37, 38], 'Swin_V2': [67, 68, 69, 37, 38], 'Wide_ResNet': [70, 71, 55, 56, 57], 'SGD': [72, 73, 74], 'Adadelta': [72, 73], 'Adagrad': [72], 'Adam': [72, 75], 'AdamW': [72, 75], 'Adamax': [72], 'ASGD': [72, 73, 74, 76], 'NAdam': [72, 73, 75], 'RAdam': [72, 75], 'RMSprop': [72, 73, 75, 74], 'Rprop': [72, 73, 74, 76], 'StepLR': [72], 'MultiStepLR': [], 'ExponentialLR': [], 'ReduceLROnPlateau': [77, 72, 78, 73, 74], 'CosineAnnealingLR': [72], 'CosineAnnealingWarmRestarts': [77, 72], 'OneCycleLR': [72, 79, 80, 75, 73, 74, 76, 81, 82], 'ConstantLR': [77], 'LinearLR': [72, 77], 'PolynomialLR': [77, 72], 'CyclicLR': [72, 77, 78, 83, 84, 85, 73, 86, 87, 75, 74, 76]}
-STRONG_REP_SIZE = 88
+STRONG_INDEX_MAPPING = {'LazyConv2d': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13], 'LazyConvTranspose2d': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13], 'MaxPool2d': [1, 2, 3, 4, 5, 6, 11, 12], 'AvgPool2d': [1, 2, 3, 4, 5, 6], 'FractionalMaxPool2d': [1, 2, 14, 15], 'LPPool2d': [16, 1, 2, 3, 4], 'AdaptiveMaxPool2d': [17, 18], 'AdaptiveAvgPool2d': [17, 18], 'ReLU_2D': [], 'LeakyReLU_2D': [19], 'LogSigmoid_2D': [], 'Sigmoid_2D': [], 'Tanh_2D': [], 'Threshold_2D': [19, 20], 'LazyBatchNorm2d': [19, 20], 'Dropout_2D': [14], 'FasterRCNN_Head': [21, 22, 14, 15, 23, 24, 25, 26, 27], 'FCOS_Head': [21, 22, 14, 15, 23, 24, 25, 26, 27], 'RetinaNet_Head': [21, 22, 14, 15, 23, 24, 25, 26, 27], 'Upsample_2D': [19, 28, 29, 30, 31, 32], 'ConvNeXt': [33, 34, 35, 36, 37, 38], 'DenseNet': [39, 40, 41, 42, 37, 38], 'EfficientNet_V2': [43, 44, 45, 37, 38], 'Inception_V3': [37, 38], 'MobileNet_V3': [46, 47, 37, 38], 'RegNet_X': [48, 49, 50, 51, 52, 53, 54, 55, 56, 57], 'RegNet_Y': [48, 49, 50, 51, 52, 53, 54, 55, 56, 57], 'ResNeXt': [58, 59, 55, 56, 57], 'ResNet': [60, 61, 62, 55, 56, 57], 'ShuffleNet_V2': [63, 64, 65, 66, 37, 38], 'Swin_V2': [67, 68, 69, 37, 38], 'Wide_ResNet': [70, 71, 55, 56, 57], 'SGD': [72, 73, 74, 75], 'Adadelta': [72, 73, 74], 'Adagrad': [72, 73], 'Adam': [72, 73, 76], 'AdamW': [72, 73, 76], 'Adamax': [72, 73], 'ASGD': [72, 73, 74, 75, 77], 'NAdam': [72, 73, 74, 76], 'RAdam': [72, 73, 76], 'RMSprop': [72, 73, 74, 76, 75], 'Rprop': [72, 73, 74, 75, 77], 'StepLR': [78, 72], 'MultiStepLR': [72], 'ExponentialLR': [72], 'ReduceLROnPlateau': [72, 78, 73, 79, 74, 75], 'CosineAnnealingLR': [78, 72], 'CosineAnnealingWarmRestarts': [78, 79, 72], 'OneCycleLR': [72, 73, 80, 81, 76, 74, 75, 77, 82, 83], 'ConstantLR': [72, 78], 'LinearLR': [72, 73, 78], 'PolynomialLR': [72, 78, 73], 'CyclicLR': [72, 73, 78, 79, 84, 85, 86, 74, 87, 88, 76, 75, 77]}
+STRONG_REP_SIZE = 89
 
 
 # these classes help extract features from existing classification models to obtain backbones
@@ -278,7 +278,7 @@ class DynamicNetwork(nn.Module):
 
 
 # codec class
-class Strong_Codec:
+class Codec:
     def __init__(self, num_classes, genome_encoding_strat = 'Tree', surrogate_encoding_strat = "String2Vec") -> None:
         self.genome_encoding_strat = genome_encoding_strat
         self.surrogate_encoding_strat = surrogate_encoding_strat
@@ -347,7 +347,6 @@ class Strong_Codec:
             max_layers = 15
             num_layer_types = 54
 
-
             for element in expr:
                 if element != ')':
                     stack.append(element)
@@ -398,7 +397,9 @@ class Strong_Codec:
         layer = np.zeros(num_layer_types + STRONG_REP_SIZE)
         layer[layer_type] = 1
         # pass every other parameter directly through
+        # print("Params", params)
         for i, param in enumerate(params):
+            # print("Construct: ", name, i, STRONG_INDEX_MAPPING[name][i])
             layer[num_layer_types + STRONG_INDEX_MAPPING[name][i]] = param
         
         return layer
@@ -490,7 +491,7 @@ class Strong_Codec:
 
         layer_type = self.param_mapping[name]
         params = self.inject_onehot2(params, self.enum_dict[name])
-        layer = np.zeros(num_layer_types + len(params))
+        layer = np.zeros(num_layer_types + STRONG_REP_SIZE)
         layer[layer_type] = 1
 
         for i, param in enumerate(params):

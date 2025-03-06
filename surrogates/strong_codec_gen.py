@@ -43,16 +43,16 @@ def generate_vector_representation(node_details: str, enum_details: str = ""):
     return vector_representation, mapping
 
 def extract_nested_list(input_string: str):
-    start = input_string.find("[")
-    end = input_string.find("]", start) + 1
-    if start != -1 and end != -1:
+    start = input_string.find("[")+1
+    end = input_string.find("]", start)
+    if start != 0 and end != -1:
         return input_string[start:end]
     return ""
 
 def extract_node_type(input_string: str):
     start = input_string.find("(") + 1
     end = input_string.find(",", start)
-    if start != -1 and end != -1:
+    if start != 0 and end != -1:
         return input_string[start:end]
     return ""
 
@@ -82,8 +82,13 @@ for input_string in big_input.split("\n\n"):
     node = extract_node_type(input_string)
     extracted_list = extract_nested_list(input_string)
     parts = extracted_list.split(", ")
-    newStr = node + ": " + ", ".join(parts[1:])[:-1]
-    # print("ADDING", newStr)
+    # print(node, parts)
+    newStr = ""
+    if parts[0] == 'Tensor3D':
+        newStr = node + ": " + ", ".join(parts[1:])
+    else:
+        newStr = node + ": " + ", ".join(parts)
+    print("ADDING", newStr)
     new_compiled_list.append(newStr)
 new_compiled = "\n".join(new_compiled_list)
 
@@ -106,7 +111,7 @@ CyclicLRMode - 3
 CyclicLRScaleMode - 2
 AnnealStrategy - 2
 """
-
+print(new_compiled)
 vector_rep, mapping = generate_vector_representation(new_compiled, enum_details)
 print("Vectorized Representation:", vector_rep)
 print(len(vector_rep))
