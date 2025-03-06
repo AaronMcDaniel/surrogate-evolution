@@ -217,7 +217,7 @@ class Pipeline:
                 self.current_deap_pop = pickle.load(f)
             print('Found latest_pop.pkl!')
             with open(self.elites_checkpoint_file, 'rb') as f:
-                self.elite = pickle.load(f)
+                self.elite_pool = pickle.load(f)
             print('Found elites.pkl!')
             with open(self.hof_file, 'rb') as f:
                 self.hall_of_fame = pickle.load(f)
@@ -626,7 +626,7 @@ class Pipeline:
         return condensed
     
 
-    def downselect(self, unsustainable_pop):
+    def downselect(self, unsustainable_pop, fully_trust_surrogate=False):
         print('Downselecting...')
         if self.surrogate_enabled and self.gen_count != 1 and os.listdir(self.surrogate_weights_dir):
             unsustainable_pop_copy = copy.deepcopy(unsustainable_pop)
@@ -644,7 +644,10 @@ class Pipeline:
             
             # create downselect function for trustwrothy surrogate ratio
             if self.selection_method_trusted == 'NSGA2':
-                self.toolbox.register("downselect", tools.selNSGA2, k = num_tw_select)
+                if fully_trust_surrogate:
+                    self.toolbox.register("downselect", tools.selNSGA2, k = self.population_size)
+                else:
+                    self.toolbox.register("downselect", tools.selNSGA2, k = num_tw_select)
             # TODO add other if statements for other selections strategies
 
             if len(valid_deap) < (self.population_size * self.surrogate.cls_trust):
@@ -669,20 +672,21 @@ class Pipeline:
                 del unsustainable_pop_copy[hash]
                 downselect_pool.remove(individual)
 
-            # randomly select from valid deap individuals    
-            if (self.selection_method_untrusted.lower() == 'random'): # choose randomly
-                to_utw_select = random.sample((valid_deap), num_utw_select)
-                for individual in to_utw_select:
-                    hash = self.__get_hash(str(individual))
-                    new_pop[hash] = {'genome': str(unsustainable_pop_copy[hash]), 'metrics': None}
-                    new_deap_pop.append(individual)
-                    del unsustainable_pop_copy[hash]
-                    downselect_pool.remove(individual)
+            if not fully_trust_surrogate:
+                # randomly select from valid deap individuals    
+                if (self.selection_method_untrusted.lower() == 'random'): # choose randomly
+                    to_utw_select = random.sample((valid_deap), num_utw_select)
+                    for individual in to_utw_select:
+                        hash = self.__get_hash(str(individual))
+                        new_pop[hash] = {'genome': str(unsustainable_pop_copy[hash]), 'metrics': None}
+                        new_deap_pop.append(individual)
+                        del unsustainable_pop_copy[hash]
+                        downselect_pool.remove(individual)
 
-                other_rand_hashes = random.sample(list(unsustainable_pop_copy.keys()), num_rand_other_select)
-                for hash in other_rand_hashes:
-                    new_pop[hash] = {'genome': str(unsustainable_pop_copy[hash]), 'metrics': None}
-                    new_deap_pop.append(unsustainable_pop_copy[hash])
+                    other_rand_hashes = random.sample(list(unsustainable_pop_copy.keys()), num_rand_other_select)
+                    for hash in other_rand_hashes:
+                        new_pop[hash] = {'genome': str(unsustainable_pop_copy[hash]), 'metrics': None}
+                        new_deap_pop.append(unsustainable_pop_copy[hash])
            
             # set new current pop and current deap pop
             self.current_population = new_pop
@@ -743,7 +747,7 @@ class Pipeline:
         return curr_pop
 
 
-    def simulated_surrogate_injection_new(self, curr_pop):
+    def simulated_surrogate_injection_nsga(self, curr_pop, pure_nsga=False):
         curr_pop = copy.deepcopy(curr_pop)
         print('Beginning Simulated Surrogate Injection with NSGA Downselection')
         for i in range(self.num_gens_ssi):
@@ -755,7 +759,7 @@ class Pipeline:
             if i == self.num_gens_ssi - 1:
                 curr_pop = unsustainable_pop
             else:
-                self.downselect(unsustainable_pop)
+                self.downselect(unsustainable_pop, pure_nsga)
                 # new_hashes = random.sample(list(unsustainable_pop.keys()), self.ssi_sus_pop_size)
                 # new_pop = {}
                 # for hash in new_hashes:
@@ -764,6 +768,9 @@ class Pipeline:
                 print(len(curr_pop.keys()))
             print(f'{i + 1} Generations of SSI Completed')
         return curr_pop
+
+    def simulated_surrogate_injection_pure_nsga(self, curr_pop):
+        return self.simulated_surrogate_injection_nsga(self, curr_pop, True)
     
     def simulated_surrogate_injection_islands(self, curr_pop):
         """
@@ -1023,6 +1030,9 @@ class Pipeline:
     def __get_hash(self, s):
         layer_list = self.codec.get_layer_list(s)
         return hashlib.shake_256(str(layer_list).encode()).hexdigest(5)
+    
+    def get_hash_public(self, s):
+        return self.__get_hash(s)
     
 
     def clear_outputs(self):
