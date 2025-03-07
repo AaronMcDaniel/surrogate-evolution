@@ -9,6 +9,8 @@ scores_record_uda = {}
 num_samples_normal = 0
 num_samples_uda = 0
 
+# Basic parsing of the scoress.txt output from training a surrogate N times.
+# Each line in the scores file has the dictionary returned from one call of the surrogate training function
 with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/no_uda/scores.txt", 'r') as f:
 # with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked/scores_dynamic_mask.txt", 'r') as f:
     for line in f:

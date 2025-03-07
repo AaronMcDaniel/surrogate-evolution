@@ -221,28 +221,32 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
         # forwards with mixed precision
         with autocast():
             # outputs shape: (batch_size, 12)
-            # 1 if float, 0 if int
-            grad_mask = (genomes != torch.floor(genomes)).int() * grad_mask_54_14
-            assert torch.count_nonzero(grad_mask) > 0 and torch.count_nonzero(grad_mask) < torch.numel(grad_mask)
             outputs = model(genomes)
             clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
+            
+            grad_regu = 0
+            if reg_lambda != 0:
+                # 1 if float, 0 if int
+                grad_mask = (genomes != torch.floor(genomes)).int() * grad_mask_54_14
+                assert torch.count_nonzero(grad_mask) > 0 and torch.count_nonzero(grad_mask) < torch.numel(grad_mask)
 
-            # compute a simple scalar derived from model output and do backward to compute gradient of output wrt input
-            y_pred_sum = clamped_outputs.sum()
-            y_pred_sum.backward(retain_graph=True)
+                # compute a simple scalar derived from model output and do backward to compute gradient of output wrt input
+                y_pred_sum = clamped_outputs.sum()
+                y_pred_sum.backward(retain_graph=True)
 
-            # take l2 norm of gradient of output wrt input and compute gradient regularization term
-            grad_norm = (genomes.grad * grad_mask).norm(2)
-            # grad_norm = genomes.grad.norm(2)
-            grad_regu = reg_lambda*grad_norm**2
+                # take l2 norm of gradient of output wrt input and compute gradient regularization term
+                grad_norm = (genomes.grad * grad_mask).norm(2)
+                # grad_norm = genomes.grad.norm(2)
+                grad_regu = reg_lambda*grad_norm**2
+                assert genomes.grad is not None
 
             # metric regression loss is meaned, so is scalar tensor value
-            loss = criterion(clamped_outputs, metrics)
+            total_loss = criterion(clamped_outputs, metrics)
             # print(reg_lambda*grad_norm**2, loss)
 
-            # add normal l1 loss with the regularization term for implicit unsupervised data augmentation
-            total_loss = loss + grad_regu
-            assert genomes.grad is not None
+            if reg_lambda != 0:
+                # add normal l1 loss with the regularization term for implicit unsupervised data augmentation
+                total_loss = total_loss + grad_regu
         
         # backwards
         optimizer.zero_grad()

@@ -457,23 +457,21 @@ def main():
     # print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
     # print(surrogate.calc_trust(-2, genome_scaler, individuals))
     scores_record = {}
-    for mode in ['old_codec', 'strong_codec']:
-        scores_file = os.path.join("/storage/ice-shared/vip-vvk/data/AOT/psomu3/strong_codec_test", mode, "scores.txt")
-        # with open(scores_file, 'a') as f:
-        #     f.write(f"Mode is {mode}\n")
-        with open(scores_file, 'w') as f:
-            pass
-        for i in range(10):
-            surrogate = Surrogate('conf.toml', os.path.join(repo_dir, os.path.join('psomu3/strong_codec_test/', mode, 'surrogate_weights')))
-            cls_train_df = pd.read_pickle(os.path.join(repo_dir, 'psomu3/strong_codec_test', mode, f'{mode}_cls_train.pkl'))
-            cls_val_df = pd.read_pickle(os.path.join(repo_dir, 'psomu3/strong_codec_test', mode, f'{mode}_cls_val.pkl'))
-            reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'psomu3/strong_codec_test', mode, f'{mode}_reg_train.pkl'))
-            reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'psomu3/strong_codec_test', mode, f'{mode}_reg_val.pkl'))
+    reg_lambda = 0.000208 / 1.3**9 #10 ** -7
+    while reg_lambda <= 0.0028:
+        with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked_class/scores_0.000208.txt", 'a') as f:
+            f.write(f"Reg lambda is {reg_lambda}\n")
+        for i in range(30):
+            surrogate = Surrogate('conf.toml', os.path.join(repo_dir, 'psomu3/uda/no_uda_class/surrogate_weights'))
+            cls_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_cls_train.pkl'))
+            cls_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_cls_val.pkl'))
+            reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_reg_train.pkl'))
+            reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_reg_val.pkl'))
             cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
             reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
             cls_genome_scaler = cls_train_dataset.genomes_scaler
             reg_genome_scaler = reg_train_dataset.genomes_scaler
-            scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df, reg_lambda=0)
+            scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df, reg_lambda=reg_lambda)
             print(scores)
             # if not scores_record:
             #     for class_reg in scores:
@@ -488,10 +486,13 @@ def main():
             #             for cur_metric in scores[class_reg][model_type]:
             #                 scores_record[class_reg][model_type][cur_metric].append(scores[class_reg][model_type][cur_metric])
 
-            with open(scores_file, 'a') as f:
+            with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked_class/scores_0.000208.txt", 'a') as f:
                 json.dump(scores, f)
                 f.write('\n')
         
+        with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked_class/scores_0.000208.txt", 'a') as f:
+            f.write(f"\n")
+        reg_lambda *= 1.3
     # with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked/scores_dynamic_mask.txt", 'a') as f:
     #     f.write('\n')
     #     json.dump(scores_record, f)
