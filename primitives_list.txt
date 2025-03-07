@@ -1,0 +1,215 @@
+pset.addPrimitive(LazyConv2d, 
+                  [Tensor3D, ChannelSize, KernelSize, KernelSize, StrideSize, StrideSize, PaddingSize, PaddingSize, PaddingMode, DilationSize, DilationSize, GroupSize], 
+                  Tensor3D)
+
+pset.addPrimitive(LazyConvTranspose2d,
+                  [Tensor3D, ChannelSize, KernelSize, KernelSize, StrideSize, StrideSize, PaddingSize, PaddingSize, PaddingMode, DilationSize, DilationSize, GroupSize],
+                  Tensor3D)
+
+pset.addPrimitive(MaxPool2d,
+                  [Tensor3D, KernelSize, KernelSize, StrideSize, StrideSize, PaddingSize, PaddingSize, DilationSize, DilationSize],
+                  Tensor3D)
+
+pset.addPrimitive(AvgPool2d,
+                  [Tensor3D, KernelSize, KernelSize, StrideSize, StrideSize, PaddingSize, PaddingSize],
+                  Tensor3D)
+
+pset.addPrimitive(FractionalMaxPool2d,
+                  [Tensor3D, KernelSize, KernelSize, ProbFloat, ProbFloat],
+                  Tensor3D)
+
+pset.addPrimitive(LPPool2d,
+                  [Tensor3D, PNorm, KernelSize, KernelSize, StrideSize, StrideSize],
+                  Tensor3D)
+
+pset.addPrimitive(AdaptiveMaxPool2d,
+                  [Tensor3D, OutputSize, OutputSize],
+                  Tensor3D)
+
+pset.addPrimitive(AdaptiveAvgPool2d,
+                  [Tensor3D, OutputSize, OutputSize],
+                  Tensor3D)
+
+pset.addPrimitive(ReLU_2D,
+                  [Tensor3D],
+                  Tensor3D)
+
+pset.addPrimitive(LeakyReLU_2D,
+                  [Tensor3D, BoundedFloat],
+                  Tensor3D)
+
+pset.addPrimitive(LogSigmoid_2D,
+                  [Tensor3D],
+                  Tensor3D)
+
+pset.addPrimitive(Sigmoid_2D,
+                  [Tensor3D],
+                  Tensor3D)
+
+pset.addPrimitive(Tanh_2D,
+                  [Tensor3D],
+                  Tensor3D)
+
+pset.addPrimitive(Threshold_2D,
+                  [Tensor3D, BoundedFloat, BoundedFloat],
+                  Tensor3D)
+
+pset.addPrimitive(LazyBatchNorm2d,
+                  [Tensor3D, BoundedFloat, BoundedFloat],
+                  Tensor3D)
+
+pset.addPrimitive(Dropout_2D,
+                  [Tensor3D, ProbFloat],
+                  Tensor3D)
+
+pset.addPrimitive(FasterRCNN_Head,
+                  [Tensor3D, Optimizer, Scheduler, ProbFloat, ProbFloat, ProbFloat, ProbFloat, ProbFloat, ProbFloat, ProbFloat]
+                  FinalTensor)
+
+pset.addPrimitive(FCOS_Head,
+                  [Tensor3D, Optimizer, Scheduler, ProbFloat, ProbFloat, ProbFloat, ProbFloat, ProbFloat, ProbFloat, ProbFloat]
+                  FinalTensor)
+
+pset.addPrimitive(RetinaNet_Head,
+                  [Tensor3D, Optimizer, Scheduler, ProbFloat, ProbFloat, ProbFloat, ProbFloat, ProbFloat, ProbFloat, ProbFloat]
+                  FinalTensor)
+
+pset.addPrimitive(Upsample_2D,
+                  [Tensor3D, BoundedFloat, UpsampleMode],
+                  Tensor3D)
+
+pset.addPrimitive(ConvNeXt,
+                  [Tensor3D, ConvNeXtSize, BoolWeight],
+                  Tensor3D)
+
+pset.addPrimitive(DenseNet,
+                  [Tensor3D, DenseNetSize, BoolWeight],
+                  Tensor3D)
+
+pset.addPrimitive(EfficientNet_V2,
+                  [Tensor3D, EfficientNet_V2Size, BoolWeight],
+                  Tensor3D)
+
+pset.addPrimitive(Inception_V3,
+                  [Tensor3D, BoolWeight],
+                  Tensor3D)
+
+pset.addPrimitive(MobileNet_V3,
+                  [Tensor3D, MobileNet_V3Size, BoolWeight],
+                  Tensor3D)
+
+pset.addPrimitive(RegNet_X,
+                  [Tensor3D, RegNetSize, Weights],
+                  Tensor3D)
+
+pset.addPrimitive(RegNet_Y,
+                  [Tensor3D, RegNetSize, Weights],
+                  Tensor3D)
+
+pset.addPrimitive(ResNeXt,
+                  [Tensor3D, ResNeXtSize, Weights],
+                  Tensor3D)
+
+pset.addPrimitive(ResNet,
+                  [Tensor3D, ResNetSize, Weights],
+                  Tensor3D)
+
+pset.addPrimitive(ShuffleNet_V2,
+                  [Tensor3D, ShuffleNet_V2Size, BoolWeight],
+                  Tensor3D)
+
+pset.addPrimitive(Swin_V2,
+                  [Tensor3D, Swin_V2Size, BoolWeight],
+                  Tensor3D)
+
+pset.addPrimitive(Wide_ResNet,
+                  [Tensor3D, Wide_ResNetSize, Weights],
+                  Tensor3D)
+
+pset.addPrimitive(SGD,
+                  [float, float, float, float],
+                  Optimizer)
+
+pset.addPrimitive(Adadelta,
+                  [float, float, float],
+                  Optimizer)
+
+pset.addPrimitive(Adagrad,
+                  [float, float],
+                  Optimizer)
+
+pset.addPrimitive(Adam,
+                  [float, float, bool],
+                  Optimizer)
+
+pset.addPrimitive(AdamW,
+                  [float, float, bool],
+                  Optimizer)
+
+pset.addPrimitive(Adamax,
+                  [float, float],
+                  Optimizer)
+
+pset.addPrimitive(ASGD,
+                  [float, float, float, float, float],
+                  Optimizer)
+
+pset.addPrimitive(NAdam,
+                  [float, float, float, bool],
+                  Optimizer)
+
+pset.addPrimitive(RAdam,
+                  [float, float, bool],
+                  Optimizer)
+
+pset.addPrimitive(RMSprop,
+                  [float, float, float, bool, float],
+                  Optimizer)
+
+pset.addPrimitive(Rprop,
+                  [float, float, float, float, float],
+                  Optimizer)
+
+pset.addPrimitive(StepLR,
+                  [int, float],
+                  Scheduler)
+
+pset.addPrimitive(MultiStepLR,
+                  [float],
+                  Scheduler)
+
+pset.addPrimitive(ExponentialLR,
+                  [float],
+                  Scheduler)
+
+pset.addPrimitive(ReduceLROnPlateau,
+                  [float, int, float, int, float, float],
+                  Scheduler)
+
+pset.addPrimitive(CosineAnnealingLR,
+                  [int, float],
+                  Scheduler)
+
+pset.addPrimitive(CosineAnnealingWarmRestarts,
+                  [int, int, float],
+                  Scheduler)
+
+pset.addPrimitive(OneCycleLR,
+                  [float, float, AnnealStrategy, bool, float, float, float, float, bool],
+                  Scheduler)
+
+pset.addPrimitive(ConstantLR,
+                  [float, int],
+                  Scheduler)
+
+pset.addPrimitive(LinearLR,
+                  [float, float, int],
+                  Scheduler)
+
+pset.addPrimitive(PolynomialLR,
+                  [float, int, float],
+                  Scheduler)
+
+pset.addPrimitive(CyclicLR,
+                  [float, float, int, int, CyclicLRMode, float, CyclicLRScaleMode, bool, float, float],
+                  Scheduler)

@@ -76,7 +76,7 @@ new_compiled_list = []
 #                   [Tensor3D, ChannelSize, KernelSize, KernelSize, StrideSize, StrideSize, PaddingSize, PaddingSize, PaddingMode, DilationSize, DilationSize, GroupSize], 
 #                   Tensor3D)"""
 big_input = ""
-with open("/home/hice1/psomu3/scratch/surrogate-evolution/primitives copy.txt", 'r') as f:
+with open("/home/hice1/psomu3/scratch/surrogate-evolution/primitives_list.txt", 'r') as f:
     big_input = f.read()
 for input_string in big_input.split("\n\n"):
     node = extract_node_type(input_string)
