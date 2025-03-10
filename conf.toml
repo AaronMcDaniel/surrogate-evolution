@@ -45,6 +45,8 @@ ssi_start_gen = 4
 ssi_unsustainable_population_size = 2000
 # size of sustainable population during ssi
 ssi_sustainable_population_size = 500
+# whether to use surrogate when calling the final downselect operation on the unsustainable population
+surrogate_in_final_downselect = true
 
 [model]
 # number of epochs to train individuals for

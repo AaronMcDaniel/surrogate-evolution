@@ -64,8 +64,6 @@ class Pipeline:
         self.logs_dir = os.path.join(self.output_dir, 'logs')
         self.attempt_resume = False
 
-        np.random.seed(0)
-        random.seed(0)
         
         # init file names
         self.trust_file = os.path.join(self.output_dir, 'surrogate_trusts.csv')
@@ -137,6 +135,7 @@ class Pipeline:
         self.num_gens_ssi = pipeline_config['num_gens_ssi']
         self.ssi_unsus_pop_size = pipeline_config['ssi_unsustainable_population_size']
         self.ssi_sus_pop_size = pipeline_config['ssi_sustainable_population_size']
+        self.surrogate_in_final_downselect = pipeline_config['surrogate_in_final_downselect']
 
         # Other useful attributes
         self.holy_grail = pd.DataFrame(columns=['gen', 'hash', 'genome', 'metrics']) # data regarding every evaluated individual; metrics are from best epoch since all other metric data is already stored by eval_script
@@ -493,6 +492,7 @@ class Pipeline:
         seen_gens = list(range(1, self.gen_count))
         if self.gen_count == 1:
             return None
+        # if self.surrogate_enabled:
         print('    Building surrogate train and val datasets...')
         # implement growing sliding window till gen 7 (then use prev 5 gens as val and everything before that as train)
         name = 'surr_evolution'
@@ -554,7 +554,9 @@ class Pipeline:
             return None
         # print(f'     Regression validation data shape: {reg_val_df.shape}      {reg_val_df.head()}')
         scores, cls_genome_scaler, reg_genome_scaler = self.surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df, train_reg=train_reg)
-            
+        # else:
+        #     cls_genome_scaler = self.cls_genome_scaler
+        #     reg_genome_scaler = self.reg_genome_scaler
         print('    Selecting best sub-surrogates...')
         sub_surrogates = []
         # finding best classifier
@@ -626,9 +628,9 @@ class Pipeline:
         return condensed
     
 
-    def downselect(self, unsustainable_pop, fully_trust_surrogate=False):
+    def downselect(self, unsustainable_pop, fully_trust_surrogate=False, for_ssi=False):
         print('Downselecting...')
-        if self.surrogate_enabled and self.gen_count != 1 and os.listdir(self.surrogate_weights_dir):
+        if self.surrogate_enabled and (self.surrogate_in_final_downselect or for_ssi) and self.gen_count != 1 and os.listdir(self.surrogate_weights_dir):
             unsustainable_pop_copy = copy.deepcopy(unsustainable_pop)
 
             # get surrogate inferred fitnesses using classification and regression
@@ -759,7 +761,7 @@ class Pipeline:
             if i == self.num_gens_ssi - 1:
                 curr_pop = unsustainable_pop
             else:
-                self.downselect(unsustainable_pop, pure_nsga)
+                self.downselect(unsustainable_pop, fully_trust_surrogate=pure_nsga, for_ssi=True)
                 # new_hashes = random.sample(list(unsustainable_pop.keys()), self.ssi_sus_pop_size)
                 # new_pop = {}
                 # for hash in new_hashes:
@@ -770,7 +772,7 @@ class Pipeline:
         return curr_pop
 
     def simulated_surrogate_injection_pure_nsga(self, curr_pop):
-        return self.simulated_surrogate_injection_nsga(self, curr_pop, True)
+        return self.simulated_surrogate_injection_nsga(curr_pop, pure_nsga=True)
     
     def simulated_surrogate_injection_islands(self, curr_pop):
         """

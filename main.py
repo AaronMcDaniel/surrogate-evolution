@@ -6,7 +6,9 @@ Launches an evolution.
 import argparse
 from pipeline import Pipeline
 import toml
-
+import numpy as np
+import random
+import time
 
 parser = argparse.ArgumentParser()
     
@@ -33,6 +35,8 @@ num_evals = 0
 
 GaPipeline = Pipeline(output_dir, config_dir, force_flag, clean)
 GaPipeline.initialize(seed_file)
+random.seed(int(time.time()))
+np.random.seed(int(time.time()))
 while GaPipeline.gen_count <= num_gen:
     print(f'---------- Generation {GaPipeline.gen_count} ----------')
     if not GaPipeline.attempt_resume:

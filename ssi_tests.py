@@ -6,6 +6,11 @@ from pipeline import Pipeline
 import os
 import glob
 import shutil
+import numpy as np
+import random
+import time
+
+print("Started script!", flush=True)
 
 parser = argparse.ArgumentParser()
     
@@ -37,19 +42,26 @@ FILES_TO_COPY = [
     "hof_history.pkl", "out.csv"
 ]
 
-tests = ['old', 'downselect', 'pure_nsga', 'low_sustain']
+# tests = ['islands', 'downselect', 'old', 'pure_nsga', 'low_sustain', 'high_unsustain']
+tests = ['pure_nsga',]
 for test in tests:
     cur_records_path = os.path.join(ROOT_DIR, test)
     if not os.path.exists(cur_records_path):
         os.makedirs(cur_records_path)
     
-    for i in range(4):
+    for i in range(1):
+        print(test)
         GaPipeline = Pipeline(output_dir, config_dir, force_flag, clean)
         GaPipeline.initialize(seed_file)
+        # seed = int(time.time())
+        seed = 10
+        np.random.seed(seed)
+        random.seed(seed)
         GaPipeline.surrogate.reg_trust = 0.625
         GaPipeline.surrogate.cls_trust = 0.916666666
         if test == 'low_sustain':
             GaPipeline.ssi_sus_pop_size = 50
+        GaPipeline.num_gens_ssi = 50
 
         # all_subsurrogate_metrics = GaPipeline.prepare_surrogate(False)
         elites = GaPipeline.elite_pool
@@ -58,12 +70,15 @@ for test in tests:
 
         print(GaPipeline.sub_surrogates)
         ssi_func = None
-        if test == 'old' or test == "low_sustain":
+        if test == 'old':
             ssi_func = GaPipeline.simulated_surrogate_injection
-        elif test == 'downselect':
+        elif test in ['downselect', 'low_sustain', 'high_unsustain']:
             ssi_func = GaPipeline.simulated_surrogate_injection_nsga
         elif test == 'pure_nsga':
             ssi_func = GaPipeline.simulated_surrogate_injection_pure_nsga
+        elif test == 'islands':
+            ssi_func = GaPipeline.simulated_surrogate_injection_islands
+        print(test)
         unsustainable_pop = ssi_func({GaPipeline.get_hash_public(str(x)):x for x in elites + GaPipeline.current_deap_pop})
         # takes in pop dict
         GaPipeline.downselect(unsustainable_pop) # population is replaced by a completely new one

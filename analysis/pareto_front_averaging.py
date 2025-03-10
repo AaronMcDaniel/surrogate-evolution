@@ -8,6 +8,8 @@ import numpy as np
 from pymoo.indicators.hv import HV, Hypervolume
 from matplotlib.ticker import MaxNLocator
 import toml
+import os
+from collections import defaultdict
 
 def stepify_pareto_points_2d(x, y, metric_directions):
     """
@@ -141,7 +143,7 @@ def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds
     plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
     plt.tight_layout()
-    plt.savefig('/home/hice1/psomu3/scratch/surrogate-evolution/analysis/graphs/paretoTestingBaseline/pareto_gen' + str(gen) + '.jpg')
+    plt.savefig('/home/hice1/psomu3/scratch/surrogate-evolution/analysis/graphs/paretoLightTest/pareto_gen' + str(gen) + '.jpg')
     plt.close()
     print('plot ' + str(gen) + ' done')
 
@@ -182,18 +184,36 @@ if __name__ == "__main__":
     
     # HERE IS WHERE YOU ADD FRONTS
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
-    baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/no_se_baseline_2/testing_baseline/out.csv'
-    df_baseline = pd.read_csv(baseline_path)
-    surrogate_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_test_nsga/testing_baseline/out.csv'
-    df_surrogate = pd.read_csv(surrogate_path)
-    ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_test_nsga_2/testing_baseline/out.csv'
-    df_ssi = pd.read_csv(ssi_path)
-    # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
-    dataframes = [
-        {'df': df_baseline, 'name': 'Baseline', 'colors': ['xkcd:cerulean', 'xkcd:azure', 'xkcd:slate grey', 'xkcd:sky blue'], 'marker': 'o'}, 
-        {'df': df_surrogate, 'name': 'Surrogate', 'colors': ['xkcd:gold', 'xkcd:amber', 'xkcd:dark grey', 'xkcd:charcoal'], 'marker': '^'},
-        {'df': df_ssi, 'name': 'Injection', 'colors': ['xkcd:lime green', 'xkcd:forest green', 'xkcd:grey', 'xkcd:slate'], 'marker': 's'}
-        ]
+    dataframes = []
+    root_dir = "/storage/ice-shared/vip-vvk/data/AOT/psomu3"
+    modes = ['islands', 'downselect', 'old', 'pure_nsga', 'low_sustain']
+    colors = ['xkcd:blue', 'xkcd:green', 'xkcd:gold', 'xkcd:red', 'xkcd:orange']
+    symbols = ['o', '^', 's', 'p', '*']
+    mode_freqs = defaultdict(int)
+    for dir in ['light_test_nsga', 'light_test_nsga_2']:
+        for i, mode in enumerate(modes):
+            mode_dir = os.path.join(root_dir, dir, "testing_baseline", mode)
+            if os.path.exists(mode_dir):
+                for filename in os.listdir(mode_dir):
+                    mode_freqs[mode] += 1
+                    cur_df = pd.read_csv(os.path.join(mode_dir, filename))
+                    dataframes.append(
+                        {'df': cur_df, 'name': f"{mode}-{filename}-{dir[-1]}", 'colors': [colors[i] for x in range(4)], 'marker': symbols[i]}
+                    )
+    mode_volumes = defaultdict(float)
+
+    # baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_test_nsga/testing_baseline/pure_nsga/out1.csv'
+    # df_baseline = pd.read_csv(baseline_path)
+    # surrogate_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_test_nsga/testing_baseline/pure_nsga/out0.csv'
+    # df_surrogate = pd.read_csv(surrogate_path)
+    # ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_test_nsga/testing_baseline/old/out1.csv'
+    # df_ssi = pd.read_csv(ssi_path)
+    # # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
+    # dataframes = [
+    #     {'df': df_baseline, 'name': 'Baseline', 'colors': ['xkcd:cerulean', 'xkcd:azure', 'xkcd:slate grey', 'xkcd:sky blue'], 'marker': 'o'}, 
+    #     {'df': df_surrogate, 'name': 'Surrogate', 'colors': ['xkcd:gold', 'xkcd:amber', 'xkcd:dark grey', 'xkcd:charcoal'], 'marker': '^'},
+    #     {'df': df_ssi, 'name': 'Injection', 'colors': ['xkcd:lime green', 'xkcd:forest green', 'xkcd:grey', 'xkcd:slate'], 'marker': 's'}
+    #     ]
 
     min_gens = []
     max_gens = []
@@ -308,6 +328,8 @@ if __name__ == "__main__":
                 if name not in list(all_hvs.keys()):
                     all_hvs[name] = []
                 all_hvs[name].append(hv(hv_front))
+                if gen == max_gen:
+                    mode_volumes[name.split('-')[0]] += hv(hv_front)
                 print(name + ' hypervolume:', hv(hv_front))
 
         print()
@@ -326,6 +348,10 @@ if __name__ == "__main__":
     plt.title("Pareto Front Hypervolumes Per Generation")
     plt.xlabel('Generation')
     plt.ylabel('Hypervolume')
-    plt.tight_layout()
-    plt.savefig('/home/hice1/psomu3/scratch/surrogate-evolution/analysis/graphs/paretoTestingBaseline/pareto_hypervolume.jpg')
+    # plt.tight_layout()
+    plt.savefig('/home/hice1/psomu3/scratch/surrogate-evolution/analysis/graphs/paretoLightTest/pareto_hypervolume.jpg')
     plt.close()
+
+    for mode in mode_volumes:
+        print(f"Average gen-{max_gen} hypervolume of {mode}: {mode_volumes[mode]/mode_freqs[mode]}")
+        print(f"Frequency of mode of {mode}: {mode_freqs[mode]}")

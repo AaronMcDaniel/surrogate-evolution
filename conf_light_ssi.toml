@@ -40,7 +40,7 @@ num_gens_ssi = 4
 # frequency at which ssi occurs
 ssi_freq = 1
 # first generation to use SSI
-ssi_start_gen = 4
+ssi_start_gen = 2
 # size of unsustainable population during ssi
 ssi_unsustainable_population_size = 2000
 # size of sustainable population during ssi
@@ -50,11 +50,11 @@ surrogate_in_final_downselect = true
 
 [model]
 # number of epochs to train individuals for
-train_epochs = 10
+train_epochs = 5
 # batch size
 batch_size = 2
 # number of batches in one epoch
-batches_per_epoch = 500
+batches_per_epoch = 125
 # number of target classes in AOT
 num_classes = 7
 # iou threshold for determining detection
@@ -84,7 +84,7 @@ surrogate_metrics = ["mse_uw_val_loss", "mse_iou_loss", "mse_giou_loss", "mse_di
 # optimization directions of the genome metrics
 opt_directions = ['min', 'min', 'min', 'min', 'min', 'min', 'min', 'min', 'max', 'max', 'max', 'max']
 # number of epochs to train the surrogates for
-surrogate_train_epochs = 30
+surrogate_train_epochs = 15
 # batch size used in surrogate evaluation
 surrogate_batch_size = 16
 # method of calculating the trust of a surrogate

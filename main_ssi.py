@@ -5,6 +5,9 @@ Launches an evolution.
 import toml
 import argparse
 from pipeline import Pipeline
+import numpy as np
+import random
+import time
 
 
 parser = argparse.ArgumentParser()
@@ -34,6 +37,8 @@ num_evals = 0
 
 GaPipeline = Pipeline(output_dir, config_dir, force_flag, clean)
 GaPipeline.initialize(seed_file)
+random.seed(int(time.time()))
+np.random.seed(int(time.time()))
 while GaPipeline.gen_count <= num_gen:
     print(f'---------- Generation {GaPipeline.gen_count} ----------')
     if not GaPipeline.attempt_resume:
@@ -53,7 +58,7 @@ while GaPipeline.gen_count <= num_gen:
     unsustainable_pop = GaPipeline.overpopulate(selected_parents) # returns pop dict {hash: genome}
     if ssi and (GaPipeline.gen_count >= ssi_start_gen) and ((GaPipeline.gen_count - ssi_start_gen) % ssi_freq == 0):
         # returns pop dict
-        unsustainable_pop = GaPipeline.simulated_surrogate_injection_new(unsustainable_pop)
+        unsustainable_pop = GaPipeline.simulated_surrogate_injection(unsustainable_pop)
     # takes in pop dict
     GaPipeline.downselect(unsustainable_pop) # population is replaced by a completely new one
     GaPipeline.step_gen()
