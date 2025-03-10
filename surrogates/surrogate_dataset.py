@@ -42,6 +42,7 @@ class SurrogateDataset(Dataset):
         if mode == 'train':
             self.genomes = np.stack(df['genome'].values)
             self.metrics = df.iloc[:, metrics_subset].values
+            print("Genome shape", self.genomes.shape)
             self.genomes = self.genomes_scaler.fit_transform(self.genomes)
         if mode == 'val':
             grouped = df.groupby('hash')

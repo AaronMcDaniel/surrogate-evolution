@@ -60,6 +60,17 @@ class Surrogate():
         codec_config = configs["codec"]
         model_config = configs["model"]
         self.models = [ # these are the regressor models but are simply called 'models' for compatibility reasons with the pipeline
+            # {
+            #     'name': 'mlp_best_overall',
+            #     'dropout': 0.3,
+            #     'hidden_sizes': [4096, 2048, 1024, 512],
+            #     'optimizer': optim.RMSprop,
+            #     'lr': 0.005,
+            #     'scheduler': optim.lr_scheduler.CosineAnnealingLR,
+            #     'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            #     'validation_subset': [0, 4, 11],
+            #     'model': sm.MLP
+            # },
             {
                 'name': 'mlp_best_overall',
                 'dropout': 0.4,
@@ -457,22 +468,24 @@ def main():
     # print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
     # print(surrogate.calc_trust(-2, genome_scaler, individuals))
     scores_record = {}
-    for mode in ['old_codec', 'strong_codec']:
-        scores_file = os.path.join("/storage/ice-shared/vip-vvk/data/AOT/psomu3/strong_codec_test", mode, "scores.txt")
+    suffix = "_latent_64"
+    # suffix = ""
+    # for mode in ['old_codec', 'strong_codec']:
+    for mode in ['old_codec',]:
+        scores_file = os.path.join("/storage/ice-shared/vip-vvk/data/AOT/psomu3/strong_codec_test", mode, f"scores{suffix}.txt")
         # with open(scores_file, 'a') as f:
         #     f.write(f"Mode is {mode}\n")
-        with open(scores_file, 'w') as f:
-            pass
-        for i in range(10):
+
+        cls_train_df = pd.read_pickle(os.path.join(repo_dir, 'psomu3/strong_codec_test', mode, f'{mode}_cls_train.pkl'))
+        cls_val_df = pd.read_pickle(os.path.join(repo_dir, 'psomu3/strong_codec_test', mode, f'{mode}_cls_val.pkl'))
+        reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'psomu3/strong_codec_test', mode, f'{mode}_reg_train{suffix}.pkl'))
+        reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'psomu3/strong_codec_test', mode, f'{mode}_reg_val{suffix}.pkl'))
+        for i in range(40):
             surrogate = Surrogate('conf.toml', os.path.join(repo_dir, os.path.join('psomu3/strong_codec_test/', mode, 'surrogate_weights')))
-            cls_train_df = pd.read_pickle(os.path.join(repo_dir, 'psomu3/strong_codec_test', mode, f'{mode}_cls_train.pkl'))
-            cls_val_df = pd.read_pickle(os.path.join(repo_dir, 'psomu3/strong_codec_test', mode, f'{mode}_cls_val.pkl'))
-            reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'psomu3/strong_codec_test', mode, f'{mode}_reg_train.pkl'))
-            reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'psomu3/strong_codec_test', mode, f'{mode}_reg_val.pkl'))
-            cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
-            reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
-            cls_genome_scaler = cls_train_dataset.genomes_scaler
-            reg_genome_scaler = reg_train_dataset.genomes_scaler
+            # cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
+            # reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])
+            # cls_genome_scaler = cls_train_dataset.genomes_scaler
+            # reg_genome_scaler = reg_train_dataset.genomes_scaler
             scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df, reg_lambda=0)
             print(scores)
             # if not scores_record:

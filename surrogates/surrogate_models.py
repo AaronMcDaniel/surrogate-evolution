@@ -16,7 +16,7 @@ from scipy import linalg
 class MLP(nn.Module):
     def __init__(
             self, 
-            input_size=1021, 
+            input_size=64, 
             output_size=12,
             hidden_sizes=[512, 256], 
             activation_layer=nn.ReLU, 

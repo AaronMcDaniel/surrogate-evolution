@@ -5,12 +5,17 @@ import sys
 
 repo_dir = "/storage/ice-shared/vip-vvk/data/AOT/"
 
-reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_reg_val.pkl'))
+# mode = 'strong'
+mode = 'old'
+df = pd.read_pickle(f"/storage/ice-shared/vip-vvk/data/AOT/psomu3/strong_codec_test/{mode}_codec/{mode}_codec_reg_val_latent_64.pkl")
 pd.options.display.max_colwidth = None
 np.set_printoptions(threshold=sys.maxsize)
 # reg_val_df['genome'] = reg_val_df['genome'].apply(lambda x: ', '.join(map(str, x)) if isinstance(x, (list, np.ndarray)) else str(x))
 # reg_val_df['genome'].to_csv("/storage/ice-shared/vip-vvk/data/AOT/psomu3/genome2.txt", index=False)
-reg_val_df['genome'].to_csv("/storage/ice-shared/vip-vvk/data/AOT/psomu3/genome3.txt", index=False)
+print(mode)
+# print(df.shape)
+print(df['genome'].iloc[0])
+# df['genome'].to_csv("/storage/ice-shared/vip-vvk/data/AOT/psomu3/strong_codec_test/strong_codec/genome.txt", index=False)
 
 
 # genome = np.array([ 2.54720777e-01,  0.00000000e+00,  0.00000000e+00, -5.26072979e-02,
