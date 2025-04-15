@@ -46,3 +46,4 @@ release3/*
 surrogate_weights/*
 test_evo*
 t_evo_*.job
+t*_evo_*.job

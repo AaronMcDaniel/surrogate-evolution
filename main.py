@@ -33,10 +33,41 @@ pipeline_config = configs["pipeline"]
 surrogate_enabled = pipeline_config['surrogate_enabled']
 num_evals = 0
 
+def advance_random_states(random_state, numpy_random_state, n_rolls):
+    temp_random = random.Random()
+    temp_random.setstate(random_state)
+    _ = temp_random.sample(range(n_rolls+1), n_rolls)
+    advanced_random_state = temp_random.getstate()
+    
+    temp_np_random = np.random.RandomState()
+    temp_np_random.set_state(numpy_random_state)
+    _ = temp_np_random.random(n_rolls)
+    advanced_np_state = temp_np_random.get_state()
+    
+    return advanced_random_state, advanced_np_state
+
+def print_random_state_fingerprint(random_state, np_random_state):
+    print('RANDOM STATE INFO', flush=True)
+    print({
+        'version': random_state[0],
+        'state_head': random_state[1][:3],  # First 3 elements
+        'state_tail': random_state[1][-3:],  # Last 3 elements
+        'gauss_next': random_state[2]
+    }, flush=True)
+    
+    print({
+        'algorithm': np_random_state[0],
+        'keys_head': np_random_state[1][:3].tolist(),  # First 3 elements
+        'keys_tail': np_random_state[1][-3:].tolist(),  # Last 3 elements
+        'position': np_random_state[2],
+        'has_gauss': np_random_state[3],
+        'cached_gaussian': np_random_state[4]
+    }, flush=True)
+
 GaPipeline = Pipeline(output_dir, config_dir, force_flag, clean)
 GaPipeline.initialize(seed_file)
-random.seed(int(time.time()))
-np.random.seed(int(time.time()))
+random.seed(60)
+np.random.seed(60)
 while GaPipeline.gen_count <= num_gen:
     print(f'---------- Generation {GaPipeline.gen_count} ----------')
     if not GaPipeline.attempt_resume:
@@ -44,8 +75,16 @@ while GaPipeline.gen_count <= num_gen:
         num_evals += 1
     else:
         # just train the surrogate, don't evaluate generation on resume
+        random_state = random.getstate()
+        numpy_random_state = np.random.get_state()
         if surrogate_enabled:
             all_subsurrogate_metrics = GaPipeline.prepare_surrogate()
+        random_state, numpy_random_state = advance_random_states(random_state, numpy_random_state, 100)
+        random.setstate(random_state)
+        np.random.set_state(numpy_random_state)
+    
+    print_random_state_fingerprint(random.getstate(), np.random.get_state())
+
     if not GaPipeline.attempt_resume:
         elites = GaPipeline.update_elite_pool() # elites are selected from existing elite pool and current pop
     else :
@@ -53,9 +92,17 @@ while GaPipeline.gen_count <= num_gen:
     if not GaPipeline.attempt_resume:
         GaPipeline.update_hof()
         GaPipeline.log_info()
-    selected_parents = GaPipeline.select_parents(elites + GaPipeline.current_deap_pop) 
+    random_state = random.getstate()
+    numpy_random_state = np.random.get_state()
+    selected_parents = GaPipeline.select_parents(list(set(elites + GaPipeline.current_deap_pop))) 
     unsustainable_pop = GaPipeline.overpopulate(selected_parents) # returns dict {hash: genome}
+    random_state, numpy_random_state = advance_random_states(random_state, numpy_random_state, 100)
+    random.setstate(random_state)
+    np.random.set_state(numpy_random_state)
     GaPipeline.downselect(unsustainable_pop) # population is replaced by a completely new one
+    
+    print_random_state_fingerprint(random.getstate(), np.random.get_state())
+
     GaPipeline.step_gen()
 
 print('====================')

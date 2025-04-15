@@ -4,7 +4,7 @@
 # initial population size
 initial_population_size = 200
 # population size
-population_size = 30
+population_size = 50
 # unsustainable population size
 unsustainable_population_size = 500
 # number of parents to be selected to mate
@@ -36,17 +36,18 @@ best_epoch_criteria = ["average_precision", "max"]
 # whether to use simulated surrogate injection (SSI)
 ssi = true
 # number of generations of simulation with surrogate-only
-num_gens_ssi = 4
+num_gens_ssi = 5
 # frequency at which ssi occurs
 ssi_freq = 1
 # first generation to use SSI
-ssi_start_gen = 4
+ssi_start_gen = 2
 # size of unsustainable population during ssi
 ssi_unsustainable_population_size = 2000
 # size of sustainable population during ssi
 ssi_sustainable_population_size = 500
 # whether to use surrogate when calling the final downselect operation on the unsustainable population
-surrogate_in_final_downselect = true
+surrogate_in_final_downselect = false
+num_parents_ssi = 30
 
 [model]
 # number of epochs to train individuals for
@@ -54,7 +55,7 @@ train_epochs = 10
 # batch size
 batch_size = 2
 # number of batches in one epoch
-batches_per_epoch = 500
+batches_per_epoch = 250
 # number of target classes in AOT
 num_classes = 7
 # iou threshold for determining detection
@@ -84,7 +85,7 @@ surrogate_metrics = ["mse_uw_val_loss", "mse_iou_loss", "mse_giou_loss", "mse_di
 # optimization directions of the genome metrics
 opt_directions = ['min', 'min', 'min', 'min', 'min', 'min', 'min', 'min', 'max', 'max', 'max', 'max']
 # number of epochs to train the surrogates for
-surrogate_train_epochs = 30
+surrogate_train_epochs = 15
 # batch size used in surrogate evaluation
 surrogate_batch_size = 16
 # method of calculating the trust of a surrogate

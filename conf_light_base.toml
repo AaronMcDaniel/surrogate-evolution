@@ -4,7 +4,7 @@
 # initial population size
 initial_population_size = 200
 # population size
-population_size = 30
+population_size = 50
 # unsustainable population size
 unsustainable_population_size = 500
 # number of parents to be selected to mate
@@ -46,7 +46,8 @@ ssi_unsustainable_population_size = 2000
 # size of sustainable population during ssi
 ssi_sustainable_population_size = 500
 # whether to use surrogate when calling the final downselect operation on the unsustainable population
-surrogate_in_final_downselect = true
+surrogate_in_final_downselect = false
+num_parents_ssi = 30
 
 [model]
 # number of epochs to train individuals for

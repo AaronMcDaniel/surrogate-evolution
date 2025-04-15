@@ -27,6 +27,8 @@ from surrogates.surrogate_eval import engine, get_val_scores
 from surrogates.surrogate_dataset import build_dataset
 import numpy as np
 import re
+from custom_selection import dbea_selection, lexicase_selection
+
 
 # job file params
 JOB_NAME = 't_evo'
@@ -135,6 +137,7 @@ class Pipeline:
         self.num_gens_ssi = pipeline_config['num_gens_ssi']
         self.ssi_unsus_pop_size = pipeline_config['ssi_unsustainable_population_size']
         self.ssi_sus_pop_size = pipeline_config['ssi_sustainable_population_size']
+        self.num_parents_ssi = pipeline_config['num_parents_ssi']
         self.surrogate_in_final_downselect = pipeline_config['surrogate_in_final_downselect']
 
         # Other useful attributes
@@ -696,7 +699,12 @@ class Pipeline:
             
         else :
             if (self.selection_method_untrusted.lower() == 'random'): # choose randomly
-                new_hashes = random.sample(list(unsustainable_pop.keys()), self.population_size)
+                new_hashes = None
+                if len(unsustainable_pop) == self.population_size:
+                    print("Entered preservation case", flush=True)
+                    new_hashes = list(unsustainable_pop.keys())
+                else:
+                    new_hashes = random.sample(list(unsustainable_pop.keys()), self.population_size)
                 new_deap_pop = []
                 new_pop = {}
                 for hash in new_hashes:
@@ -731,9 +739,6 @@ class Pipeline:
         curr_pop = copy.deepcopy(curr_pop)
         print('Beginning Simulated Surrogate Injection')
         for i in range(self.num_gens_ssi):
-            # if i!=0:
-            #     print(type(list(curr_pop.values())[0]), flush=True)
-            #     print(list(curr_pop.values())[0], flush=True)
             _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
             parents = self.select_parents(valid) 
             unsustainable_pop = self.overpopulate(parents, ssi=True)
@@ -747,6 +752,401 @@ class Pipeline:
                 curr_pop = new_pop
             print(f'{i + 1} Generations of SSI Completed')
         return curr_pop
+
+    def simulated_surrogate_injection_new(self, curr_pop):
+        curr_pop = copy.deepcopy(curr_pop)
+        print('Beginning Simulated Surrogate Injection')
+        for i in range(self.num_gens_ssi):
+            valid = None
+            if i > 0:
+                _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            else:
+                valid = list(curr_pop.values())  
+            parents = None
+            if len(valid) != self.num_parents:
+                parents = self.select_parents(valid) 
+            else:
+                parents = valid
+            unsustainable_pop = self.overpopulate(parents, ssi=True)
+            if i == self.num_gens_ssi - 1:
+                downselected = tools.selNSGA2(valid, self.population_size*4//5)
+                curr_pop = {self.__get_hash(str(x)):x for x in downselected}
+            else:
+                curr_pop = unsustainable_pop
+            print(f'{i + 1} Generations of SSI Completed')
+        return curr_pop
+
+    def simulated_surrogate_injection_spea(self, curr_pop):
+        curr_pop = copy.deepcopy(curr_pop)
+        print('Beginning Simulated Surrogate Injection')
+        for i in range(self.num_gens_ssi):
+            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            parents = tools.selSPEA2(valid, self.num_parents) 
+            unsustainable_pop = self.overpopulate(parents, ssi=True)
+            if i == self.num_gens_ssi - 1:
+                curr_pop = unsustainable_pop
+            else:
+                new_hashes = random.sample(list(unsustainable_pop.keys()), self.ssi_sus_pop_size)
+                new_pop = {}
+                for hash in new_hashes:
+                    new_pop[hash] = unsustainable_pop[hash]
+                curr_pop = new_pop
+            print(f'{i + 1} Generations of SSI Completed')
+        return curr_pop
+
+    def simulated_surrogate_injection_no_downselect(self, curr_pop):
+        curr_pop = copy.deepcopy(curr_pop)
+        print('Beginning Simulated Surrogate Injection')
+        for i in range(self.num_gens_ssi):
+            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            parents = self.select_parents(valid) 
+            unsustainable_pop = self.overpopulate(parents, ssi=True)
+            if i == self.num_gens_ssi - 1:
+                curr_pop = unsustainable_pop
+            else:
+                new_hashes = random.sample(list(unsustainable_pop.keys()), self.ssi_sus_pop_size)
+                new_pop = {}
+                for hash in new_hashes:
+                    new_pop[hash] = unsustainable_pop[hash]
+                curr_pop = new_pop
+            print(f'{i + 1} Generations of SSI Completed')
+        return curr_pop
+
+
+    def simulated_surrogate_injection_tsdea(self, curr_pop):
+        curr_pop = copy.deepcopy(curr_pop)
+        print('Beginning Simulated Surrogate Injection')
+        self.num_gens_ssi = 10
+        for i in range(self.num_gens_ssi):
+            valid = None
+            if i > 0:
+                _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            else:
+                valid = list(curr_pop.values())
+            parents = tools.selSPEA2(valid, self.num_parents) 
+            unsustainable_pop = self.overpopulate(parents, ssi=True)
+            if i == self.num_gens_ssi - 1:
+                original_crowding_dist = tools.emo.assignCrowdingDist
+                tools.emo.assignCrowdingDist = self.euclidean_crowding_distance_assignment
+                curr_pop = tools.selNSGA2(list(unsustainable_pop.values()), self.population_size)
+                curr_pop = {self.__get_hash(str(x)):x for x in curr_pop}
+                tools.emo.assignCrowdingDist = original_crowding_dist
+            else:
+                curr_pop = unsustainable_pop
+            print(f'{i + 1} Generations of SSI Completed')
+        return curr_pop
+
+
+    def simulated_surrogate_injection_tsdea_short(self, curr_pop):
+        curr_pop = copy.deepcopy(curr_pop)
+        print('Beginning Simulated Surrogate Injection')
+        self.num_gens_ssi = 3
+        for i in range(self.num_gens_ssi):
+            valid = None
+            if i > 0:
+                _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            else:
+                valid = list(curr_pop.values())
+            parents = tools.selSPEA2(valid, self.num_parents) 
+            unsustainable_pop = self.overpopulate(parents, ssi=True)
+            if i == self.num_gens_ssi - 1:
+                original_crowding_dist = tools.emo.assignCrowdingDist
+                tools.emo.assignCrowdingDist = self.euclidean_crowding_distance_assignment
+                curr_pop = tools.selNSGA2(list(unsustainable_pop.values()), self.population_size)
+                curr_pop = {self.__get_hash(str(x)):x for x in curr_pop}
+                tools.emo.assignCrowdingDist = original_crowding_dist
+            else:
+                curr_pop = unsustainable_pop
+            print(f'{i + 1} Generations of SSI Completed')
+        return curr_pop
+
+
+    def simulated_surrogate_injection_tsdea_elitism(self, curr_pop):
+        curr_pop = copy.deepcopy(curr_pop)
+        elite_list = tools.selSPEA2(list(curr_pop.values()), 5)
+        print('Beginning Simulated Surrogate Injection')
+        self.num_gens_ssi = 10
+        for i in range(self.num_gens_ssi):
+            valid = None
+            if i > 0:
+                _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            else:
+                valid = list(curr_pop.values())
+            parents = tools.selSPEA2(valid, self.num_parents-5) + elite_list
+            unsustainable_pop = self.overpopulate(parents, ssi=True)
+            if i == self.num_gens_ssi - 1:
+                original_crowding_dist = tools.emo.assignCrowdingDist
+                tools.emo.assignCrowdingDist = self.euclidean_crowding_distance_assignment
+                curr_pop = tools.selNSGA2(list(unsustainable_pop.values()), self.population_size)
+                curr_pop = {self.__get_hash(str(x)):x for x in curr_pop}
+                tools.emo.assignCrowdingDist = original_crowding_dist
+            else:
+                curr_pop = unsustainable_pop
+            print(f'{i + 1} Generations of SSI Completed')
+        return curr_pop
+    
+
+    def select_with_dual_population(self, valid_individuals, diversity_sel, k):
+        # Non-dominated sorting for main population (exploitation)
+        self.toolbox.register("non_dominated_selection", tools.selNSGA2, k=int(k*0.7))
+        main_pop = self.toolbox.non_dominated_selection(valid_individuals)
+        
+        # Diversity-based selection for vice population (exploration)
+        remaining = [ind for ind in valid_individuals if ind not in main_pop]
+        original_crowding_dist = tools.emo.assignCrowdingDist
+        leftover = k-int(k*0.7)
+        if diversity_sel == "nsga_euclidean":
+            tools.emo.assignCrowdingDist = self.euclidean_crowding_distance_assignment
+            self.toolbox.register("diversity_selection", tools.selNSGA2, k=leftover)
+        elif diversity_sel == "dbea":
+            self.toolbox.register("diversity_selection", dbea_selection, k=leftover, n_objectives=3)
+        elif diversity_sel == "lexicase":
+            self.toolbox.register("diversity_selection", lexicase_selection, n_objectives=3, k=leftover)
+        vice_pop = self.toolbox.diversity_selection(remaining)
+        if diversity_sel == "nsga_euclidean":
+            tools.emo.assignCrowdingDist = original_crowding_dist
+        
+        return main_pop + vice_pop
+    
+
+    def euclidean_crowding_distance_assignment(self, individuals):
+        """
+        A replacement for DEAP's assignCrowdingDist function that uses
+        Euclidean distance instead of the traditional crowding distance.
+        
+        This function modifies individuals' fitness.crowding_dist in-place.
+        """
+        if len(individuals) <= 1:
+            for ind in individuals:
+                ind.fitness.crowding_dist = float("inf")
+            return
+        
+        # Calculate pairwise Euclidean distances in objective space
+        for i, ind in enumerate(individuals):
+            objectives = np.array(ind.fitness.values)
+            
+            # Calculate distances to all other individuals
+            distances = []
+            for j, other in enumerate(individuals):
+                if i != j:
+                    other_objectives = np.array(other.fitness.values)
+                    dist = np.sqrt(np.sum((objectives - other_objectives) ** 2))
+                    distances.append(dist)
+            
+            # Assign average distance as the crowding distance
+            if distances:
+                ind.fitness.crowding_dist = np.mean(distances)
+            else:
+                ind.fitness.crowding_dist = 0.0
+
+
+    def simulated_surrogate_injection_nsga_euclidean_p(self, curr_pop):
+        curr_pop = copy.deepcopy(curr_pop)
+        elite_list = tools.selSPEA2(list(curr_pop.values()), 5)
+        self.toolbox.register("select_parents", self.select_with_dual_population, diversity_sel='nsga_euclidean', k = self.num_parents)
+        print('Beginning Simulated Surrogate Injection')
+        self.num_gens_ssi = 33
+        for i in range(self.num_gens_ssi+1):
+            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            parents = self.select_parents(valid) 
+            if i == self.num_gens_ssi - 1:
+                curr_pop = {self.__get_hash(str(x)):x for x in parents}
+            else:
+                curr_pop = self.overpopulate(parents+elite_list, ssi=True)
+            print(f'{i + 1} Generations of SSI Completed')
+        self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents)
+        return curr_pop
+
+
+    def simulated_surrogate_injection_dbea_p(self, curr_pop):
+        curr_pop = copy.deepcopy(curr_pop)
+        elite_list = tools.selSPEA2(list(curr_pop.values()), 5)
+        self.toolbox.register("select_parents", self.select_with_dual_population, diversity_sel='dbea', k = self.num_parents)
+        print('Beginning Simulated Surrogate Injection')
+        self.num_gens_ssi = 33
+        for i in range(self.num_gens_ssi+1):
+            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            parents = self.select_parents(valid) 
+            if i == self.num_gens_ssi - 1:
+                curr_pop = {self.__get_hash(str(x)):x for x in parents}
+            else:
+                curr_pop = self.overpopulate(parents+elite_list, ssi=True)
+            print(f'{i + 1} Generations of SSI Completed')
+        self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents)
+        return curr_pop
+
+
+    def simulated_surrogate_injection_lexicase_p(self, curr_pop):
+        curr_pop = copy.deepcopy(curr_pop)
+        elite_list = tools.selSPEA2(list(curr_pop.values()), 5)
+        self.toolbox.register("select_parents", self.select_with_dual_population, diversity_sel='lexicase', k = self.num_parents)
+        print('Beginning Simulated Surrogate Injection')
+        self.num_gens_ssi = 33
+        for i in range(self.num_gens_ssi+1):
+            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            parents = self.select_parents(valid) 
+            if i == self.num_gens_ssi - 1:
+                curr_pop = {self.__get_hash(str(x)):x for x in parents}
+            else:
+                curr_pop = self.overpopulate(parents+elite_list, ssi=True)
+            print(f'{i + 1} Generations of SSI Completed')
+        self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents)
+        return curr_pop
+
+    def simulated_surrogate_injection_final_parents(self, curr_pop):
+        curr_pop = copy.deepcopy(curr_pop)
+        print('Beginning Simulated Surrogate Injection')
+        for i in range(self.num_gens_ssi+1):
+            # if i!=0:
+            #     print(type(list(curr_pop.values())[0]), flush=True)
+            #     print(list(curr_pop.values())[0], flush=True)
+            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            parents = self.select_parents(valid) 
+            if i == self.num_gens_ssi - 1:
+                curr_pop = {self.__get_hash(str(x)):x for x in parents}
+            else:
+                unsustainable_pop = self.overpopulate(parents, ssi=True)
+                new_hashes = random.sample(list(unsustainable_pop.keys()), self.ssi_sus_pop_size)
+                new_pop = {}
+                for hash in new_hashes:
+                    new_pop[hash] = unsustainable_pop[hash]
+                curr_pop = new_pop
+                print(f'{i + 1} Generations of SSI Completed')
+        return curr_pop
+
+    def simulated_surrogate_injection_final_parents_elitism_static(self, curr_pop):
+        curr_pop = copy.deepcopy(curr_pop)
+        self.toolbox.register("select_elitists", tools.selSPEA2, k = 10)
+        elite_list = self.toolbox.select_elitists(list(curr_pop.values()))
+        print('Beginning Simulated Surrogate Injection')
+        for i in range(self.num_gens_ssi+1):
+            # if i!=0:
+            #     print(type(list(curr_pop.values())[0]), flush=True)
+            #     print(list(curr_pop.values())[0], flush=True)
+            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            if i == self.num_gens_ssi - 1:
+                curr_pop = {self.__get_hash(str(x)):x for x in parents}
+                parents = self.select_parents(valid) 
+            else:
+                self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents_ssi)
+                parents = self.select_parents(valid) 
+                self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents)
+                parents = parents + random.sample(elite_list, 5)            
+                unsustainable_pop = self.overpopulate(parents, ssi=True)
+                new_hashes = random.sample(list(unsustainable_pop.keys()), self.ssi_sus_pop_size)
+                new_pop = {}
+                for hash in new_hashes:
+                    new_pop[hash] = unsustainable_pop[hash]
+                curr_pop = new_pop
+                print(f'{i + 1} Generations of SSI Completed')
+        self.toolbox.register("select_elitists", tools.selSPEA2, k = self.max_elite_pool)
+        return curr_pop
+
+    def simulated_surrogate_injection_elitism(self, curr_pop):
+        curr_pop = copy.deepcopy(curr_pop)
+        elite_list = []
+        print('Beginning Simulated Surrogate Injection')
+        for i in range(self.num_gens_ssi):
+            # if i!=0:
+            #     print(type(list(curr_pop.values())[0]), flush=True)
+            #     print(list(curr_pop.values())[0], flush=True)
+
+            # Reintroduce elites at each loop of SSI to prevent diversity loss
+            elite_list = self.toolbox.select_elitists(list(curr_pop.values()) + elite_list)
+            for e in elite_list:
+                curr_pop[self.__get_hash(str(e))] = e
+            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            parents = self.select_parents(valid) 
+            unsustainable_pop = self.overpopulate(parents, ssi=True)
+            if i == self.num_gens_ssi - 1:
+                curr_pop = unsustainable_pop
+            else:
+                new_hashes = random.sample(list(unsustainable_pop.keys()), self.ssi_sus_pop_size)
+                new_pop = {}
+                for hash in new_hashes:
+                    new_pop[hash] = unsustainable_pop[hash]
+                curr_pop = new_pop
+
+            print(f'{i + 1} Generations of SSI Completed')
+        return curr_pop
+
+    def simulated_surrogate_injection_elitism_static(self, curr_pop):
+        curr_pop = copy.deepcopy(curr_pop)
+        self.toolbox.register("select_elitists", tools.selSPEA2, k = 5)
+        elite_list = self.toolbox.select_elitists(list(curr_pop.values()))
+        self.toolbox.register("select_elitists", tools.selSPEA2, k = self.max_elite_pool)
+        print('Beginning Simulated Surrogate Injection')
+        for i in range(self.num_gens_ssi):
+            # if i!=0:
+            #     print(type(list(curr_pop.values())[0]), flush=True)
+            #     print(list(curr_pop.values())[0], flush=True)
+
+            # Reintroduce elites at each loop of SSI to prevent diversity loss
+            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents_ssi)
+            parents = self.select_parents(valid) 
+            self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents)
+            parents = parents + elite_list
+            unsustainable_pop = self.overpopulate(parents, ssi=True)
+            if i == self.num_gens_ssi - 1:
+                curr_pop = unsustainable_pop
+            else:
+                new_hashes = random.sample(list(unsustainable_pop.keys()), self.ssi_sus_pop_size)
+                new_pop = {}
+                for hash in new_hashes:
+                    new_pop[hash] = unsustainable_pop[hash]
+                curr_pop = new_pop
+
+            print(f'{i + 1} Generations of SSI Completed')
+        return curr_pop
+
+    def simulated_surrogate_injection_elitism_no_downselect(self, curr_pop):
+        curr_pop = copy.deepcopy(curr_pop)
+        elite_list = []
+        print('Beginning Simulated Surrogate Injection')
+        for i in range(self.num_gens_ssi):
+            # if i!=0:
+            #     print(type(list(curr_pop.values())[0]), flush=True)
+            #     print(list(curr_pop.values())[0], flush=True)
+
+            # Reintroduce elites at each loop of SSI to prevent diversity loss
+            elite_list = self.toolbox.select_elitists(list(curr_pop.values()) + elite_list)
+            for e in elite_list:
+                curr_pop[self.__get_hash(str(e))] = e
+            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            parents = self.select_parents(valid) 
+            unsustainable_pop = self.overpopulate(parents, ssi=True)
+            
+            curr_pop = unsustainable_pop
+
+            print(f'{i + 1} Generations of SSI Completed')
+        return curr_pop
+
+    def simulated_surrogate_injection_parents(self, curr_pop, pure_nsga=False):
+        curr_pop = copy.deepcopy(curr_pop)
+        print('Beginning Simulated Surrogate Injection with NSGA Downselection')
+        for i in range(self.num_gens_ssi):
+            # if i!=0:
+            #     print(list(curr_pop.values())[0], flush=True)
+            _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents_ssi)
+            parents = self.select_parents(valid) 
+            self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents)
+
+            unsustainable_pop = self.overpopulate(parents, ssi=True)
+            if i == self.num_gens_ssi - 1:
+                curr_pop = unsustainable_pop
+            else:
+                self.downselect(unsustainable_pop, fully_trust_surrogate=pure_nsga, for_ssi=True)
+                # new_hashes = random.sample(list(unsustainable_pop.keys()), self.ssi_sus_pop_size)
+                # new_pop = {}
+                # for hash in new_hashes:
+                #     new_pop[hash] = unsustainable_pop[hash]
+                curr_pop = {self.__get_hash(str(x)):x for x in self.current_deap_pop}
+                print(len(curr_pop.keys()))
+            print(f'{i + 1} Generations of SSI Completed')
+        return curr_pop
+
 
 
     def simulated_surrogate_injection_nsga(self, curr_pop, pure_nsga=False):

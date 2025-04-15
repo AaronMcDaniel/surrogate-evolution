@@ -143,7 +143,7 @@ def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds
     plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
     plt.tight_layout()
-    plt.savefig('/home/hice1/psomu3/scratch/surrogate-evolution/analysis/graphs/paretoLightTest/pareto_gen' + str(gen) + '.jpg')
+    plt.savefig('/home/hice1/psomu3/scratch/surrogate-evolution/analysis/graphs/paretoSSIRetest/pareto_gen' + str(gen) + '.jpg')
     plt.close()
     print('plot ' + str(gen) + ' done')
 
@@ -186,11 +186,14 @@ if __name__ == "__main__":
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
     dataframes = []
     root_dir = "/storage/ice-shared/vip-vvk/data/AOT/psomu3"
-    modes = ['islands', 'downselect', 'old', 'pure_nsga', 'low_sustain']
-    colors = ['xkcd:blue', 'xkcd:green', 'xkcd:gold', 'xkcd:red', 'xkcd:orange']
-    symbols = ['o', '^', 's', 'p', '*']
+    # modes = ['high_unsustain', 'pure_nsga', 'elitism', 'elitism_no_downselect']
+    # modes = ['final_parents', 'elitism_high_sustain', 'elitism_static', 'old']#, 'elitism_high_sustain', 'nsga_euclidean', 'dbea']
+    # modes = ['less_parents', 'final_parents_elitism_static_p', 'nsga_euclidean_p', 'dbea_p']
+    modes = ['old', 'tsdea', 'tsdea_short', 'final_parents']
+    colors = ['xkcd:blue', 'xkcd:green', 'xkcd:red', 'xkcd:gold']
+    symbols = ['o', '^', 'p', 's']
     mode_freqs = defaultdict(int)
-    for dir in ['light_test_nsga', 'light_test_nsga_2']:
+    for dir in ['ssi_retest_1', 'ssi_retest_2', 'ssi_retest_3']:
         for i, mode in enumerate(modes):
             mode_dir = os.path.join(root_dir, dir, "testing_baseline", mode)
             if os.path.exists(mode_dir):
@@ -201,6 +204,7 @@ if __name__ == "__main__":
                         {'df': cur_df, 'name': f"{mode}-{filename}-{dir[-1]}", 'colors': [colors[i] for x in range(4)], 'marker': symbols[i]}
                     )
     mode_volumes = defaultdict(float)
+    mode_volumes_list = defaultdict(list)
 
     # baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_test_nsga/testing_baseline/pure_nsga/out1.csv'
     # df_baseline = pd.read_csv(baseline_path)
@@ -296,7 +300,7 @@ if __name__ == "__main__":
     max_gen = max(max_gens)
     all_hvs = {}
 
-    for gen in range(min_gen, max_gen + 1): 
+    for gen in range(4, max_gen + 1): 
         all_fronts = []
         
         for dataframe in dataframes:
@@ -330,6 +334,7 @@ if __name__ == "__main__":
                 all_hvs[name].append(hv(hv_front))
                 if gen == max_gen:
                     mode_volumes[name.split('-')[0]] += hv(hv_front)
+                    mode_volumes_list[name.split('-')[0]].append(hv(hv_front))
                 print(name + ' hypervolume:', hv(hv_front))
 
         print()
@@ -344,14 +349,15 @@ if __name__ == "__main__":
         name = dataframe['name']
         plt.plot(range(1, len(all_hvs[name]) + 1), all_hvs[name], marker=dataframe['marker'], color=dataframe['colors'][1], label=name)
     plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
-    plt.legend()
+    # plt.legend()
     plt.title("Pareto Front Hypervolumes Per Generation")
     plt.xlabel('Generation')
     plt.ylabel('Hypervolume')
     # plt.tight_layout()
-    plt.savefig('/home/hice1/psomu3/scratch/surrogate-evolution/analysis/graphs/paretoLightTest/pareto_hypervolume.jpg')
+    plt.savefig('/home/hice1/psomu3/scratch/surrogate-evolution/analysis/graphs/paretoSSIRetest/pareto_hypervolume.jpg')
     plt.close()
 
     for mode in mode_volumes:
         print(f"Average gen-{max_gen} hypervolume of {mode}: {mode_volumes[mode]/mode_freqs[mode]}")
+        print(f"Median gen-{max_gen} hypervolume of {mode}: {np.median(np.array(mode_volumes_list[mode]))}")
         print(f"Frequency of mode of {mode}: {mode_freqs[mode]}")

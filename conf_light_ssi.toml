@@ -36,7 +36,7 @@ best_epoch_criteria = ["average_precision", "max"]
 # whether to use simulated surrogate injection (SSI)
 ssi = true
 # number of generations of simulation with surrogate-only
-num_gens_ssi = 4
+num_gens_ssi = 5
 # frequency at which ssi occurs
 ssi_freq = 1
 # first generation to use SSI
@@ -46,15 +46,17 @@ ssi_unsustainable_population_size = 2000
 # size of sustainable population during ssi
 ssi_sustainable_population_size = 500
 # whether to use surrogate when calling the final downselect operation on the unsustainable population
-surrogate_in_final_downselect = true
+surrogate_in_final_downselect = false
+# num parents to use during ssi
+num_parents_ssi = 20
 
 [model]
 # number of epochs to train individuals for
-train_epochs = 5
+train_epochs = 10
 # batch size
 batch_size = 2
 # number of batches in one epoch
-batches_per_epoch = 125
+batches_per_epoch = 250
 # number of target classes in AOT
 num_classes = 7
 # iou threshold for determining detection
