@@ -95,8 +95,8 @@ while GaPipeline.gen_count <= num_gen:
     if not GaPipeline.attempt_resume:
         GaPipeline.update_hof()
         GaPipeline.log_info()
-    random_state = random.getstate()
-    numpy_random_state = np.random.get_state()
+    # random_state = random.getstate()
+    # numpy_random_state = np.random.get_state()
     unsustainable_pop = None
     if ssi and (GaPipeline.gen_count >= ssi_start_gen) and ((GaPipeline.gen_count - ssi_start_gen) % ssi_freq == 0):
         # returns pop dict
@@ -110,19 +110,14 @@ while GaPipeline.gen_count <= num_gen:
         for hash in remove_hashes:
             del selection_pool[hash]
         retained_pop = tools.selNSGA2(list(selection_pool.values()), k=-(-GaPipeline.population_size//5))
-        # print("SIZES", len(retained_pop), len(unsustainable_pop))
-        # print("KEYS", sorted([GaPipeline.get_hash_public(str(x)) for x in retained_pop]), sorted(list(unsustainable_pop.keys())))
-        # print("KEYS SIZES", len([GaPipeline.get_hash_public(str(x)) for x in retained_pop]), len(list(unsustainable_pop.keys())))
-        # print("intersection", set(unsustainable_pop.keys()) & {GaPipeline.get_hash_public(str(x)) for x in retained_pop})
-        # print(len(unsustainable_pop | {GaPipeline.get_hash_public(str(x)):x for x in retained_pop}))
         unsustainable_pop.update({GaPipeline.get_hash_public(str(x)):x for x in retained_pop})
     else:
         selected_parents = GaPipeline.select_parents(elites + GaPipeline.current_deap_pop) 
         unsustainable_pop = GaPipeline.overpopulate(selected_parents) # returns pop dict {hash: genome}
     # takes in pop dict
-    random_state, numpy_random_state = advance_random_states(random_state, numpy_random_state, 100)
-    random.setstate(random_state)
-    np.random.set_state(numpy_random_state)
+    # random_state, numpy_random_state = advance_random_states(random_state, numpy_random_state, 100)
+    # random.setstate(random_state)
+    # np.random.set_state(numpy_random_state)
     GaPipeline.downselect(unsustainable_pop) # population is replaced by a completely new one
     
     print_random_state_fingerprint(random.getstate(), np.random.get_state())
