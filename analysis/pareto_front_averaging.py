@@ -10,6 +10,13 @@ from matplotlib.ticker import MaxNLocator
 import toml
 import os
 from collections import defaultdict
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument('username', type=str)
+
+args = parser.parse_args()
+USER = args.username
 
 def stepify_pareto_points_2d(x, y, metric_directions):
     """
@@ -143,7 +150,7 @@ def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds
     plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
     plt.tight_layout()
-    plt.savefig('/home/hice1/psomu3/scratch/surrogate-evolution/analysis/graphs/paretoSSIRetest/pareto_gen' + str(gen) + '.jpg')
+    plt.savefig(f'/home/hice1/{USER}/scratch/surrogate-evolution/analysis/graphs/paretoSSIRetest/pareto_gen' + str(gen) + '.jpg')
     plt.close()
     print('plot ' + str(gen) + ' done')
 
@@ -185,15 +192,16 @@ if __name__ == "__main__":
     # HERE IS WHERE YOU ADD FRONTS
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
     dataframes = []
-    root_dir = "/storage/ice-shared/vip-vvk/data/AOT/psomu3"
+    root_dir = f"/storage/ice-shared/vip-vvk/data/AOT/{USER}"
     # modes = ['high_unsustain', 'pure_nsga', 'elitism', 'elitism_no_downselect']
     # modes = ['final_parents', 'elitism_high_sustain', 'elitism_static', 'old']#, 'elitism_high_sustain', 'nsga_euclidean', 'dbea']
     # modes = ['less_parents', 'final_parents_elitism_static_p', 'nsga_euclidean_p', 'dbea_p']
     modes = ['old', 'tsdea', 'tsdea_short', 'final_parents']
     colors = ['xkcd:blue', 'xkcd:green', 'xkcd:red', 'xkcd:gold']
     symbols = ['o', '^', 'p', 's']
+    dirs = ['ssi_retest_1', 'ssi_retest_2', 'ssi_retest_3']
     mode_freqs = defaultdict(int)
-    for dir in ['ssi_retest_1', 'ssi_retest_2', 'ssi_retest_3']:
+    for dir in dirs:
         for i, mode in enumerate(modes):
             mode_dir = os.path.join(root_dir, dir, "testing_baseline", mode)
             if os.path.exists(mode_dir):
@@ -206,18 +214,6 @@ if __name__ == "__main__":
     mode_volumes = defaultdict(float)
     mode_volumes_list = defaultdict(list)
 
-    # baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_test_nsga/testing_baseline/pure_nsga/out1.csv'
-    # df_baseline = pd.read_csv(baseline_path)
-    # surrogate_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_test_nsga/testing_baseline/pure_nsga/out0.csv'
-    # df_surrogate = pd.read_csv(surrogate_path)
-    # ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_test_nsga/testing_baseline/old/out1.csv'
-    # df_ssi = pd.read_csv(ssi_path)
-    # # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
-    # dataframes = [
-    #     {'df': df_baseline, 'name': 'Baseline', 'colors': ['xkcd:cerulean', 'xkcd:azure', 'xkcd:slate grey', 'xkcd:sky blue'], 'marker': 'o'}, 
-    #     {'df': df_surrogate, 'name': 'Surrogate', 'colors': ['xkcd:gold', 'xkcd:amber', 'xkcd:dark grey', 'xkcd:charcoal'], 'marker': '^'},
-    #     {'df': df_ssi, 'name': 'Injection', 'colors': ['xkcd:lime green', 'xkcd:forest green', 'xkcd:grey', 'xkcd:slate'], 'marker': 's'}
-    #     ]
 
     min_gens = []
     max_gens = []
@@ -354,7 +350,7 @@ if __name__ == "__main__":
     plt.xlabel('Generation')
     plt.ylabel('Hypervolume')
     # plt.tight_layout()
-    plt.savefig('/home/hice1/psomu3/scratch/surrogate-evolution/analysis/graphs/paretoSSIRetest/pareto_hypervolume.jpg')
+    plt.savefig(f'/home/hice1/{USER}/scratch/surrogate-evolution/analysis/graphs/paretoSSIRetest/pareto_hypervolume.jpg')
     plt.close()
 
     for mode in mode_volumes:

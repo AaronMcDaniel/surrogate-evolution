@@ -8,7 +8,7 @@ surrogates/testing.py
 codec_backup.py
 codec_tester.py
 find_max_params.py
-analysis/graphs/
+analysis/graphs/*
 logs/
 precog_eval.job
 eval.job

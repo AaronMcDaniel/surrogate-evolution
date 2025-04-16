@@ -42,15 +42,16 @@ FILES_TO_COPY = [
     "hof_history.pkl", "out.csv"
 ]
 
-# tests = ['islands', 'downselect', 'old', 'pure_nsga', 'low_sustain', 'high_unsustain', 'elitism_high_sustain', ]
-# tests = ['final_parents_elitism_static']
-tests = ['spea']
-for test in tests:
+# TESTS = ['islands', 'downselect', 'old', 'pure_nsga', 'low_sustain', 'high_unsustain', 'elitism_high_sustain', ]
+# TESTS = ['final_parents_elitism_static']
+TESTS = ['spea']
+TRIALS = 10
+for test in TRIALS:
     cur_records_path = os.path.join(ROOT_DIR, test)
     if not os.path.exists(cur_records_path):
         os.makedirs(cur_records_path)
     
-    for i in range(0,10):
+    for i in range(RERUNS):
         print(test)
         GaPipeline = Pipeline(output_dir, config_dir, force_flag, clean)
         GaPipeline.initialize(seed_file)

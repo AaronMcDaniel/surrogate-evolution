@@ -3,14 +3,21 @@
 import os
 import glob
 import shutil
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument('username', type=str)
+
+args = parser.parse_args()
+USER = args.username
 
 # dirs = ['ssi_retest_1', 'ssi_retest_2', 'ssi_retest_3']
 dirs = ['testing_baseline_ssi']
 for dir in dirs:
-    ROOT_DIR = f"/storage/ice-shared/vip-vvk/data/AOT/psomu3/{dir}/testing_baseline"
+    ROOT_DIR = f"/storage/ice-shared/vip-vvk/data/AOT/{USER}/{dir}/testing_baseline"
     if dir == 'testing_baseline':
-        ROOT_DIR = f"/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline"
-    TRUTH_DIR = "/storage/ice-shared/vip-vvk/data/AOT/psomu3/gen4_base/testing_baseline"
+        ROOT_DIR = f"/storage/ice-shared/vip-vvk/data/AOT/{USER}/testing_baseline"
+    TRUTH_DIR = f"/storage/ice-shared/vip-vvk/data/AOT/{USER}/gen4_base/testing_baseline"
     FILES_TO_COPY = [
         "elites_history.pkl", "elites.csv", "hall_of_fame.csv",
         "hof_history.pkl", "out.csv"
