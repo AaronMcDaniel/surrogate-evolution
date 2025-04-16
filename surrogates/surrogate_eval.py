@@ -62,6 +62,8 @@ def build_configuration(model_dict, device):
             scheduler = scheduler_func(optimizer=optimizer, mode='min', factor=0.1, patience=5)
         elif scheduler_func == optim.lr_scheduler.CosineAnnealingWarmRestarts:
             scheduler = scheduler_func(optimizer=optimizer, T_0=10, T_mult=2)
+        elif scheduler_func == None:
+            scheduler = optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=lambda epoch: 1.0)
         scaler = GradScaler()
         
         val_subset = model_dict['validation_subset']
@@ -221,27 +223,40 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
         # forwards with mixed precision
         with autocast():
             # outputs shape: (batch_size, 12)
-            outputs = model(genomes)
+            if model.__class__.__name__  == "RegressionVAE":
+                output_dict = model(genomes)
+                outputs = output_dict['r_mean']
+            elif model.__class__.__name__ in ["NASTransformer", "SimpleNASTransformer"]:
+                global_metadata = genomes[:,0].reshape((genomes.shape[0],1))
+                component_features = genomes[:,1:].reshape((genomes.shape[0], 15, 68))
+                global_metadata = global_metadata.to(device)
+                component_features = component_features.to(device)
+                outputs = model(component_features, global_metadata)
+            else:
+                outputs = model(genomes)
             clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
             
             grad_regu = 0
             if reg_lambda != 0:
                 # 1 if float, 0 if int
-                grad_mask = (genomes != torch.floor(genomes)).int() * grad_mask_54_14
-                assert torch.count_nonzero(grad_mask) > 0 and torch.count_nonzero(grad_mask) < torch.numel(grad_mask)
+                # grad_mask = (genomes != torch.floor(genomes)).int() * grad_mask_54_14
+                # assert torch.count_nonzero(grad_mask) > 0 and torch.count_nonzero(grad_mask) < torch.numel(grad_mask)
 
                 # compute a simple scalar derived from model output and do backward to compute gradient of output wrt input
                 y_pred_sum = clamped_outputs.sum()
                 y_pred_sum.backward(retain_graph=True)
 
                 # take l2 norm of gradient of output wrt input and compute gradient regularization term
-                grad_norm = (genomes.grad * grad_mask).norm(2)
-                # grad_norm = genomes.grad.norm(2)
+                # grad_norm = (genomes.grad * grad_mask).norm(2)
+                grad_norm = genomes.grad.norm(2)
                 grad_regu = reg_lambda*grad_norm**2
                 assert genomes.grad is not None
 
             # metric regression loss is meaned, so is scalar tensor value
-            total_loss = criterion(clamped_outputs, metrics)
+            if model.__class__.__name__  == "RegressionVAE":
+                total_loss, regression_loss = model.loss_function(genomes, metrics, clamped_outputs, output_dict)
+            else:
+                total_loss = criterion(clamped_outputs, metrics)
             # print(reg_lambda*grad_norm**2, loss)
 
             if reg_lambda != 0:
@@ -253,7 +268,11 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
         scaler.scale(total_loss).backward()
         scaler.step(optimizer)
         scaler.update()
-        surrogate_train_loss += total_loss.item()
+        
+        if model.__class__.__name__  == "RegressionVAE":
+            surrogate_train_loss += regression_loss.item()
+        else:
+            surrogate_train_loss += total_loss.item()
         data_iter.set_postfix(loss=total_loss.item())
         torch.cuda.empty_cache()
 
@@ -293,10 +312,23 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
             # forwards with mixed precision
             with autocast():
                 # outputs shape: (batch_size, 12)
-                outputs = model(genomes)
+                if model.__class__.__name__  == "RegressionVAE":
+                    output_dict = model(genomes)
+                    outputs = output_dict['r_mean']
+                elif model.__class__.__name__ in ["NASTransformer", "SimpleNASTransformer"]:
+                    global_metadata = genomes[:,0].reshape((genomes.shape[0],1))
+                    component_features = genomes[:,1:].reshape((genomes.shape[0], 15, 68))
+                    global_metadata = global_metadata.to(device)
+                    component_features = component_features.to(device)
+                    outputs = model(component_features, global_metadata)
+                else:
+                    outputs = model(genomes)                
                 clamped_outputs = torch.clamp(outputs, min=(min_metrics.to(device)), max=(max_metrics.to(device)))
                 # loss_matrix shape: (batch_size, 12)
-                loss_matrix = criterion(clamped_outputs, metrics)
+                if model.__class__.__name__  == "RegressionVAE":
+                    total_loss, loss_matrix = model.loss_function(genomes, metrics, clamped_outputs, output_dict, reduction='none')
+                else:
+                    loss_matrix = criterion(clamped_outputs, metrics)
                 # loss tensor shape: (12)
                 loss_tensor = torch.mean(loss_matrix, dim=0)
                 # loss is meaned, so is scalar tensor value

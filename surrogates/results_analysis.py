@@ -10,12 +10,14 @@ scores_record_mode2 = {}
 num_samples_mode1 = 0
 num_samples_mode2 = 0
 
-mode1 = "Strong codec"
-mode2 = "Old codec"
+mode1 = "No UDA"
+mode2 = "With UDA"
 
-outcsv = "/storage/ice-shared/vip-vvk/data/AOT/psomu3/strong_codec_test/strong_codec/oldstrongComparison.csv"
-with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/strong_codec_test/strong_codec/scores.txt", 'r') as f:
-# with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked/scores_dynamic_mask.txt", 'r') as f:
+# outcsv = "/storage/ice-shared/vip-vvk/data/AOT/psomu3/strong_codec_test/strong_codec/oldstrongComparison.csv"
+outcsv = "/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked_class/16comparison.csv"
+
+# with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/strong_codec_test/strong_codec/scores.txt", 'r') as f:
+with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/no_uda/scores.txt", 'r') as f:
     for line in f:
         # print(line.strip())
         scores = json.loads(line.strip())
@@ -33,7 +35,7 @@ with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/strong_codec_test/strong_
                         scores_record_mode1[class_reg][model_type][cur_metric].append(scores[class_reg][model_type][cur_metric])
         num_samples_mode1 += 1
 
-with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/strong_codec_test/old_codec/scores.txt", 'r') as f:
+with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked_class/0.00016.txt", 'r') as f:
     for line in f:
         # print(line.strip())
         scores = json.loads(line.strip())
@@ -56,7 +58,7 @@ mode1means = []
 mode2means = []
 pvals=[]
 for class_reg in scores_record_mode1:
-    for model_type in scores_record_mode1[class_reg]:
+    for model_type in scores_record_mode2[class_reg]:
         print(model_type)
         perc = 0
         for cur_metric in scores_record_mode1[class_reg][model_type]:
@@ -92,6 +94,6 @@ for class_reg in scores_record_mode1:
         
 
 
-export_data = [mode1means, mode2means, np.array(mode1means) - np.array(mode2means), pvals]
-df = pd.DataFrame(export_data, columns=metricsFinal)
-df.to_csv(outcsv, index=False, float_format='%.5f')
+# export_data = [mode1means, mode2means, np.array(mode1means) - np.array(mode2means), pvals]
+# df = pd.DataFrame(export_data, columns=metricsFinal)
+# df.to_csv(outcsv, index=False, float_format='%.5f')

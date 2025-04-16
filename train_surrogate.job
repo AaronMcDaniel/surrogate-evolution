@@ -1,0 +1,15 @@
+#!/bin/bash
+#SBATCH --job-name=trainsur
+#SBATCH --nodes=1                   
+#SBATCH --time=4:00:00   
+#SBATCH --mem-per-gpu=6G                
+#SBATCH --output=/storage/ice-shared/vip-vvk/data/AOT/psomu3/surrogate_logs/output-%j.out  
+#SBATCH --error=/storage/ice-shared/vip-vvk/data/AOT/psomu3/surrogate_logs/error-%j.log            
+#SBATCH --gres=gpu:H100:1
+#SBATCH --ntasks-per-node=1
+
+
+module load anaconda3/2023.03
+module load cuda/12.1.1
+
+conda run -n nas --no-capture-output python -m surrogates.surrogate

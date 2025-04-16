@@ -333,34 +333,43 @@ class Codec:
         return max_num, mapping, enum_dict
 
     def encode_surrogate(self, genome, epoch_num):
+        print("IN ENCODE")
         if (self.surrogate_encoding_strat.lower() == 'string2vec'):
             # parse tree decoding into layer list
             expr = re.split(r'([(),])',genome)
             remove = [',', '']
             expr = [x for x in expr if x not in remove]
+            print(expr)
             stack = []
             idx = 0
             all_layers = []
             max_layers = 15
             num_layer_types = 54
 
-
+            input("WAITING ON INPUT")
             for element in expr:
+                print("PROCESSING ELEM", element)
                 if element != ')':
+                    print("ADDING to stack", element)
                     stack.append(element)
                 else:
+                    print("STACK IS", stack)
                     arguments = []
                     while stack[-1] != '(':
                         arguments.insert(0, stack.pop())
             
                     stack.pop()
                     function = stack.pop()
+                    print("ARGUMENTS", arguments)
+                    print("FUNCTION", function)
                     try:
                         stack.append(str(eval(f'primitives.{function}({",".join(arguments)})')))
                     except: # this is where we add the layers
                         layer_info = [function]+[self.__parse_arg(x) for x in arguments]
+                        print("FAILED TO EVAL; ADDING LAYER INFO", layer_info)
                         all_layers.insert(0, layer_info) # adds layer to front to reverse the tree with head first
                         idx += 1
+            print("FINISHED STACK OPERATIONS AND LAYER COLLECTION")
             # removes IN0 from layer info before processing
             del all_layers[-1][1]
             # constructs the optimizer, scheduler, and head vectors for the encoding

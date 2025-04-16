@@ -11,7 +11,7 @@ num_samples_uda = 0
 
 # Basic parsing of the scoress.txt output from training a surrogate N times.
 # Each line in the scores file has the dictionary returned from one call of the surrogate training function
-with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/no_uda/scores.txt", 'r') as f:
+with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu/scores_lambda_search_lambda_is_0.txt", 'r') as f:
 # with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked/scores_dynamic_mask.txt", 'r') as f:
     for line in f:
         # print(line.strip())
@@ -32,7 +32,7 @@ with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/no_uda/scores.txt", '
 
 scores_records = []
 
-with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked_class/scores_0.000208.txt", 'r') as f:
+with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu/merged_lambda_results.txt", 'r') as f:
     for line in f:
         # print(line)
         if line == "\n":
@@ -57,24 +57,24 @@ with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked_clas
                         scores_records[-1][class_reg][model_type][cur_metric].append(scores[class_reg][model_type][cur_metric])
         num_samples_uda += 1
 
-with open("/home/hice1/psomu3/scratch/surrogate-evolution/surrogates/test_0.000208_min.csv", 'w') as f:
+with open("/home/hice1/psomu3/scratch/surrogate-evolution-2/surrogates/lambda_search.csv", 'w') as f:
     pass
 
-for x, d in enumerate(scores_records):
-    for class_reg in d:
-        for model_type in d[class_reg]:
-            print(model_type)
-            perc = 0
+for class_reg in scores_records[0]:
+    for model_type in scores_records[0][class_reg]:
+        print(model_type)
+        for x, d in enumerate(scores_records):
             cur_info = []
             if x == 0:
-                with open("/home/hice1/psomu3/scratch/surrogate-evolution/surrogates/test_0.000208_min.csv", 'a') as f:
-                    f.write(",".join([f"{x} min" for x in d[class_reg][model_type].keys() if x not in ['epoch_num', 'train_loss']]) + "\n")
+                with open("/home/hice1/psomu3/scratch/surrogate-evolution-2/surrogates/lambda_search.csv", 'a') as f:
+                    f.write(model_type + "\n")
+                    f.write(",".join([f"{x} mean" for x in d[class_reg][model_type].keys() if x not in ['epoch_num', 'train_loss']]) + "\n")
             for cur_metric in d[class_reg][model_type]:
                 if cur_metric in ['epoch_num', 'train_loss']:
                     continue
                 print("   ", cur_metric)
                 data_uda = np.array(d[class_reg][model_type][cur_metric])
-                mean_uda = np.min(data_uda)
+                mean_uda = np.mean(data_uda)
                 print("        UDA   : sample mean:", mean_uda)
                 stdev_uda = np.std(data_uda, ddof=1)
                 print("        UDA:    Sample stdev:", stdev_uda)
@@ -88,7 +88,7 @@ for x, d in enumerate(scores_records):
 
                 # print("        confidence interval for diff in means:", cm.tconfint_diff(usevar='unequal'))
             # print("    PERC overall decrease from normal to uda: ", perc)
-            with open("/home/hice1/psomu3/scratch/surrogate-evolution/surrogates/test_0.000208_min.csv", 'a') as f:
+            with open("/home/hice1/psomu3/scratch/surrogate-evolution-2/surrogates/lambda_search.csv", 'a') as f:
                 f.write(",".join(cur_info) + "\n")
 
 

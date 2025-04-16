@@ -1,0 +1,8 @@
+#!/bin/bash
+#SBATCH --job-name=lambda_search
+#SBATCH -N 1 
+#SBATCH --mem-per-gpu=5G 
+#SBATCH -t 5:00:00 
+#SBATCH --gres=gpu:H100:1 
+#SBATCH --ntasks-per-node=1
+python -m surrogates.surrogate_lambda_search 0 1

@@ -3,6 +3,7 @@ Defines all the surrogate models used and their architectures.
 Architectures are customizable and can be grid searched in terms of some parameters.
 """
 import copy
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
@@ -11,12 +12,168 @@ import matplotlib.pyplot as plt
 import torchvision.ops as ops
 import numpy as np
 from scipy import linalg
+from torch.nn.utils import weight_norm
+from torch.distributions import Normal, Uniform
+
+
+def sampling(args):
+    """Reparameterization trick by sampling from an isotropic unit Gaussian.
+    
+    Args:
+        args (tuple): mean and log of variance tensors
+    
+    Returns:
+        tensor: sampled latent vector
+    """
+    z_mean, z_log_var = args
+    batch = z_mean.size(0)
+    dim = z_mean.size(1)
+    
+    # Random sampling from standard normal distribution
+    epsilon = torch.randn(batch, dim, device=z_mean.device)
+    
+    # Return reparameterized sample
+    return z_mean + torch.exp(0.5 * z_log_var) * epsilon
+
+
+class UnitNormConstraint(nn.Module):
+    def forward(self, weight):
+        return F.normalize(weight, dim=0)
+
+
+class RegressionVAE(nn.Module):
+    def __init__(self,
+                input_size=1021,
+                step_dim=128,
+                intermediate_dim=32,
+                latent_dim=8,
+                output_size=12,
+                activation_layer=torch.tanh, 
+                dropout=0.25):
+        super(RegressionVAE, self).__init__()
+        self.latent_dim = latent_dim
+        
+        # Encoder architecture
+        self.dropout = nn.Dropout(dropout)
+        self.encoder_inter1 = nn.Linear(input_size, step_dim)
+        self.encoder_inter2 = nn.Linear(step_dim, intermediate_dim)
+        
+        # Posterior for Y (regressor)
+        self.r2 = nn.Linear(intermediate_dim, 128)
+        self.r3 = nn.Linear(128, 32)
+        self.r_mean = nn.Linear(32, output_size)
+        self.r_log_var = nn.Linear(32, output_size)
+        
+        # q(z|x)
+        self.z_mean = nn.Linear(intermediate_dim, latent_dim)
+        self.z_log_var = nn.Linear(intermediate_dim, latent_dim)
+        
+        # Latent generator
+        self.pz_mean = nn.Linear(output_size, latent_dim)
+        self.unit_norm_constraint = UnitNormConstraint()
+        
+        # Decoder architecture
+        self.decoder_inter1 = nn.Linear(latent_dim, intermediate_dim)
+        self.decoder_inter2 = nn.Linear(intermediate_dim, step_dim)
+        self.outputs = nn.Linear(step_dim, input_size)
+
+        self.activation_layer = activation_layer
+        
+    def encode(self, x):
+        # Process input through encoder
+        x_dropout = self.dropout(x)
+        inter_x1 = self.activation_layer(self.encoder_inter1(x_dropout))
+        inter_x2 = self.activation_layer(self.encoder_inter2(inter_x1))
+        
+        # Regressor outputs
+        r_prior = self.activation_layer(self.r3(self.activation_layer(self.r2(inter_x2))))
+        r_mean = self.r_mean(r_prior)
+        r_log_var = self.r_log_var(r_prior)
+        r_sample = sampling((r_mean, r_log_var))
+        
+        # Encoder outputs
+        z_mean = self.z_mean(inter_x2)
+        z_log_var = self.z_log_var(inter_x2)
+        z_sample = sampling((z_mean, z_log_var))
+        
+        # Latent generator
+        # Apply unit norm constraint to weights
+        self.pz_mean.weight.data = self.unit_norm_constraint(self.pz_mean.weight.data)
+        pz_mean = self.pz_mean(r_sample)
+        
+        return z_mean, z_log_var, z_sample, r_mean, r_log_var, r_sample, pz_mean
+    
+    def decode(self, z):
+        # Decoder network
+        inter_y1 = self.activation_layer(self.decoder_inter1(z))
+        inter_y2 = self.activation_layer(self.decoder_inter2(inter_y1))
+        outputs = self.outputs(inter_y2)
+        return outputs
+    
+    def forward(self, x):
+        # Encode
+        z_mean, z_log_var, z, r_mean, r_log_var, r_sample, pz_mean = self.encode(x)
+        
+        # Decode
+        reconstruction = self.decode(z)
+        
+        # For returning all outputs like in the Keras model
+        return {
+            'reconstruction': reconstruction,
+            'z_mean': z_mean, 
+            'z_log_var': z_log_var, 
+            'z': z, 
+            'r_mean': r_mean, 
+            'r_log_var': r_log_var, 
+            'r': r_sample, 
+            'pz_mean': pz_mean
+        }
+    
+    def loss_function(self, x, y, y_pred, outputs_dict, reduction='mean'):
+        """Calculate VAE loss function.
+        
+        Args:
+            inputs (tuple): Tuple of (x, r) input tensors
+            outputs_dict (dict): Dictionary containing all model outputs
+            
+        Returns:
+            torch.Tensor: Total loss value
+        """
+        reconstruction = outputs_dict['reconstruction']
+        z_mean = outputs_dict['z_mean']
+        z_log_var = outputs_dict['z_log_var']
+        r_mean = y_pred
+        r_log_var = outputs_dict['r_log_var']
+        pz_mean = outputs_dict['pz_mean']
+        
+        # Reconstruction loss (MSE)
+        reconstruction_loss = F.mse_loss(x, reconstruction, reduction='none').sum(dim=1)
+        
+        # KL divergence loss
+        # kl_loss = 1 + z_log_var - pz_log_var - torch.div(torch.square(z_mean-pz_mean), torch.exp(pz_log_var)) - torch.div(torch.exp(z_log_var), torch.exp(pz_log_var))
+        # Simplified version without pz_log_var as in the original code
+        kl_loss = 1 + z_log_var - torch.square(z_mean - pz_mean) - torch.exp(z_log_var)
+        kl_loss = -0.5 * torch.sum(kl_loss, dim=1)
+        
+        # Label loss
+        label_loss = torch.div(0.5 * torch.square(r_mean - y), torch.exp(r_log_var)) + 0.5 * r_log_var
+        label_loss = torch.sum(label_loss, dim=1)  # Ensure it's the right shape
+        # label_loss = torch.mean(label_loss)
+
+        # Total loss
+        total_loss = torch.mean(reconstruction_loss + kl_loss + label_loss)
+        
+        if reduction == 'mean':
+            return total_loss, nn.L1Loss(reduction='mean')(r_mean, y)
+        else:
+            return total_loss, nn.L1Loss(reduction='none')(r_mean, y)
+
 
 # mlp surrogate model
 class MLP(nn.Module):
     def __init__(
             self, 
-            input_size=64, 
+            input_size=1021, 
             output_size=12,
             hidden_sizes=[512, 256], 
             activation_layer=nn.ReLU, 
@@ -326,7 +483,7 @@ class KANLinear(torch.nn.Module):
 class KAN(torch.nn.Module):
     def __init__(
         self,
-        input_size=1021,
+        input_size=256,
         output_size=12,
         hidden_sizes=[512, 256],
         grid_size=5,
