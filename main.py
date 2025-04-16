@@ -92,16 +92,11 @@ while GaPipeline.gen_count <= num_gen:
     if not GaPipeline.attempt_resume:
         GaPipeline.update_hof()
         GaPipeline.log_info()
-    random_state = random.getstate()
-    numpy_random_state = np.random.get_state()
     selected_parents = GaPipeline.select_parents(list(set(elites + GaPipeline.current_deap_pop))) 
     unsustainable_pop = GaPipeline.overpopulate(selected_parents) # returns dict {hash: genome}
-    random_state, numpy_random_state = advance_random_states(random_state, numpy_random_state, 100)
-    random.setstate(random_state)
-    np.random.set_state(numpy_random_state)
+
     GaPipeline.downselect(unsustainable_pop) # population is replaced by a completely new one
     
-    print_random_state_fingerprint(random.getstate(), np.random.get_state())
 
     GaPipeline.step_gen()
 
