@@ -47,7 +47,11 @@ ssi_unsustainable_population_size = 2000
 ssi_sustainable_population_size = 500
 # whether to use surrogate when calling the final downselect operation on the unsustainable population
 surrogate_in_final_downselect = false
+# number of parents to select in ssi loop
 num_parents_ssi = 30
+# percent of individuals submitted for evaluation that should be sourced from ssi
+ssi_population_percentage = 0.9
+
 
 [model]
 # number of epochs to train individuals for

@@ -138,6 +138,10 @@ class Pipeline:
         self.ssi_unsus_pop_size = pipeline_config['ssi_unsustainable_population_size']
         self.ssi_sus_pop_size = pipeline_config['ssi_sustainable_population_size']
         self.num_parents_ssi = pipeline_config['num_parents_ssi']
+        if 'ssi_population_percentage' in pipeline_config:
+            self.ssi_population_percentage = pipeline_config['ssi_population_percentage']
+        else:
+            self.ssi_population_percentage = 1
         self.surrogate_in_final_downselect = pipeline_config['surrogate_in_final_downselect']
 
         # Other useful attributes
@@ -450,11 +454,13 @@ class Pipeline:
             print('Done!')
 
 
-    def overpopulate(self, mating_pool, ssi=False): # mating pool is selected_parents + elite pool
+    def overpopulate(self, mating_pool, ssi=False, custom_pop_size=None): # mating pool is selected_parents + elite pool
         print('Overpopulating...')
         new_pop = {}
         # repeat till target overpopulation size is met
         unsus_pop_size = self.unsustainable_population_size if not ssi else self.ssi_unsus_pop_size
+        if custom_pop_size is not None:
+            unsus_pop_size = custom_pop_size
         while len(new_pop) < unsus_pop_size:
             copies = copy.deepcopy(mating_pool)
             # make pairs of parents randomly
@@ -769,7 +775,7 @@ class Pipeline:
                 parents = valid
             unsustainable_pop = self.overpopulate(parents, ssi=True)
             if i == self.num_gens_ssi - 1:
-                downselected = tools.selNSGA2(valid, self.population_size*4//5)
+                downselected = tools.selNSGA2(valid, int(self.population_size*self.ssi_population_percentage))
                 curr_pop = {self.__get_hash(str(x)):x for x in downselected}
             else:
                 curr_pop = unsustainable_pop

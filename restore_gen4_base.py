@@ -7,9 +7,11 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('username', type=str)
+parser.add_argument('conf', type=str)
 
 args = parser.parse_args()
 USER = args.username
+CONF = args.conf
 
 # dirs = ['ssi_retest_1', 'ssi_retest_2', 'ssi_retest_3']
 dirs = ['testing_baseline_ssi']
@@ -34,3 +36,4 @@ for dir in dirs:
     shutil.copytree(os.path.join(TRUTH_DIR, "surrogate_weights"), os.path.join(ROOT_DIR, "surrogate_weights"), dirs_exist_ok=True)
     for file in FILES_TO_COPY:
         shutil.copy2(os.path.join(TRUTH_DIR, file), ROOT_DIR)
+    shutil.copy2(args.conf, os.path.join(ROOT_DIR, "conf.toml"))
