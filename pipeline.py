@@ -34,11 +34,11 @@ from custom_selection import dbea_selection, lexicase_selection
 JOB_NAME = 't_evo'
 NODES = 1
 CORES = 8
-MEM = '32GB'
+MEM = '24GB'
 JOB_TIME = '08:00:00'
 SCRIPT = 'eval.py'
 ENV_NAME = 'nas'
-GPUS = ["V100-16GB", "V100-32GB", "L40S", "A100-40GB", "H100"]
+GPUS = ["V100-16GB", "V100-32GB", "L40S", "A100-40GB", "H100", "A40", "H200"]
 # ALLOWED_NODES = ['ice108', 'ice107', 'ice110', 'ice143', 'ice144', 'ice145', 'ice151', 'ice162', 'ice163', 'ice164', 'ice165', 'ice175', 'ice176', 'ice179', 'ice183', 'ice185', 'ice191', 'ice192', 'ice193']
 
 
@@ -493,6 +493,58 @@ class Pipeline:
                     continue
         print('Done!')
         return new_pop
+
+    def serialize_surrogate_training_inputs(self, cls_train_df, cls_val_df, reg_train_df, reg_val_df, train_reg):
+        """Serialize surrogate training inputs to disk for batch processing."""
+        train_data_dir = os.path.join(self.output_dir, 'surrogate_train_data')
+        os.makedirs(train_data_dir, exist_ok=True)
+        
+        # Save DataFrames to disk
+        cls_train_df.to_pickle(os.path.join(train_data_dir, f'cls_train.pkl'))
+        cls_val_df.to_pickle(os.path.join(train_data_dir, f'cls_val.pkl'))
+        reg_train_df.to_pickle(os.path.join(train_data_dir, f'reg_train.pkl'))
+        reg_val_df.to_pickle(os.path.join(train_data_dir, f'reg_val.pkl'))
+        
+        # Save training configuration
+        config = {
+            'gen': self.gen_count,
+            'train_reg': train_reg,
+        }
+        with open(os.path.join(train_data_dir, f'config.pkl'), 'wb') as f:
+            pickle.dump(config, f)
+        
+        return train_data_dir
+
+    def wait_for_surrogate_training_job(self, job_id):
+        """Wait for the surrogate training job to complete and return its results."""
+        print('    Waiting for surrogate training job to complete...')
+        
+        while True:
+            time.sleep(30)  # Check status every 30 seconds
+            p = subprocess.Popen(['squeue', '-j', job_id], stdout=subprocess.PIPE)
+            text = p.stdout.read().decode('utf-8')
+            if len(text.split('\n')) <= 2:  # Only header line remains
+                print('    Training job completed!')
+                break
+        
+        # Load and return results
+        results_path = os.path.join(self.output_dir, 'surrogate_train_data', f'surrogate_results.pkl')
+        
+        # Wait a bit for filesystem to catch up
+        max_wait = 60  # Maximum wait time in seconds
+        wait_time = 0
+        while not os.path.exists(results_path) and wait_time < max_wait:
+            time.sleep(5)
+            wait_time += 5
+        
+        if not os.path.exists(results_path):
+            print('    Error: Training results file not found')
+            return None, None, None
+        
+        with open(results_path, 'rb') as f:
+            results = pickle.load(f)
+        
+        return results['scores'], results['cls_genome_scaler'], results['reg_genome_scaler']
     
     
     # trains the surrogate (all sub-surrogates) and gets eval scores which are used to calculate a trustworthiness
@@ -561,11 +613,29 @@ class Pipeline:
         if len(reg_val_df) < self.surrogate_config['surrogate_batch_size']*self.surrogate_config['min_batch_in_val_data']:
             print('    ----Warning: not enough valid data for regressors... skipping surrogate preparation----')
             return None
-        # print(f'     Regression validation data shape: {reg_val_df.shape}      {reg_val_df.head()}')
-        scores, cls_genome_scaler, reg_genome_scaler = self.surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df, train_reg=train_reg)
-        # else:
-        #     cls_genome_scaler = self.cls_genome_scaler
-        #     reg_genome_scaler = self.reg_genome_scaler
+        
+        # Serialize training inputs
+        train_data_dir = self.serialize_surrogate_training_inputs(
+            cls_train_df, cls_val_df, reg_train_df, reg_val_df, train_reg
+        )
+        
+        # Create job file (no need to create trainer script)
+        job_file = self.create_surrogate_train_job(self.gen_count)
+        
+        # Submit job
+        print('    Submitting surrogate training job to GPU node...')
+        result = os.popen(f"sbatch {job_file}").read()
+        match = re.search(r'Submitted batch job (\d+)', result)
+        
+        if match:
+            job_id = match.group(1)
+            print(f"    Surrogate training job submitted with ID: {job_id}")
+            scores, cls_genome_scaler, reg_genome_scaler = self.wait_for_surrogate_training_job(job_id)
+        else:
+            print("    Failed to submit surrogate training job")
+            return None
+        
+
         print('    Selecting best sub-surrogates...')
         sub_surrogates = []
         # finding best classifier
@@ -1471,3 +1541,38 @@ conda run -n {ENV_NAME} --no-capture-output python -u {SCRIPT} $SLURM_ARRAY_TASK
 """
         with open(f'{JOB_NAME}_{gen_num}.job', 'w') as fh:
             fh.write(batch_script)
+
+
+    def create_surrogate_train_job(self, gen_num):
+        """Create SBATCH job file for surrogate training using permanent script."""
+        log_dir = os.path.join(self.logs_dir, f'generation_{gen_num}', 'surrogate')
+        os.makedirs(log_dir, exist_ok=True)
+        
+        job_file_path = os.path.join(self.output_dir, f'surrogate_train_{gen_num}.job')
+        
+        # Get path to permanent surrogate_trainer.py file
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'surrogate_trainer.py')
+        
+        batch_script = f"""#!/bin/bash
+#SBATCH --job-name=surr_train_{gen_num}
+#SBATCH --nodes=1
+#SBATCH -G 1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16GB
+#SBATCH --time=02:00:00
+#SBATCH --output={log_dir}/surrogate_train.%j.log
+#SBATCH --error={log_dir}/surrogate_train_error.%j.log
+#SBATCH --constraint="{'|'.join(GPUS)}"
+
+module load anaconda3/2023.03
+module load cuda/12.1.1
+
+conda run -n nas python -u {script_path} {gen_num} {self.output_dir}
+"""
+    
+        with open(job_file_path, 'w') as f:
+            f.write(batch_script)
+        
+        return job_file_path
+
+
