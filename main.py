@@ -71,7 +71,9 @@ while GaPipeline.gen_count <= num_gen:
 
     print_random_state_fingerprint(random.getstate(), np.random.get_state())
 
-    selected_parents = GaPipeline.select_parents(list(set(elites + GaPipeline.current_deap_pop))) 
+    combined_pool = {GaPipeline.get_hash_public(str(x)):x for x in elites}
+    combined_pool = combined_pool | {GaPipeline.get_hash_public(str(x)):x for x in GaPipeline.current_deap_pop}
+    selected_parents = GaPipeline.select_parents(list(combined_pool.values())) 
     unsustainable_pop = GaPipeline.overpopulate(selected_parents) # returns dict {hash: genome}
 
     GaPipeline.downselect(unsustainable_pop) # population is replaced by a completely new one
