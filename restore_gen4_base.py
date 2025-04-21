@@ -32,6 +32,11 @@ while os.path.exists(candidate_dir):
     candidate_dir = os.path.join(ROOT_DIR, f"generation_{ctr}")
 shutil.rmtree(os.path.join(ROOT_DIR, "logs"), ignore_errors=True)
 shutil.copytree(os.path.join(TRUTH_DIR, "checkpoint"), os.path.join(ROOT_DIR, "checkpoint"), dirs_exist_ok=True)
+for i in range(1,5):
+    try:
+        shutil.copytree(os.path.join(TRUTH_DIR, f"generation_{i}"), os.path.join(ROOT_DIR, f"generation_{i}"), dirs_exist_ok=False)
+    except FileExistsError:
+        break
 shutil.copytree(os.path.join(TRUTH_DIR, "eval_inputs"), os.path.join(ROOT_DIR, "eval_inputs"), dirs_exist_ok=True)
 shutil.copytree(os.path.join(TRUTH_DIR, "surrogate_weights"), os.path.join(ROOT_DIR, "surrogate_weights"), dirs_exist_ok=True)
 for file in FILES_TO_COPY:
