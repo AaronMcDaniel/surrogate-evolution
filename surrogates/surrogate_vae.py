@@ -527,25 +527,28 @@ def main():
     # reg_genome_scaler = reg_train_dataset.genomes_scaler
     scores_record = {}
 
-    testing_dir = "psomu3/surrogate_training"
-    dataset_dir = "/storage/ice-shared/vip-vvk/data/AOT/surrogate_dataset"
-    scores_file = os.path.join("/storage/ice-shared/vip-vvk/data/AOT/", testing_dir, f"scores.txt")
-    cls_train_df = pd.read_pickle(os.path.join(repo_dir, dataset_dir, f'pretrain_cls_train.pkl'))
-    cls_val_df = pd.read_pickle(os.path.join(repo_dir, dataset_dir, f'surr_cls_val.pkl'))
-    reg_train_df = pd.read_pickle(os.path.join(repo_dir, dataset_dir, f'pretrain_reg_train.pkl'))
-    reg_val_df = pd.read_pickle(os.path.join(repo_dir, dataset_dir, f'surr_reg_val.pkl'))
-    if not os.path.exists(os.path.join(repo_dir, testing_dir)):
-        os.mkdir(os.path.join(repo_dir, testing_dir))
-    if not os.path.exists(os.path.join(repo_dir, testing_dir, 'surrogate_weights')):
-        os.mkdir(os.path.join(repo_dir, testing_dir, 'surrogate_weights'))
-    for i in range(30):
-        surrogate = Surrogate('conf.toml', os.path.join(repo_dir, os.path.join(testing_dir, 'surrogate_weights')))
-        scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df, reg_lambda=0)
+    # suffix = "_latent_256_NFVAE"
+    suffix = ""
+    modes = ['old_codec',]
+    testing_dir = "psomu3/strong_codec_test"
+    for mode in modes:
+        scores_file = os.path.join("/storage/ice-shared/vip-vvk/data/AOT/", testing_dir, mode, f"scores_transformerUWVL{suffix}.txt")
+        cls_train_df = pd.read_pickle(os.path.join(repo_dir, testing_dir, mode, f'{mode}_cls_train.pkl'))
+        cls_val_df = pd.read_pickle(os.path.join(repo_dir, testing_dir, mode, f'{mode}_cls_val.pkl'))
+        reg_train_df = pd.read_pickle(os.path.join(repo_dir, testing_dir, mode, f'{mode}_reg_train{suffix}.pkl'))
+        reg_val_df = pd.read_pickle(os.path.join(repo_dir, testing_dir, mode, f'{mode}_reg_val{suffix}.pkl'))
+        for i in range(30):
+            surrogate = Surrogate('conf.toml', os.path.join(repo_dir, os.path.join(testing_dir, mode, 'surrogate_weights')))
+            scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df, reg_lambda=0)
 
-        with open(scores_file, 'a') as f:
-            json.dump(scores, f)
-            f.write('\n')
+            with open(scores_file, 'a') as f:
+                json.dump(scores, f)
+                f.write('\n')
         
+    # with open("/storage/ice-shared/vip-vvk/data/AOT/psomu3/uda/grad_regu_masked/scores_dynamic_mask.txt", 'a') as f:
+    #     f.write('\n')
+    #     json.dump(scores_record, f)
+    #     f.write('\n')
     
     
 

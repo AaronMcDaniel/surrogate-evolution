@@ -226,7 +226,7 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
             if model.__class__.__name__  == "RegressionVAE":
                 output_dict = model(genomes)
                 outputs = output_dict['r_mean']
-            elif model.__class__.__name__ in ["NASTransformer", "SimpleNASTransformer"]:
+            elif model.__class__.__name__ in ["NASTransformer", "SimpleNASTransformer", "EnhancedNASTransformer"]:
                 global_metadata = genomes[:,0].reshape((genomes.shape[0],1))
                 component_features = genomes[:,1:].reshape((genomes.shape[0], 15, 68))
                 global_metadata = global_metadata.to(device)
@@ -315,7 +315,7 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
                 if model.__class__.__name__  == "RegressionVAE":
                     output_dict = model(genomes)
                     outputs = output_dict['r_mean']
-                elif model.__class__.__name__ in ["NASTransformer", "SimpleNASTransformer"]:
+                elif model.__class__.__name__ in ["NASTransformer", "SimpleNASTransformer", "EnhancedNASTransformer"]:
                     global_metadata = genomes[:,0].reshape((genomes.shape[0],1))
                     component_features = genomes[:,1:].reshape((genomes.shape[0], 15, 68))
                     global_metadata = global_metadata.to(device)
