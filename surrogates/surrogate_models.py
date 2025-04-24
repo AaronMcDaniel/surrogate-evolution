@@ -483,7 +483,7 @@ class KANLinear(torch.nn.Module):
 class KAN(torch.nn.Module):
     def __init__(
         self,
-        input_size=256,
+        input_size=1021,
         output_size=12,
         hidden_sizes=[512, 256],
         grid_size=5,
