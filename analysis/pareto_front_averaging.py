@@ -195,10 +195,11 @@ if __name__ == "__main__":
     root_dir = f"/storage/ice-shared/vip-vvk/data/AOT/{USER}"
     # modes = ['high_unsustain', 'pure_nsga', 'elitism', 'elitism_no_downselect']
     # modes = ['final_parents', 'elitism_high_sustain', 'elitism_static', 'old']#, 'elitism_high_sustain', 'nsga_euclidean', 'dbea']
-    # modes = ['less_parents', 'final_parents_elitism_static_p', 'nsga_euclidean_p', 'dbea_p']
-    modes = ['old', 'tsdea', 'tsdea_short', 'final_parents']
+    modes = ['final_parents', 'old', 'tsdea', 'elitism_high_sustain']
+    # 'old', 'tsdea', 'tsdea_short', 'final_parents', 
+    # modes = set(['dbea', 'dbea_p', 'downselect', 'elitism', 'elitism_high_sustain', 'elitism_low_sustain', 'elitism_static', 'final_parents', 'final_parents_elitism_static_p', 'islands', 'less_parents', 'nsga_euclidean_p', 'nsga3', 'old', 'pure_nsga', 'spea', 'tsdea', 'elitism_no_downselect', 'elitism_static', 'high_unsustain', 'lexicase_p', 'parents', 'spea', 'tsdea_short', 'nsga_euclidean', 'tsdea_elitism'])
     colors = ['xkcd:blue', 'xkcd:green', 'xkcd:red', 'xkcd:gold']
-    symbols = ['o', '^', 'p', 's']
+    symbols = ['o', '^', 'p', 's', 'P']    
     dirs = ['ssi_retest_1', 'ssi_retest_2', 'ssi_retest_3']
     mode_freqs = defaultdict(int)
     for dir in dirs:

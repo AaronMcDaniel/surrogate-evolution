@@ -614,16 +614,14 @@ class Pipeline:
             print('    ----Warning: not enough valid data for regressors... skipping surrogate preparation----')
             return None
         
-        # Serialize training inputs
-        train_data_dir = self.serialize_surrogate_training_inputs(
+        
+        train_data_dir = self.serialize_surrogate_training_inputs(      # Serialize training inputs
             cls_train_df, cls_val_df, reg_train_df, reg_val_df, train_reg
         )
         
-        # Create job file (no need to create trainer script)
-        job_file = self.create_surrogate_train_job(self.gen_count)
+        job_file = self.create_surrogate_train_job(self.gen_count)      # Create job file
         
-        # Submit job
-        print('    Submitting surrogate training job to GPU node...')
+        print('    Submitting surrogate training job to GPU node...')   # Submit job
         result = os.popen(f"sbatch {job_file}").read()
         match = re.search(r'Submitted batch job (\d+)', result)
         
@@ -832,17 +830,23 @@ class Pipeline:
     def simulated_surrogate_injection_new(self, curr_pop):
         curr_pop = copy.deepcopy(curr_pop)
         print('Beginning Simulated Surrogate Injection')
+        
         for i in range(self.num_gens_ssi):
             valid = None
             if i > 0:
                 _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
             else:
                 valid = list(curr_pop.values())  
+            
+            # Log the current SSI generation state
+            self.log_ssi_info(i, valid)
+            
             parents = None
             if len(valid) != self.num_parents:
                 parents = self.select_parents(valid) 
             else:
                 parents = valid
+                
             unsustainable_pop = self.overpopulate(parents, ssi=True)
             if i == self.num_gens_ssi - 1:
                 downselected = tools.selNSGA2(valid, int(self.population_size*self.ssi_population_percentage))

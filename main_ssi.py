@@ -52,7 +52,7 @@ def print_random_state_fingerprint(random_state, np_random_state):
 
 GaPipeline = Pipeline(output_dir, config_dir, force_flag, clean)
 GaPipeline.initialize(seed_file)
-SEED = 60
+SEED = 61
 while GaPipeline.gen_count <= num_gen:
     print(f'---------- Generation {GaPipeline.gen_count} ----------')
     if not GaPipeline.attempt_resume:
@@ -93,9 +93,9 @@ while GaPipeline.gen_count <= num_gen:
         unsustainable_pop.update(retained_pop)
     else:
         selected_parents = GaPipeline.select_parents(elites + GaPipeline.current_deap_pop) 
-        unsustainable_pop = GaPipeline.overpopulate(selected_parents) # returns pop dict {hash: genome}
+        unsustainable_pop = GaPipeline.overpopulate(selected_parents)
     # takes in pop dict
-    GaPipeline.downselect(unsustainable_pop) # population is replaced by a completely new one
+    GaPipeline.downselect(unsustainable_pop)
     
 
     GaPipeline.step_gen()
