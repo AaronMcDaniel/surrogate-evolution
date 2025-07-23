@@ -31,6 +31,7 @@ while os.path.exists(candidate_dir):
     ctr += 1
     candidate_dir = os.path.join(ROOT_DIR, f"generation_{ctr}")
 shutil.rmtree(os.path.join(ROOT_DIR, "logs"), ignore_errors=True)
+shutil.rmtree(os.path.join(ROOT_DIR, "outssi.csv"), ignore_errors=True)
 shutil.copytree(os.path.join(TRUTH_DIR, "checkpoint"), os.path.join(ROOT_DIR, "checkpoint"), dirs_exist_ok=True)
 for i in range(1,5):
     try:

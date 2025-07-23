@@ -31,7 +31,7 @@ from custom_selection import dbea_selection, lexicase_selection
 
 
 # job file params
-JOB_NAME = 't_evo'
+JOB_NAME = 'b_evo'
 NODES = 1
 CORES = 8
 MEM = '24GB'
@@ -74,6 +74,7 @@ class Pipeline:
         self.selected_surrogate_data_file = os.path.join(self.output_dir, 'selected_surrogate_data.csv')
         self.checkpoint_path = os.path.join(self.output_dir, 'checkpoint')
         self.holy_grail_file = os.path.join(self.output_dir, 'out.csv')
+        self.ssi_holy_grail_file = os.path.join(self.output_dir, 'outssi.csv')
         self.elites_file = os.path.join(self.output_dir,'elites.csv')
         self.hall_of_fame_file = os.path.join(self.output_dir, 'hall_of_fame.csv')
         self.surrogate_data_file = os.path.join(self.output_dir, 'surrogate_data.csv')
@@ -837,24 +838,96 @@ class Pipeline:
                 _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
             else:
                 valid = list(curr_pop.values())  
-            
-            # Log the current SSI generation state
-            self.log_ssi_info(i, valid)
+            self.save_ssi_metrics(i, valid)
             
             parents = None
             if len(valid) != self.num_parents:
                 parents = self.select_parents(valid) 
             else:
                 parents = valid
-                
+                            
             unsustainable_pop = self.overpopulate(parents, ssi=True)
             if i == self.num_gens_ssi - 1:
                 downselected = tools.selNSGA2(valid, int(self.population_size*self.ssi_population_percentage))
+                self.save_ssi_metrics(i+1, downselected)
                 curr_pop = {self.__get_hash(str(x)):x for x in downselected}
             else:
                 curr_pop = unsustainable_pop
+
             print(f'{i + 1} Generations of SSI Completed')
         return curr_pop
+    
+    def save_ssi_metrics(self, ssi_gen, valid_individuals):
+        """Save surrogate-predicted metrics to outssi.csv."""
+        print(f'Saving SSI metrics for generation {self.gen_count}.{ssi_gen}...')
+        
+        # Create a DataFrame for the SSI metrics
+        ssi_metrics_df = pd.DataFrame(columns=['gen', 'hash', 'genome', 'metrics'])
+        
+        for individual in valid_individuals:
+            # Only process individuals that have fitness values
+            if individual.fitness is None or individual.fitness.values is None:
+                continue
+                
+            hash_val = self.__get_hash(str(individual))
+            genome_str = str(individual)
+            metrics = {key: individual.fitness.values[i] for i, key in enumerate(self.objectives.keys())}
+            
+            # Format generation as main_gen.ssi_gen (e.g., 1.3)
+            gen_str = f"{self.gen_count}.{ssi_gen}"
+            
+            # Add to DataFrame
+            ssi_metrics_df.loc[len(ssi_metrics_df.index)] = [gen_str, hash_val, genome_str, metrics]
+        
+        # If file doesn't exist, create it; otherwise append to it
+        if not os.path.exists(self.ssi_holy_grail_file):
+            ssi_metrics_expanded = ssi_metrics_df.join(pd.json_normalize(ssi_metrics_df['metrics'])).drop('metrics', axis='columns')
+            ssi_metrics_expanded.to_csv(self.ssi_holy_grail_file, index=False)
+        else:
+            # Read existing file, append new data, and save
+            existing_df = pd.read_csv(self.ssi_holy_grail_file)
+            
+            # Convert metrics column in existing_df back to dictionary format if it exists
+            if 'metrics' not in existing_df.columns:
+                metrics_columns = [col for col in existing_df.columns if col not in ['gen', 'hash', 'genome']]
+                existing_df['metrics'] = existing_df[metrics_columns].apply(lambda row: row.to_dict(), axis=1)
+                existing_df = existing_df[['gen', 'hash', 'genome', 'metrics']]
+            
+            # Concatenate existing and new data
+            combined_df = pd.concat([existing_df, ssi_metrics_df], ignore_index=True)
+            
+            # Expand the metrics column and save
+            combined_expanded = combined_df.join(pd.json_normalize(combined_df['metrics'])).drop('metrics', axis='columns')
+            combined_expanded.to_csv(self.ssi_holy_grail_file, index=False)
+        
+        print('Done!')
+
+    def log_ssi_info(self, ssi_gen, curr_deap_pop):
+        """Log population snapshot during SSI iterations."""
+        print(f'Logging SSI generation {ssi_gen} data...')
+        
+        # Create SSI checkpoint directory
+        ssi_checkpoint_path = os.path.join(self.checkpoint_path, f'ssi_gen_{self.gen_count}_{ssi_gen}')
+        os.makedirs(ssi_checkpoint_path, exist_ok=True)
+        
+        # Save current SSI population
+        with open(os.path.join(ssi_checkpoint_path, 'pop.pkl'), 'wb') as f:
+            pickle.dump(curr_deap_pop, f)
+            
+        # Create a mini hall of fame and elite pool just for this SSI iteration
+        ssi_hof = tools.ParetoFront()
+        ssi_hof.update(curr_deap_pop)
+        with open(os.path.join(ssi_checkpoint_path, 'hof.pkl'), 'wb') as f:
+            pickle.dump(ssi_hof, f)
+            
+        # Save elites from current SSI population 
+        ssi_elites = self.toolbox.select_elitists(curr_deap_pop)
+        with open(os.path.join(ssi_checkpoint_path, 'elites.pkl'), 'wb') as f:
+            pickle.dump(ssi_elites, f)
+        
+        self.save_ssi_metrics(ssi_gen, curr_deap_pop)
+
+        print('Done!')
 
     def simulated_surrogate_injection_spea(self, curr_pop):
         curr_pop = copy.deepcopy(curr_pop)
