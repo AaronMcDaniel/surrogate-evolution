@@ -150,7 +150,7 @@ def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds
     plt.tight_layout()
     plt.savefig(f'/home/hice1/{USER}/scratch/surrogate-evolution/analysis/graphs/paretoTestingBaseline/pareto_gen' + str(gen) + '.jpg')
     plt.close()
-    print('plot ' + str(gen) + ' done')
+    print('plot ' + str(gen) + ' done', flush=True)
 
 def generate_fronts(df, objectives, directions, name, gen, colors, marker, reached_max):
     df_current = df[(df['gen'] <= gen)]
@@ -189,11 +189,11 @@ if __name__ == "__main__":
     
     # HERE IS WHERE YOU ADD FRONTS
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
-    baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline/past_runs/seed7080,out.csv'
+    baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline/out.csv'
     df_baseline = pd.read_csv(baseline_path)
     surrogate_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline2/testing_baseline/out.csv'
     df_surrogate = pd.read_csv(surrogate_path)
-    ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline_ssi/testing_baseline/past_runs/seed7080,0.8pop,out.csv'
+    ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline_ssi/testing_baseline/out.csv'
     df_ssi = pd.read_csv(ssi_path)
     # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
     dataframes = [
@@ -283,7 +283,7 @@ if __name__ == "__main__":
     max_gen = max(max_gens)
     all_hvs = {}
 
-    for gen in range(min_gen, 12): 
+    for gen in range(min_gen, max_gen + 1): 
         all_fronts = []
         
         for dataframe in dataframes:
