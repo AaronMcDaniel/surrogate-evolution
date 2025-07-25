@@ -23,9 +23,13 @@ file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
 repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
 
 
-def prepare_data(batch_size, train_df, val_df):
-    train_dataset = sd.ClassifierSurrogateDataset(train_df, mode='train')
-    val_dataset = sd.ClassifierSurrogateDataset(val_df, mode='val', genomes_scaler=train_dataset.genomes_scaler)
+def prepare_data(batch_size, train_df, val_df, genealogy=True):
+    if genealogy:
+        train_dataset = sd.ParentChildClassifierDataset(train_df, mode='train')
+        val_dataset = sd.ParentChildClassifierDataset(val_df, mode='val', genomes_scaler=train_dataset.genomes_scaler)
+    else:
+        train_dataset = sd.ClassifierSurrogateDataset(train_df, mode='train')
+        val_dataset = sd.ClassifierSurrogateDataset(val_df, mode='val', genomes_scaler=train_dataset.genomes_scaler)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     return train_loader, val_loader, train_dataset, val_dataset
@@ -111,7 +115,8 @@ def train_one_epoch(model, device, train_loader, optimizer, scaler):
     criterion = nn.BCEWithLogitsLoss()
 
     data_iter = tqdm(train_loader, desc='Training')
-    for genomes, labels in data_iter:
+    for batch_data in data_iter:
+        genomes, labels = batch_data
         genomes = genomes.to(device)
         labels = labels.to(device)
 
@@ -170,7 +175,8 @@ def val_one_epoch(model, device, val_loader, scheduler):
 
     data_iter = tqdm(val_loader, 'Evaluating')
     with torch.no_grad():
-        for genomes, labels in data_iter:
+        for batch_data in data_iter:
+            genomes, labels = batch_data
             genomes = genomes.to(device)
             labels = labels.to(device)
 

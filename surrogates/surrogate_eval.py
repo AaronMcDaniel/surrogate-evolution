@@ -23,10 +23,15 @@ import os
 file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
 repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
 
-def prepare_data(model_dict, batch_size, train_df, val_df):
-    train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=model_dict['metrics_subset'])
+def prepare_data(model_dict, batch_size, train_df, val_df, genealogy=True):
+    if genealogy:
+        train_dataset = sd.ParentChildSurrogateDataset(train_df, mode='train', metrics_subset=model_dict['metrics_subset'])
+        val_dataset = sd.ParentChildSurrogateDataset(val_df, mode='val', metrics_subset=model_dict['metrics_subset'], metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
+    else:
+        train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=model_dict['metrics_subset'])
+        val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=model_dict['metrics_subset'], metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
     print(f'Input val_df: {val_df.shape}')
-    val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=model_dict['metrics_subset'], metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
+
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     print(f'val_dataset length: {len(val_dataset.genomes)}')
     # NOTE removed drop_last for the sake of continuing
@@ -187,9 +192,9 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
     # criterion = nn.MSELoss()
 
     data_iter = tqdm(train_loader, desc='Training')
-    for genomes, metrics in data_iter:
-
-        # genomes shape: (batch_size, 976)
+    for batch_data in data_iter:
+        genomes, metrics = batch_data
+        # genomes shape: (batch_size, 976) -> not true if genealogy is True
         genomes = genomes.to(device)
         # metrics shape: (batch_size, 12)
         metrics = metrics.to(device)
@@ -237,8 +242,9 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
 
     data_iter = tqdm(val_loader, 'Evaluating')
     with torch.no_grad():
-        for genomes, metrics in data_iter:
-            # genomes shape: (batch_size, 976)
+        for batch_data in data_iter:
+            genomes, metrics = batch_data
+            # genomes shape: (batch_size, 976) -> not true if genealogy is True
             genomes = genomes.to(device)
             # metrics shape: (batch_size, 12)
             metrics = metrics.to(device)

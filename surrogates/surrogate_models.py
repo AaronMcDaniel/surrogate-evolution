@@ -29,6 +29,9 @@ class MLP(nn.Module):
         params = {} if inplace is None else {"inplace": inplace}
         layers = []
 
+        fitness_size = 12  # Number of metrics
+        input_size = input_size * 3 + fitness_size * 2  # 3 genomes + 2 fitness vectors
+
         # build intermediate hidden layers, but not output layer
         in_dim = input_size
         for hidden_dim in hidden_sizes:
@@ -341,6 +344,9 @@ class KAN(torch.nn.Module):
         super(KAN, self).__init__()
         self.grid_size = grid_size
         self.spline_order = spline_order
+
+        fitness_size = 12  # Number of metrics
+        input_size = input_size * 3 + fitness_size * 2  # 3 genomes + 2 fitness vectors
 
         # deep copy hidden layers list when appending input and output size to ensure no duplicate additions
         hidden_sizes = copy.deepcopy(hidden_sizes)

@@ -28,10 +28,11 @@ from surrogates.surrogate_dataset import build_dataset
 import numpy as np
 import re
 from custom_selection import dbea_selection, lexicase_selection
+from collections import defaultdict
 
 
 # job file params
-JOB_NAME = 'b_evo'
+JOB_NAME = 't_evo'
 NODES = 1
 CORES = 8
 MEM = '24GB'
@@ -96,11 +97,11 @@ class Pipeline:
             else:
                 self.clear_outputs()
                 os.makedirs(self.logs_dir)
-                shutil.copy(config_dir, output_dir)
+                shutil.copy(config_dir, os.path.join(output_dir, 'conf.toml'))
         else:
             os.makedirs(self.output_dir)
             os.makedirs(self.logs_dir)
-            shutil.copy(config_dir, output_dir)
+            shutil.copy(config_dir, os.path.join(output_dir, 'conf.toml'))
 
         # Begin by loading config attributes
         configs = toml.load(config_dir)
@@ -201,6 +202,12 @@ class Pipeline:
                 res = ''.join([init.lower(), *map(str.title, temp)]) # convert from readable snake_case config to camelCase function name 
                 self.toolbox.register(mutation, eval(f'gp.mut{str.upper(res[0])+res[1:]}'))
 
+        #genealogy tracking
+        self.genealogy = defaultdict(list)  # child_hash -> [parent1_hash, parent2_hash, ...]
+        self.genealogy_file = os.path.join(self.output_dir, 'genealogy.csv')
+        self.genealogy_data = []  # List to accumulate genealogy records
+    
+
 
     def initialize(self, seed_file = None):
         if self.attempt_resume:
@@ -284,9 +291,34 @@ class Pipeline:
                 for genome in genomes:
                     individual = creator.Individual(CustomPrimitiveTree.from_string(genome, self.pset))
                     seeded_individuals.append(individual)
+            # Track seeded individuals as having no parents
+            for individual in seeded_individuals:
+                individual_hash = self.get_hash_public(str(individual))
+                genealogy_record = {
+                    'child_hash': individual_hash,
+                    'generation': 1,
+                    'operation': 'seeded',
+                    'parent1_hash': None,
+                    'parent2_hash': None
+                }
+                self.genealogy_data.append(genealogy_record)
+
         self.current_population = {}
         pop = self.toolbox.population(n=self.initial_population_size-len(seeded_individuals))
         self.current_deap_pop = pop + seeded_individuals
+
+        # Track randomly generated individuals as having no parents
+        for genome in pop:
+            genome_hash = self.get_hash_public(str(genome))
+            genealogy_record = {
+                'child_hash': genome_hash,
+                'generation': 1,
+                'operation': 'random_init',
+                'parent1_hash': None,
+                'parent2_hash': None
+            }
+            self.genealogy_data.append(genealogy_record)
+
         for genome in self.current_deap_pop:
             genome_string = str(genome)
             hash = self.__get_hash(genome_string)
@@ -560,7 +592,8 @@ class Pipeline:
         name = 'surr_evolution'
         if self.gen_count == 2: # use train val split from gen 1 at gen 2
             if rebuild:
-                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0.2, include_only=[1])
+                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path,
+                              val_ratio=0.2, include_only=[1], include_parents=True)
             reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
             reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
             # reg_subset_val_df = reg_val_df
@@ -569,11 +602,13 @@ class Pipeline:
             # cls_subset_val_df = cls_val_df
         elif self.gen_count < 7: # grows here
             if rebuild:
-                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=[1])
+                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path,
+                                val_ratio=0, include_only=[1], include_parents=True)
             reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
             cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
             if rebuild:
-                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[1:])
+                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path,
+                              val_ratio=1, include_only=seen_gens[1:], include_parents=True)
             reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
             cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
             # build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
@@ -581,11 +616,13 @@ class Pipeline:
             # cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
         else: # slides here
             if rebuild:
-                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=seen_gens[:-5])
+                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path,
+                              val_ratio=0, include_only=seen_gens[:-5], include_parents=True)
             reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
             cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
             if rebuild:
-                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-5:])
+                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path,
+                              val_ratio=1, include_only=seen_gens[-5:], include_parents=True)
             reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
             cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
             # build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
@@ -798,15 +835,49 @@ class Pipeline:
                 additional_param = ',0.5'
             if random.random() < probability:
                 offspring += list(eval(f'self.toolbox.{crossover}(parents[0], parents[1]{additional_param})'))
+                    # After creating offspring, track genealogy
+        for child in offspring:
+            child_hash = self.get_hash_public(str(child))
+            parent_hashes = [self.get_hash_public(str(parent)) for parent in parents]
+            
+            # Record the genealogy relationship
+            self.genealogy[child_hash] = parent_hashes
+            
+            # Also add to genealogy data for CSV export
+            genealogy_record = {
+                'child_hash': child_hash,
+                'generation': self.gen_count,
+                'operation': 'crossover',
+                'parent1_hash': parent_hashes[0] if len(parent_hashes) > 0 else None,
+                'parent2_hash': parent_hashes[1] if len(parent_hashes) > 1 else None
+            }
+            self.genealogy_data.append(genealogy_record)
+
         return offspring
 
 
     def mutate(self, mutant):
         mutant = copy.deepcopy(mutant)
         mutants = []
+        original_hash = self.get_hash_public(str(mutant))
         for mutation, probability in self.mutations.items():
             if random.random() < probability:
                 mutants += list(eval(f'self.toolbox.{mutation}')(mutant, self.pset))
+        for mutated_individual in mutants:
+            mutated_hash = self.get_hash_public(str(mutated_individual))
+            if mutated_hash != original_hash:
+                if len(self.genealogy[mutated_hash]) < 2:
+                    self.genealogy[mutated_hash] = [original_hash,]
+
+                genealogy_record = {
+                    'child_hash': mutated_hash,
+                    'generation': self.gen_count,
+                    'operation': 'mutation',
+                    'parent1_hash': original_hash,
+                    'parent2_hash': None
+                }
+                self.genealogy_data.append(genealogy_record)
+
         return mutants
 
 
@@ -1532,6 +1603,25 @@ class Pipeline:
         
         return stats
 
+    def genealogy_dataframe(genealogy_dict):
+        """
+        Converts a dictionary with format key: [] into a pandas DataFrame.
+
+        Args:
+            genealogy_dict (dict): The input dictionary where keys map to lists of up to 2 elements.
+
+        Returns:
+            pd.DataFrame: A DataFrame with columns 'child_hash', 'parent1_hash', 'parent2_hash'.
+        """
+        rows = []
+        for key, values in genealogy_dict.items():
+            val1 = values[0] if len(values) > 0 else None
+            val2 = values[1] if len(values) > 1 else None
+            rows.append({'child_hash': key, 'parent1_hash': val1, 'parent2_hash': val2})
+
+        df = pd.DataFrame(rows)
+        return df
+
 
     def log_info(self):
         print('Logging data...')
@@ -1573,7 +1663,13 @@ class Pipeline:
             self.all_reg_surrogate_data.to_csv(self.reg_surrogate_data_file, index=False)
             self.selected_surrogate_data.to_csv(self.selected_surrogate_data_file, index=False)          
             df = pd.DataFrame(self.surrogate_trusts)      
-            df.to_csv(self.trust_file, index=False)                
+            df.to_csv(self.trust_file, index=False)      
+        # Save genealogy data
+        if self.genealogy_data:
+            genealogy_df = Pipeline.genealogy_dataframe(self.genealogy_data)
+            genealogy_df.to_csv(self.genealogy_file, index=False)
+            # Clear the buffer for next generation
+            self.genealogy_data = []
         print('Done!')
 
 
