@@ -1666,7 +1666,7 @@ class Pipeline:
             df.to_csv(self.trust_file, index=False)      
         # Save genealogy data
         if self.genealogy_data:
-            genealogy_df = Pipeline.genealogy_dataframe(self.genealogy_data)
+            genealogy_df = Pipeline.genealogy_dataframe(self.genealogy)
             genealogy_df.to_csv(self.genealogy_file, index=False)
             # Clear the buffer for next generation
             self.genealogy_data = []
