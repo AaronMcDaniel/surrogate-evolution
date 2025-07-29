@@ -276,7 +276,7 @@ class Pipeline:
     def init_pop(self, seed_file = None):
         print('Initializing population...')
         seeded_individuals = []
-        if seed_file is not None:
+        if seed_file is not None and seed_file and os.path.exists(seed_file):
             shutil.copy(seed_file, self.output_dir)
             with open(seed_file, 'r') as seed_file:
                 genomes = seed_file.readlines()
