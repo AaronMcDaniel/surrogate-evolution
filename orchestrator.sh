@@ -8,7 +8,7 @@
 ORIGINAL_SCRIPT="main_ssi.job"
 SCRIPT_ARGS_1='-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_not_seeded -c conf.toml -n 100 -e nas -r'
 SCRIPT_ARGS_2='-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_no_pretrain -c conf_nopre.toml -n 100 -e nas -s seeds.txt -r'
-RESTART_TIME_SECONDS=$((17 * 3600 + 45 * 60))  # 17h 30m in seconds
+RESTART_TIME_SECONDS=$((17 * 3600 + 45 * 60))  # 17h 45m in seconds
 # RESTART_TIME_SECONDS=$(120)  # 2 minutes in seconds
 MAX_RESTARTS=7
 RESTART_COUNTER_FILE="restart_counter.txt"

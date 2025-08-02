@@ -96,11 +96,11 @@ class Pipeline:
             else:
                 self.clear_outputs()
                 os.makedirs(self.logs_dir)
-                shutil.copy(config_dir, output_dir)
+                shutil.copy(config_dir, os.path.join(output_dir, "conf.toml"))
         else:
             os.makedirs(self.output_dir)
             os.makedirs(self.logs_dir)
-            shutil.copy(config_dir, output_dir)
+            shutil.copy(config_dir, os.path.join(output_dir, "conf.toml"))
 
         # Begin by loading config attributes
         configs = toml.load(config_dir)
