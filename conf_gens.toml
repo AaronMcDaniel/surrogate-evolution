@@ -4,11 +4,11 @@
 # initial population size
 initial_population_size = 200
 # population size
-population_size = 50
+population_size = 30
 # unsustainable population size
 unsustainable_population_size = 500
 # number of parents to be selected to mate
-num_parents = 30
+num_parents = 20
 # types of crossovers and their probabilities
 crossovers = {one_point = 0.5, one_point_leaf_biased = 0.3}
 # types of mutations and their probabilities
