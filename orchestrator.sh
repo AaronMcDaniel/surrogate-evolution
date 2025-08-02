@@ -1,8 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=auto_restart
 #SBATCH --time=18:00:00
-#SBATCH --output=job_%j.out
-#SBATCH --error=job_%j.err
+#SBATCH --output="/storage/ice-shared/vip-vvk/data/AOT/psomu3/evolution_logs/orchestration.%A.%a.log"
+#SBATCH --error="/storage/ice-shared/vip-vvk/data/AOT/psomu3/evolution_logs/orchestration_error.%A.%a.err"
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=2GB
 
 # Configuration
 ORIGINAL_SCRIPT="main_ssi.job"
