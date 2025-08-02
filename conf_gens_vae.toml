@@ -105,10 +105,9 @@ pretrained = true
 # folder containing surrogate datasets used in pretraining the model
 pretrained_dir = '/storage/ice-shared/vip-vvk/data/AOT/surrogate_dataset'
 # flag that determines whether inputs to the surrogate are preprocessed using a VAE
-preprocess = false
+preprocess = true
 # batch size to use when training the preprocessor VAE
 preprocess_batch_size = 16
-
 
 [data]
 # time in hours the dataset cache is valid for

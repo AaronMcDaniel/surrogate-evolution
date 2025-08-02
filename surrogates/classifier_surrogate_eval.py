@@ -18,6 +18,7 @@ from torch.cuda.amp import autocast, GradScaler
 from sklearn.metrics import precision_score, recall_score, accuracy_score
 import numpy as np
 import os
+from surrogates.preprocessing import VAEPreprocessor
 
 file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
 repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
@@ -73,7 +74,16 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir):
     # pull surrogate train/eval config attributes
     num_epochs = cfg['surrogate_train_epochs']
     batch_size = cfg['surrogate_batch_size']
-    # define subset of metrics to train on and prepare data accordingly
+
+    # preprocess data using VAE
+    if "preprocess" in cfg and cfg["preprocess"]:
+        preprocess_batch_size = cfg['preprocess_batch_size']
+        combined_dataset = sd.ClassifierSurrogateDataset(pd.concat([train_df, val_df]), mode='train')
+        combined_loader = DataLoader(dataset=combined_dataset, batch_size=preprocess_batch_size, shuffle=True, drop_last=True)
+        vaePreprocessor = VAEPreprocessor(train_df, val_df, combined_loader)
+        train_df, val_df = vaePreprocessor.process()
+
+    # prepare data for surrogate training
     train_loader, val_loader, train_dataset, val_dataset = prepare_data(batch_size, train_df, val_df)
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
