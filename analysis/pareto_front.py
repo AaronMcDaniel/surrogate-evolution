@@ -12,9 +12,11 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('username', type=str)
+parser.add_argument('cross_generation_pareto_front', type=bool, default=False)
 
 args = parser.parse_args()
 USER = args.username
+CROSS_GENERATION_PARETO_FRONT = args.cross_generation_pareto_front
 
 def stepify_pareto_points_2d(x, y, metric_directions):
     """
@@ -153,8 +155,13 @@ def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds
     print('plot ' + str(gen) + ' done', flush=True)
 
 def generate_fronts(df, objectives, directions, name, gen, colors, marker, reached_max):
-    df_current = df[(df['gen'] <= gen)]
-    
+    if CROSS_GENERATION_PARETO_FRONT:
+        # plot the pareto front considering all generations up through the current generation
+        df_current = df[(df['gen'] <= gen)]
+    else:
+        # plot the pareto front only considering the current generation population
+        df_current = df[(int(df['gen']) == int(gen))]
+
     front, dominated = find_pareto_indices(df_current, objectives, directions)
     front_top, dominated_top = find_pareto_indices(df_current, objectives[:2], directions[:2])
     front_bottom, dominated_bottom = find_pareto_indices(df_current, objectives[1:], directions[1:])
@@ -200,7 +207,7 @@ if __name__ == "__main__":
         {'df': df_baseline, 'name': 'Baseline', 'colors': ['xkcd:cerulean', 'xkcd:azure', 'xkcd:slate grey', 'xkcd:sky blue'], 'marker': 'o'}, 
         # {'df': df_surrogate, 'name': 'Surrogate', 'colors': ['xkcd:gold', 'xkcd:amber', 'xkcd:dark grey', 'xkcd:charcoal'], 'marker': '^'},
         {'df': df_ssi, 'name': 'SSI', 'colors': ['xkcd:lime green', 'xkcd:forest green', 'xkcd:grey', 'xkcd:slate'], 'marker': 's'}
-        ]
+    ]
 
     min_gens = []
     max_gens = []
