@@ -6,8 +6,11 @@
 
 # Configuration
 ORIGINAL_SCRIPT="main_ssi.job"
-SCRIPT_ARGS_1='-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_not_seeded -c conf_gens.toml -n 100 -e nas -r'
-SCRIPT_ARGS_2='-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_no_pretrain -c conf_nopre.toml -n 100 -e nas -s seeds.txt -r'
+SCRIPT_ARGS=(
+    '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_not_seeded -c conf_gens.toml -n 100 -e nas -r'
+    '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_no_pretrain -c conf_nopre.toml -n 100 -e nas -s seeds.txt -r'
+    # Add more script argument sets here as needed
+)
 RESTART_TIME_SECONDS=$((17 * 3600 + 45 * 60))  # 17h 45m in seconds
 MAX_RESTARTS=10
 RESTART_COUNTER_FILE="restart_counter.txt"
@@ -35,28 +38,40 @@ if [[ $restart_count -ge $MAX_RESTARTS ]]; then
     exit 0
 fi
 
-# Submit both original scripts as separate SLURM jobs
-log "Submitting first script: $ORIGINAL_SCRIPT $SCRIPT_ARGS_1"
-original_job_id_1=$(sbatch --parsable $ORIGINAL_SCRIPT $SCRIPT_ARGS_1)
+# Submit all original scripts as separate SLURM jobs
+declare -a job_ids=()
+declare -a failed_instances=()
 
-if [[ $? -ne 0 ]]; then
-    log "ERROR: Failed to submit first original script!"
-    exit 1
+for i in "${!SCRIPT_ARGS[@]}"; do
+    args="${SCRIPT_ARGS[$i]}"
+    log "Submitting script instance $((i+1)): $ORIGINAL_SCRIPT $args"
+    
+    job_id=$(sbatch --parsable $ORIGINAL_SCRIPT $args)
+    
+    if [[ $? -ne 0 ]]; then
+        log "WARNING: Failed to submit script instance $((i+1))! Continuing with other instances..."
+        failed_instances+=("$((i+1))")
+    else
+        job_ids+=("$job_id")
+        log "Script instance $((i+1)) submitted with Job ID: $job_id"
+    fi
+done
+
+# Report submission results
+successful_count=${#job_ids[@]}
+failed_count=${#failed_instances[@]}
+total_count=${#SCRIPT_ARGS[@]}
+
+log "Submission complete: $successful_count/$total_count instances submitted successfully"
+
+if [[ $failed_count -gt 0 ]]; then
+    log "Failed instances: ${failed_instances[*]}"
 fi
 
-log "First script submitted with Job ID: $original_job_id_1"
-
-log "Submitting second script: $ORIGINAL_SCRIPT $SCRIPT_ARGS_2"
-original_job_id_2=$(sbatch --parsable $ORIGINAL_SCRIPT $SCRIPT_ARGS_2)
-
-if [[ $? -ne 0 ]]; then
-    log "ERROR: Failed to submit second original script!"
-    log "Cancelling first script: $original_job_id_1"
-    scancel "$original_job_id_1"
+if [[ $successful_count -eq 0 ]]; then
+    log "ERROR: All script instances failed to submit! Exiting..."
     exit 1
 fi
-
-log "Second script submitted with Job ID: $original_job_id_2"
 
 # Start timer
 start_time=$(date +%s)
