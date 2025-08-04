@@ -1,19 +1,15 @@
 #!/bin/bash
 #SBATCH --job-name=auto_restart
 #SBATCH --time=18:00:00
-#SBATCH --output="/storage/ice-shared/vip-vvk/data/AOT/psomu3/evolution_logs/orchestration.%A.%a.log"
-#SBATCH --error="/storage/ice-shared/vip-vvk/data/AOT/psomu3/evolution_logs/orchestration_error.%A.%a.err"
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=2GB
+#SBATCH --output=job_%j.out
+#SBATCH --error=job_%j.err
 
 # Configuration
 ORIGINAL_SCRIPT="main_ssi.job"
-SCRIPT_ARGS_1='-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_not_seeded -c conf.toml -n 100 -e nas -r'
+SCRIPT_ARGS_1='-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_not_seeded -c conf_gens.toml -n 100 -e nas -r'
 SCRIPT_ARGS_2='-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_no_pretrain -c conf_nopre.toml -n 100 -e nas -s seeds.txt -r'
 RESTART_TIME_SECONDS=$((17 * 3600 + 45 * 60))  # 17h 45m in seconds
-# RESTART_TIME_SECONDS=$(120)  # 2 minutes in seconds
-MAX_RESTARTS=7
+MAX_RESTARTS=10
 RESTART_COUNTER_FILE="restart_counter.txt"
 
 # Function to log with timestamp
@@ -65,60 +61,43 @@ log "Second script submitted with Job ID: $original_job_id_2"
 # Start timer
 start_time=$(date +%s)
 
-# Monitor until restart time
-while true; do
-    current_time=$(date +%s)
-    elapsed=$((current_time - start_time))
-    
-    # Check if any other jobs (besides this orchestrator) are still running
-    other_jobs=$(squeue -h -u "$USER" -o "%i" | grep -v "^$SLURM_JOB_ID$" | wc -l)
-    if [[ $other_jobs -eq 0 ]]; then
-        log "No other jobs running. Both original jobs completed."
-        log "Orchestrator job completed successfully"
-        rm -f "$RESTART_COUNTER_FILE"  # Clean up counter file
-        exit 0
-    fi
-    
-    # Check if it's time to restart
-    if [[ $elapsed -ge $RESTART_TIME_SECONDS ]]; then
-        log "Reached restart time (17h 30m). Initiating restart..."
-        
-        # Cancel all other jobs first
-        log "Cancelling all other jobs..."
-        other_job_ids=$(squeue -h -u "$USER" -o "%i" | grep -v "^$SLURM_JOB_ID$")
-        for job_id in $other_job_ids; do
-            log "Cancelling job: $job_id"
-            scancel "$job_id"
-        done
-        
-        # Increment restart counter for next iteration
-        next_restart_count=$((restart_count + 1))
-        echo "$next_restart_count" > "$RESTART_COUNTER_FILE"
-        log "Updated restart counter to: $next_restart_count"
-        
-        # Submit next orchestrator job
-        log "Submitting next orchestrator job..."
-        next_orchestrator_id=$(sbatch --parsable "$0")
-        
-        if [[ $? -eq 0 ]]; then
-            log "Next orchestrator submitted with Job ID: $next_orchestrator_id"
-            
-            # Wait 30 seconds for next orchestrator to start and submit its own original job
-            log "Waiting 30 seconds for next orchestrator to initialize..."
-            sleep 30
-            
-            # Cancel this orchestrator job (ourselves)
-            log "Cancelling current orchestrator job: $SLURM_JOB_ID"
-            scancel "$SLURM_JOB_ID"
-            
-            log "Handoff complete. Next orchestrator should continue the work."
-            exit 0
-        else
-            log "ERROR: Failed to submit next orchestrator job!"
-            exit 1
-        fi
-    fi
-    
-    # Check every 60 seconds
-    sleep 60
+# Sleep until restart time
+log "Sleeping for $RESTART_TIME_SECONDS seconds (17h 45m) until restart time..."
+sleep $RESTART_TIME_SECONDS
+
+log "Reached restart time. Initiating restart..."
+
+# Cancel all other jobs first
+log "Cancelling all other jobs..."
+other_job_ids=$(squeue -h -u "$USER" -o "%i" | grep -v "^$SLURM_JOB_ID$")
+for job_id in $other_job_ids; do
+    log "Cancelling job: $job_id"
+    scancel "$job_id"
 done
+
+# Increment restart counter for next iteration
+next_restart_count=$((restart_count + 1))
+echo "$next_restart_count" > "$RESTART_COUNTER_FILE"
+log "Updated restart counter to: $next_restart_count"
+
+# Submit next orchestrator job
+log "Submitting next orchestrator job..."
+next_orchestrator_id=$(sbatch --parsable "$0")
+
+if [[ $? -eq 0 ]]; then
+    log "Next orchestrator submitted with Job ID: $next_orchestrator_id"
+    
+    # Wait 30 seconds for next orchestrator to start and submit its own original job
+    log "Waiting 30 seconds for next orchestrator to initialize..."
+    sleep 30
+    
+    # Cancel this orchestrator job (ourselves)
+    log "Cancelling current orchestrator job: $SLURM_JOB_ID"
+    scancel "$SLURM_JOB_ID"
+    
+    log "Handoff complete. Next orchestrator should continue the work."
+    exit 0
+else
+    log "ERROR: Failed to submit next orchestrator job!"
+    exit 1
+fi
