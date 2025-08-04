@@ -9,6 +9,10 @@ from pymoo.indicators.hv import HV, Hypervolume
 from matplotlib.ticker import MaxNLocator
 import toml
 import argparse
+import time
+
+pd.set_option('display.max_rows', None)
+pd.set_option('display.max_columns', None)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('username', type=str)
@@ -23,6 +27,10 @@ def stepify_pareto_points_2d(x, y, metric_directions):
     Returns the pareto front points, including the steps, from the x/y points of a 2D pareto front
     Takes in the optimization directions for the x and y parameters as a list of booleans (True=Minimized, False=Maximized)
     """
+
+    # Handle empty arrays
+    if len(x) == 0 or len(y) == 0:
+        return [], []
 
     is_x_minimized, is_y_minimized = metric_directions
     # sort for pareto steps
@@ -155,14 +163,25 @@ def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds
     print('plot ' + str(gen) + ' done', flush=True)
 
 def generate_fronts(df, objectives, directions, name, gen, colors, marker, reached_max, cached_fronts=None):
-    if CROSS_GENERATION_PARETO_FRONT and cached_fronts is not None and gen > 1:
-        # Use cached front from previous generation and combine with current generation
+    if cached_fronts is not None:
+        # Use cached front from previous generation and combine with current generation data
         prev_front = cached_fronts.get('front', pd.DataFrame())
         prev_front_top = cached_fronts.get('front_top', pd.DataFrame())
         prev_front_bottom = cached_fronts.get('front_bottom', pd.DataFrame())
         
-        # Get current generation data
-        df_current_gen = df[(int(df['gen']) == int(gen))]
+        if CROSS_GENERATION_PARETO_FRONT:
+            # Get current generation data (only the new generation)
+            prev_gen_list = sorted(list(df[df['gen'] < gen]['gen'].unique()))
+            if prev_gen_list:
+                last_prev_gen = prev_gen_list[-1]
+                df_current_gen = df[df['gen'] == gen]
+            else:
+                df_current_gen = df[df['gen'] == gen]
+        else:
+            # For SSI mode when not cross-generation, get data from current major generation
+            # e.g., for gen 1.1, get all data from 1.0 to 1.9
+            major_gen = int(gen)
+            df_current_gen = df[(df['gen'] >= major_gen) & (df['gen'] < major_gen + 1) & (df['gen'] == gen)]
         
         # Combine previous front with current generation for recalculation
         if not prev_front.empty and not df_current_gen.empty:
@@ -183,8 +202,12 @@ def generate_fronts(df, objectives, directions, name, gen, colors, marker, reach
         front_top, dominated_top = find_pareto_indices(df_combined_front_top, objectives[:2], directions[:2])
         front_bottom, dominated_bottom = find_pareto_indices(df_combined_front_bottom, objectives[1:], directions[1:])
         
-        # For plotting, we need all data up to current generation
-        df_current = df[(df['gen'] <= gen)]
+        # For plotting, we need the appropriate data based on mode
+        if CROSS_GENERATION_PARETO_FRONT:
+            df_current = df[(df['gen'] <= gen)]
+        else:
+            major_gen = int(gen)
+            df_current = df[(df['gen'] >= major_gen) & (df['gen'] <= gen)]
     elif CROSS_GENERATION_PARETO_FRONT:
         # First generation or no cache - plot the pareto front considering all SSI steps up through the current major generation
         df_current = df[(df['gen'] <= gen)]
@@ -193,7 +216,8 @@ def generate_fronts(df, objectives, directions, name, gen, colors, marker, reach
         front_bottom, dominated_bottom = find_pareto_indices(df_current, objectives[1:], directions[1:])
     else:
         # plot the pareto front only considering the SSI steps within the current major generation
-        df_current = df[(int(df['gen']) == int(gen))]
+        major_gen = int(gen)
+        df_current = df[(df['gen'] >= major_gen) & (df['gen'] <= gen)]
         front, dominated = find_pareto_indices(df_current, objectives, directions)
         front_top, dominated_top = find_pareto_indices(df_current, objectives[:2], directions[:2])
         front_bottom, dominated_bottom = find_pareto_indices(df_current, objectives[1:], directions[1:])
@@ -228,9 +252,9 @@ if __name__ == "__main__":
     
     # HERE IS WHERE YOU ADD FRONTS
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
-    ssi_1_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline/outssi.csv'
+    ssi_1_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline2/testing_baseline/outssi.csv'
     df_ssi_1 = pd.read_csv(ssi_1_path)
-    ssi_2_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline_ssi/testing_baseline/outssi.csv'
+    ssi_2_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_not_seeded/outssi.csv'
     df_ssi_2 = pd.read_csv(ssi_2_path)
     # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
     dataframes = [
@@ -316,16 +340,34 @@ if __name__ == "__main__":
     gens = []
     gens_superset = sorted(list(gens_superset))
     all_hvs = {}
+    
+    # Cache for storing fronts from previous generation (for optimization)
+    cached_fronts_by_dataframe = {}
 
     for gen in gens_superset:
+        start = time.time()
         all_fronts = []
         
         for dataframe in dataframes:
             if gen <= dataframe['df']['gen'].max():
                 reached_max = False
             else:
-                reached_max = True    
-            all_fronts.append(generate_fronts(dataframe['df'], objectives, directions, dataframe['name'], gen, dataframe['colors'], dataframe['marker'], reached_max))
+                reached_max = True
+            
+            # Get cached fronts from previous generation for this dataframe
+            dataframe_name = dataframe['name']
+            cached_fronts = cached_fronts_by_dataframe.get(dataframe_name, None)
+            
+            front_result = generate_fronts(dataframe['df'], objectives, directions, dataframe['name'], gen, dataframe['colors'], dataframe['marker'], reached_max, cached_fronts)
+            all_fronts.append(front_result)
+            
+            # Cache the fronts for next generation (only if we haven't reached max)
+            if not reached_max:
+                cached_fronts_by_dataframe[dataframe_name] = {
+                    'front': front_result['front'].copy(),
+                    'front_top': front_result['front_top'].copy(),
+                    'front_bottom': front_result['front_bottom'].copy()
+                }
 
         gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch, best_epoch_direction)
         
@@ -350,7 +392,7 @@ if __name__ == "__main__":
                     all_hvs[name] = []
                 all_hvs[name].append(hv(hv_front))
                 print(name + ' hypervolume:', hv(hv_front))
-
+        print('Time taken for generation', gen, ':', time.time() - start, 'seconds', flush=True)
         print()
 
         gens.append(gen)

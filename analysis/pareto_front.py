@@ -162,7 +162,7 @@ def generate_fronts(df, objectives, directions, name, gen, colors, marker, reach
         prev_front_bottom = cached_fronts.get('front_bottom', pd.DataFrame())
         
         # Get current generation data
-        df_current_gen = df[(int(df['gen']) == int(gen))]
+        df_current_gen = df[(df['gen'] == gen)]
         
         # Combine previous front with current generation for recalculation
         if not prev_front.empty and not df_current_gen.empty:
@@ -193,7 +193,7 @@ def generate_fronts(df, objectives, directions, name, gen, colors, marker, reach
         front_bottom, dominated_bottom = find_pareto_indices(df_current, objectives[1:], directions[1:])
     else:
         # plot the pareto front only considering the current generation population
-        df_current = df[(int(df['gen']) == int(gen))]
+        df_current = df[(df['gen'] == gen)]
         front, dominated = find_pareto_indices(df_current, objectives, directions)
         front_top, dominated_top = find_pareto_indices(df_current, objectives[:2], directions[:2])
         front_bottom, dominated_bottom = find_pareto_indices(df_current, objectives[1:], directions[1:])
@@ -228,11 +228,11 @@ if __name__ == "__main__":
     
     # HERE IS WHERE YOU ADD FRONTS
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
-    baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline/out.csv'
+    baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_no_pretrain/out.csv'
     df_baseline = pd.read_csv(baseline_path)
-    surrogate_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline2/testing_baseline/out.csv'
-    df_surrogate = pd.read_csv(surrogate_path)
-    ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline_ssi/testing_baseline/out.csv'
+    # surrogate_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline2/testing_baseline/out.csv'
+    # df_surrogate = pd.read_csv(surrogate_path)
+    ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_not_seeded/out.csv'
     df_ssi = pd.read_csv(ssi_path)
     # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
     dataframes = [
