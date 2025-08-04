@@ -64,6 +64,57 @@ def stepify_pareto_points_2d(x, y, metric_directions):
     return x_steps, y_steps
 
 
+
+def find_pareto_indices_2(df, objectives, directions):
+    """
+    Efficient Pareto front calculation using vectorized operations
+    """
+    if df.empty:
+        return df.copy(), []
+    
+    # Convert to numpy array for faster operations
+    values = df[objectives].values
+    n_points = len(values)
+    
+    # Initialize dominated array
+    is_dominated = np.zeros(n_points, dtype=bool)
+    
+    # For each point, check if it's dominated by any other point
+    for i in range(n_points):
+        if is_dominated[i]:
+            continue
+            
+        # Compare point i with all other points
+        for j in range(n_points):
+            if i == j or is_dominated[j]:
+                continue
+                
+            # Check if point j dominates point i
+            dominates_count = 0
+            for k, direction in enumerate(directions):
+                if direction:  # minimize
+                    if values[j, k] < values[i, k]:
+                        dominates_count += 1
+                    elif values[j, k] > values[i, k]:
+                        break
+                else:  # maximize
+                    if values[j, k] > values[i, k]:
+                        dominates_count += 1
+                    elif values[j, k] < values[i, k]:
+                        break
+            
+            # If point j dominates point i in all objectives
+            if dominates_count == len(objectives):
+                is_dominated[i] = True
+                break
+    
+    # Get non-dominated points
+    pareto_mask = ~is_dominated
+    front = df.iloc[pareto_mask].copy()
+    dominated_indices = df.index[is_dominated].tolist()
+    
+    return front, dominated_indices
+
 def find_pareto_indices(df, objectives, directions):
     dominated = []
     front = df.copy()
@@ -169,19 +220,8 @@ def generate_fronts(df, objectives, directions, name, gen, colors, marker, reach
         prev_front_top = cached_fronts.get('front_top', pd.DataFrame())
         prev_front_bottom = cached_fronts.get('front_bottom', pd.DataFrame())
         
-        if CROSS_GENERATION_PARETO_FRONT:
-            # Get current generation data (only the new generation)
-            prev_gen_list = sorted(list(df[df['gen'] < gen]['gen'].unique()))
-            if prev_gen_list:
-                last_prev_gen = prev_gen_list[-1]
-                df_current_gen = df[df['gen'] == gen]
-            else:
-                df_current_gen = df[df['gen'] == gen]
-        else:
-            # For SSI mode when not cross-generation, get data from current major generation
-            # e.g., for gen 1.1, get all data from 1.0 to 1.9
-            major_gen = int(gen)
-            df_current_gen = df[(df['gen'] >= major_gen) & (df['gen'] < major_gen + 1) & (df['gen'] == gen)]
+        # Get current generation data (only the new generation)
+        df_current_gen = df[df['gen'] == gen]
         
         # Combine previous front with current generation for recalculation
         if not prev_front.empty and not df_current_gen.empty:
@@ -198,36 +238,35 @@ def generate_fronts(df, objectives, directions, name, gen, colors, marker, reach
             df_combined_front_bottom = prev_front_bottom.copy()
         
         # Calculate new fronts from combined data (much smaller than all generations)
-        front, dominated = find_pareto_indices(df_combined_front, objectives, directions)
-        front_top, dominated_top = find_pareto_indices(df_combined_front_top, objectives[:2], directions[:2])
-        front_bottom, dominated_bottom = find_pareto_indices(df_combined_front_bottom, objectives[1:], directions[1:])
+        front, dominated = find_pareto_indices_2(df_combined_front, objectives, directions)
+        front_top, dominated_top = find_pareto_indices_2(df_combined_front_top, objectives[:2], directions[:2])
+        front_bottom, dominated_bottom = find_pareto_indices_2(df_combined_front_bottom, objectives[1:], directions[1:])
         
-        # For plotting, we need the appropriate data based on mode
-        if CROSS_GENERATION_PARETO_FRONT:
-            df_current = df[(df['gen'] <= gen)]
-        else:
-            major_gen = int(gen)
-            df_current = df[(df['gen'] >= major_gen) & (df['gen'] <= gen)]
+        # # For plotting, we need the appropriate data based on mode
+        # if CROSS_GENERATION_PARETO_FRONT:
+        #     df_current = df[(df['gen'] <= gen)]
+        # else:
+        #     major_gen = int(gen)
+        #     df_current = df[(df['gen'] >= major_gen) & (df['gen'] <= gen)]
     elif CROSS_GENERATION_PARETO_FRONT:
         # First generation or no cache - plot the pareto front considering all SSI steps up through the current major generation
         df_current = df[(df['gen'] <= gen)]
-        front, dominated = find_pareto_indices(df_current, objectives, directions)
-        front_top, dominated_top = find_pareto_indices(df_current, objectives[:2], directions[:2])
-        front_bottom, dominated_bottom = find_pareto_indices(df_current, objectives[1:], directions[1:])
+        front, dominated = find_pareto_indices_2(df_current, objectives, directions)
+        front_top, dominated_top = find_pareto_indices_2(df_current, objectives[:2], directions[:2])
+        front_bottom, dominated_bottom = find_pareto_indices_2(df_current, objectives[1:], directions[1:])
     else:
         # plot the pareto front only considering the SSI steps within the current major generation
         major_gen = int(gen)
         df_current = df[(df['gen'] >= major_gen) & (df['gen'] <= gen)]
-        front, dominated = find_pareto_indices(df_current, objectives, directions)
-        front_top, dominated_top = find_pareto_indices(df_current, objectives[:2], directions[:2])
-        front_bottom, dominated_bottom = find_pareto_indices(df_current, objectives[1:], directions[1:])
+        front, dominated = find_pareto_indices_2(df_current, objectives, directions)
+        front_top, dominated_top = find_pareto_indices_2(df_current, objectives[:2], directions[:2])
+        front_bottom, dominated_bottom = find_pareto_indices_2(df_current, objectives[1:], directions[1:])
     
     all_fronts = {}
     all_fronts['name'] = name
     all_fronts['colors'] = colors
     all_fronts['marker'] = marker
     all_fronts['front'] = front
-    all_fronts['df'] = df_current
     all_fronts['dominated'] = dominated
     all_fronts['front_top'] = front_top
     all_fronts['dominated_top'] = dominated_top
@@ -348,6 +387,14 @@ if __name__ == "__main__":
         start = time.time()
         all_fronts = []
         
+        # Check if we need to reset cache for new major generation (only when CROSS_GENERATION_PARETO_FRONT is False)
+        if not CROSS_GENERATION_PARETO_FRONT:
+            current_major_gen = int(gen)
+            # Check if this is the first generation or if we've moved to a new major generation
+            if len(gens) == 0 or int(gens[-1]) != current_major_gen:
+                # Reset cache for new major generation
+                cached_fronts_by_dataframe = {}
+        
         for dataframe in dataframes:
             if gen <= dataframe['df']['gen'].max():
                 reached_max = False
@@ -361,7 +408,7 @@ if __name__ == "__main__":
             front_result = generate_fronts(dataframe['df'], objectives, directions, dataframe['name'], gen, dataframe['colors'], dataframe['marker'], reached_max, cached_fronts)
             all_fronts.append(front_result)
             
-            # Cache the fronts for next generation (only if we haven't reached max)
+            # Cache the fronts for next generation (always cache when we haven't reached max)
             if not reached_max:
                 cached_fronts_by_dataframe[dataframe_name] = {
                     'front': front_result['front'].copy(),
@@ -374,12 +421,11 @@ if __name__ == "__main__":
         print('GEN:', gen)
         for one_front in all_fronts:
             if not one_front['reached_max']:
-                df_current = one_front['df']
                 front = one_front['front']
                 front_top = one_front['front_top']
                 front_bottom = one_front['front_bottom']
                 name = one_front['name']
-                print('length of ' + name.lower() + ' fronts:', len(df_current), len(front), len(front_top), len(front_bottom))   
+                print('length of ' + name.lower() + ' fronts:', len(front), len(front_top), len(front_bottom))   
 
                 hv_front = front[[objectives[0], objectives[1], objectives[2]]].to_numpy() 
                 hv_front[:, 2] = hv_front[:, 2] * -1

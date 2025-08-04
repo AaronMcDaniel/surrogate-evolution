@@ -56,6 +56,57 @@ def stepify_pareto_points_2d(x, y, metric_directions):
     return x_steps, y_steps
 
 
+def find_pareto_indices_2(df, objectives, directions):
+    """
+    Efficient Pareto front calculation using vectorized operations
+    """
+    if df.empty:
+        return df.copy(), []
+    
+    # Convert to numpy array for faster operations
+    values = df[objectives].values
+    n_points = len(values)
+    
+    # Initialize dominated array
+    is_dominated = np.zeros(n_points, dtype=bool)
+    
+    # For each point, check if it's dominated by any other point
+    for i in range(n_points):
+        if is_dominated[i]:
+            continue
+            
+        # Compare point i with all other points
+        for j in range(n_points):
+            if i == j or is_dominated[j]:
+                continue
+                
+            # Check if point j dominates point i
+            dominates_count = 0
+            for k, direction in enumerate(directions):
+                if direction:  # minimize
+                    if values[j, k] < values[i, k]:
+                        dominates_count += 1
+                    elif values[j, k] > values[i, k]:
+                        break
+                else:  # maximize
+                    if values[j, k] > values[i, k]:
+                        dominates_count += 1
+                    elif values[j, k] < values[i, k]:
+                        break
+            
+            # If point j dominates point i in all objectives
+            if dominates_count == len(objectives):
+                is_dominated[i] = True
+                break
+    
+    # Get non-dominated points
+    pareto_mask = ~is_dominated
+    front = df.iloc[pareto_mask].copy()
+    dominated_indices = df.index[is_dominated].tolist()
+    
+    return front, dominated_indices
+
+
 def find_pareto_indices(df, objectives, directions):
     dominated = []
     front = df.copy()
@@ -179,24 +230,24 @@ def generate_fronts(df, objectives, directions, name, gen, colors, marker, reach
             df_combined_front_bottom = prev_front_bottom.copy()
         
         # Calculate new fronts from combined data (much smaller than all generations)
-        front, dominated = find_pareto_indices(df_combined_front, objectives, directions)
-        front_top, dominated_top = find_pareto_indices(df_combined_front_top, objectives[:2], directions[:2])
-        front_bottom, dominated_bottom = find_pareto_indices(df_combined_front_bottom, objectives[1:], directions[1:])
+        front, dominated = find_pareto_indices_2(df_combined_front, objectives, directions)
+        front_top, dominated_top = find_pareto_indices_2(df_combined_front_top, objectives[:2], directions[:2])
+        front_bottom, dominated_bottom = find_pareto_indices_2(df_combined_front_bottom, objectives[1:], directions[1:])
         
         # For plotting, we need all data up to current generation
         df_current = df[(df['gen'] <= gen)]
     elif CROSS_GENERATION_PARETO_FRONT:
         # First generation or no cache - plot the pareto front considering all generations up through the current generation
         df_current = df[(df['gen'] <= gen)]
-        front, dominated = find_pareto_indices(df_current, objectives, directions)
-        front_top, dominated_top = find_pareto_indices(df_current, objectives[:2], directions[:2])
-        front_bottom, dominated_bottom = find_pareto_indices(df_current, objectives[1:], directions[1:])
+        front, dominated = find_pareto_indices_2(df_current, objectives, directions)
+        front_top, dominated_top = find_pareto_indices_2(df_current, objectives[:2], directions[:2])
+        front_bottom, dominated_bottom = find_pareto_indices_2(df_current, objectives[1:], directions[1:])
     else:
         # plot the pareto front only considering the current generation population
         df_current = df[(df['gen'] == gen)]
-        front, dominated = find_pareto_indices(df_current, objectives, directions)
-        front_top, dominated_top = find_pareto_indices(df_current, objectives[:2], directions[:2])
-        front_bottom, dominated_bottom = find_pareto_indices(df_current, objectives[1:], directions[1:])
+        front, dominated = find_pareto_indices_2(df_current, objectives, directions)
+        front_top, dominated_top = find_pareto_indices_2(df_current, objectives[:2], directions[:2])
+        front_bottom, dominated_bottom = find_pareto_indices_2(df_current, objectives[1:], directions[1:])
     
     all_fronts = {}
     all_fronts['name'] = name
