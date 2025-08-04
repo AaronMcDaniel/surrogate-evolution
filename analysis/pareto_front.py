@@ -154,17 +154,49 @@ def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds
     plt.close()
     print('plot ' + str(gen) + ' done', flush=True)
 
-def generate_fronts(df, objectives, directions, name, gen, colors, marker, reached_max):
-    if CROSS_GENERATION_PARETO_FRONT:
-        # plot the pareto front considering all generations up through the current generation
+def generate_fronts(df, objectives, directions, name, gen, colors, marker, reached_max, cached_fronts=None):
+    if CROSS_GENERATION_PARETO_FRONT and cached_fronts is not None and gen > 1:
+        # Use cached front from previous generation and combine with current generation
+        prev_front = cached_fronts.get('front', pd.DataFrame())
+        prev_front_top = cached_fronts.get('front_top', pd.DataFrame())
+        prev_front_bottom = cached_fronts.get('front_bottom', pd.DataFrame())
+        
+        # Get current generation data
+        df_current_gen = df[(int(df['gen']) == int(gen))]
+        
+        # Combine previous front with current generation for recalculation
+        if not prev_front.empty and not df_current_gen.empty:
+            df_combined_front = pd.concat([prev_front, df_current_gen], ignore_index=True)
+            df_combined_front_top = pd.concat([prev_front_top, df_current_gen], ignore_index=True)
+            df_combined_front_bottom = pd.concat([prev_front_bottom, df_current_gen], ignore_index=True)
+        elif not df_current_gen.empty:
+            df_combined_front = df_current_gen.copy()
+            df_combined_front_top = df_current_gen.copy()
+            df_combined_front_bottom = df_current_gen.copy()
+        else:
+            df_combined_front = prev_front.copy()
+            df_combined_front_top = prev_front_top.copy()
+            df_combined_front_bottom = prev_front_bottom.copy()
+        
+        # Calculate new fronts from combined data (much smaller than all generations)
+        front, dominated = find_pareto_indices(df_combined_front, objectives, directions)
+        front_top, dominated_top = find_pareto_indices(df_combined_front_top, objectives[:2], directions[:2])
+        front_bottom, dominated_bottom = find_pareto_indices(df_combined_front_bottom, objectives[1:], directions[1:])
+        
+        # For plotting, we need all data up to current generation
         df_current = df[(df['gen'] <= gen)]
+    elif CROSS_GENERATION_PARETO_FRONT:
+        # First generation or no cache - plot the pareto front considering all generations up through the current generation
+        df_current = df[(df['gen'] <= gen)]
+        front, dominated = find_pareto_indices(df_current, objectives, directions)
+        front_top, dominated_top = find_pareto_indices(df_current, objectives[:2], directions[:2])
+        front_bottom, dominated_bottom = find_pareto_indices(df_current, objectives[1:], directions[1:])
     else:
         # plot the pareto front only considering the current generation population
         df_current = df[(int(df['gen']) == int(gen))]
-
-    front, dominated = find_pareto_indices(df_current, objectives, directions)
-    front_top, dominated_top = find_pareto_indices(df_current, objectives[:2], directions[:2])
-    front_bottom, dominated_bottom = find_pareto_indices(df_current, objectives[1:], directions[1:])
+        front, dominated = find_pareto_indices(df_current, objectives, directions)
+        front_top, dominated_top = find_pareto_indices(df_current, objectives[:2], directions[:2])
+        front_bottom, dominated_bottom = find_pareto_indices(df_current, objectives[1:], directions[1:])
     
     all_fronts = {}
     all_fronts['name'] = name
@@ -289,16 +321,33 @@ if __name__ == "__main__":
     min_gen = min(min_gens)
     max_gen = max(max_gens)
     all_hvs = {}
+    
+    # Cache for storing fronts from previous generation (for CROSS_GENERATION_PARETO_FRONT optimization)
+    cached_fronts_by_dataframe = {}
 
     for gen in range(min_gen, max_gen + 1): 
         all_fronts = []
         
-        for dataframe in dataframes:
+        for i, dataframe in enumerate(dataframes):
             if gen <= dataframe['df']['gen'].max():
                 reached_max = False
             else:
-                reached_max = True    
-            all_fronts.append(generate_fronts(dataframe['df'], objectives, directions, dataframe['name'], gen, dataframe['colors'], dataframe['marker'], reached_max))
+                reached_max = True
+            
+            # Get cached fronts from previous generation for this dataframe
+            dataframe_name = dataframe['name']
+            cached_fronts = cached_fronts_by_dataframe.get(dataframe_name, None) if CROSS_GENERATION_PARETO_FRONT else None
+            
+            front_result = generate_fronts(dataframe['df'], objectives, directions, dataframe['name'], gen, dataframe['colors'], dataframe['marker'], reached_max, cached_fronts)
+            all_fronts.append(front_result)
+            
+            # Cache the fronts for next generation (only if CROSS_GENERATION_PARETO_FRONT is enabled and we haven't reached max)
+            if CROSS_GENERATION_PARETO_FRONT and not reached_max:
+                cached_fronts_by_dataframe[dataframe_name] = {
+                    'front': front_result['front'].copy(),
+                    'front_top': front_result['front_top'].copy(),
+                    'front_bottom': front_result['front_bottom'].copy()
+                }
 
         gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch, best_epoch_direction)
         
