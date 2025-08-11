@@ -224,8 +224,6 @@ if __name__ == "__main__":
                     'front_bottom': front_result['front_bottom'].copy()
                 }
 
-        gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch, best_epoch_direction)
-        
         print('GEN:', gen)
         for one_front in all_fronts:
             if not one_front['reached_max']:
@@ -251,10 +249,20 @@ if __name__ == "__main__":
 
         gens.append(gen)
 
+    # Create a figure for the hypervolume plot
+    plt.figure(figsize=(10, 6))
+
+    # Plot each dataframe's hypervolumes with proper x-axis values
     for dataframe in dataframes:
         name = dataframe['name']
-        plt.plot(range(1, len(all_hvs[name]) + 1), all_hvs[name], marker=dataframe['marker'], color=dataframe['colors'][1], label=name)
-    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+        # Use the actual generation values (gens) as x-coordinates instead of range()
+        plt.plot(gens[:len(all_hvs[name])], all_hvs[name], 
+                marker=dataframe['marker'], color=dataframe['colors'][1], 
+                label=name)
+
+    # Remove the integer-only locator since we're using float generations
+    # plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+
     plt.legend()
     plt.title("Pareto Front Hypervolumes Per Generation")
     plt.xlabel('Generation')

@@ -903,7 +903,7 @@ class Pipeline:
         print('Done!')
 
     def log_ssi_info(self, ssi_gen, curr_deap_pop):
-        """Log population snapshot during SSI iterations."""
+        """Log population snapshot during SSI iterations (unused currently)"""
         print(f'Logging SSI generation {ssi_gen} data...')
         
         # Create SSI checkpoint directory

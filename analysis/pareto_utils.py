@@ -100,7 +100,7 @@ def find_pareto_indices(df, objectives, directions):
     return front, dominated_indices
 
 
-def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch, best_epoch_direction):
+def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch, best_epoch_direction, USER):
     metric_a = objectives[0]
     metric_b = objectives[1]
     metric_c = objectives[2]

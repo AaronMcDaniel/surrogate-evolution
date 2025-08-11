@@ -215,9 +215,9 @@ if __name__ == "__main__":
                     'front_bottom': front_result['front_bottom'].copy()
                 }
 
-        gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch, best_epoch_direction)
+        gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch, best_epoch_direction, USER)
         
-        print('GEN:', gen)
+        print('GEN:', gen, flush=True)
         for one_front in all_fronts:
             if not one_front['reached_max']:
                 df_current = one_front['df']
