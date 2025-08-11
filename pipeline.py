@@ -28,6 +28,9 @@ from surrogates.surrogate_dataset import build_dataset
 import numpy as np
 import re
 from custom_selection import dbea_selection, lexicase_selection
+import surrogates.surrogate_dataset as sd
+from torch.utils.data import DataLoader
+from surrogates.preprocessing import VAEPreprocessor
 
 
 # job file params
@@ -126,6 +129,9 @@ class Pipeline:
         else:
             self.surrogate_pretrained = False
             self.surrogate_pretrained_dir = None
+        if 'preprocess' in surrogate_config:
+            self.preprocess = surrogate_config['preprocess']
+            self.preprocess_batch_size = surrogate_config['preprocess_batch_size']
         self.objectives = pipeline_config['objectives']
         self.selection_method_trusted = pipeline_config['selection_method_trusted']
         self.selection_method_untrusted = pipeline_config['selection_method_untrusted']
@@ -510,6 +516,8 @@ class Pipeline:
         config = {
             'gen': self.gen_count,
             'train_reg': train_reg,
+            'preprocess': self.preprocess,
+            'preprocess_batch_size': self.preprocess_batch_size
         }
         with open(os.path.join(train_data_dir, f'config.pkl'), 'wb') as f:
             pickle.dump(config, f)
@@ -519,7 +527,7 @@ class Pipeline:
     def wait_for_surrogate_training_job(self, job_id):
         """Wait for the surrogate training job to complete and return its results."""
         print('    Waiting for surrogate training job to complete...')
-        
+        print(time.time(), flush=True)
         while True:
             time.sleep(30)  # Check status every 30 seconds
             p = subprocess.Popen(['squeue', '-j', job_id], stdout=subprocess.PIPE)
@@ -527,6 +535,7 @@ class Pipeline:
             if len(text.split('\n')) <= 2:  # Only header line remains
                 print('    Training job completed!')
                 break
+        print(time.time(), flush=True)
         
         # Load and return results
         results_path = os.path.join(self.output_dir, 'surrogate_train_data', f'surrogate_results.pkl')
@@ -596,7 +605,7 @@ class Pipeline:
         # concatenate online datasets wit pretrained datasets
         reg_train_df = pd.concat([reg_train_df, self.reg_surrogate_pretrained_data], axis=0)
         cls_train_df = pd.concat([cls_train_df, self.cls_surrogate_pretrained_data], axis=0)
-        
+
         print('++++++++++++++++++++++++')
         print('reg train size:', reg_train_df.shape)
         print('reg val size:', reg_val_df.shape)
@@ -634,6 +643,12 @@ class Pipeline:
             print("    Failed to submit surrogate training job")
             return None
         
+        # Reload train/val dataframes if they were preprocessed
+        if self.preprocess:
+            cls_train_df = pd.read_pickle(os.path.join(train_data_dir, 'cls_train.pkl'))
+            cls_val_df = pd.read_pickle(os.path.join(train_data_dir, 'cls_val.pkl'))
+            reg_train_df = pd.read_pickle(os.path.join(train_data_dir, 'reg_train.pkl'))
+            reg_val_df = pd.read_pickle(os.path.join(train_data_dir, 'reg_val.pkl'))
 
         print('    Selecting best sub-surrogates...')
         sub_surrogates = []

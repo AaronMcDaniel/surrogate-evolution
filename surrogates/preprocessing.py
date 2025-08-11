@@ -4,6 +4,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from tqdm import tqdm
 import numpy as np
+import os
 
 
 # Base VAE Class
@@ -128,10 +129,43 @@ class VAEPreprocessor():
         
         print(f"Reconstruction Loss on Dataset: {total_recon_loss:.2f}")
         data_df['genome'] = latent_vectors
-        return data_df
     
     def process(self):
         self.train_vae()
-        mod_train_df = self.apply_vae(self.train_df)
-        mod_val_df = self.apply_vae(self.val_df)
-        return mod_train_df, mod_val_df
+        self.apply_vae(self.train_df)
+        self.apply_vae(self.val_df)
+    
+    def save_vae_weights(self, save_path):
+        """Save VAE model weights to disk."""
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        torch.save(self.vae.state_dict(), save_path)
+        print(f"VAE weights saved to {save_path}")
+    
+    def load_vae_weights(self, load_path):
+        """Load VAE model weights from disk."""
+        if os.path.exists(load_path):
+            self.vae.load_state_dict(torch.load(load_path, map_location=self.device))
+            self.vae.eval()
+            print(f"VAE weights loaded from {load_path}")
+            return True
+        else:
+            print(f"VAE weights file not found at {load_path}")
+            return False
+    
+    def preprocess_inference_data(self, inference_df):
+        """Apply VAE preprocessing to inference data (genome column only)."""
+        self.vae.eval()
+        genomes = np.stack(inference_df['genome'].values)
+        latent_vectors = []
+        
+        with torch.no_grad():
+            for i in range(genomes.shape[0]):
+                vector = torch.from_numpy(genomes[i,:]).float()
+                vector = vector.to(self.device)
+                _, mu, _ = self.vae(vector)  # Only use the mean (mu) for inference
+                latent_vectors.append(mu.cpu().numpy())
+        
+        # Create a copy of the dataframe with preprocessed genomes
+        processed_df = inference_df.copy()
+        processed_df['genome'] = latent_vectors
+        return processed_df

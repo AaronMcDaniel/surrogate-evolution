@@ -19,11 +19,13 @@ from surrogates import surrogate_models as sm
 import toml
 import torch
 import torch.optim as optim
+from torch.utils.data import DataLoader
 from sklearn.preprocessing import StandardScaler
 from surrogates import surrogate_dataset as sd
 from surrogates import classifier_surrogate_eval as cse
 from surrogates import surrogate_eval as se
 from surrogates import surrogate_eval as rse
+from surrogates.preprocessing import VAEPreprocessor
 import random
 import os
 
@@ -67,7 +69,8 @@ class Surrogate():
                 'scheduler': optim.lr_scheduler.CosineAnnealingLR,
                 'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
                 'validation_subset': [0, 4, 11],
-                'model': sm.MLP
+                'model': sm.MLP,
+                'input_size': 256 if surrogate_config['preprocess'] else 1021
             },
             {
                 'name': 'mlp_best_uwvl',
@@ -78,7 +81,8 @@ class Surrogate():
                 'scheduler': optim.lr_scheduler.CosineAnnealingLR,
                 'metrics_subset': [0],
                 'validation_subset': [0],
-                'model': sm.MLP
+                'model': sm.MLP,
+                'input_size': 256 if surrogate_config['preprocess'] else 1021
             },
             {
                 'name': 'mlp_best_cioul',
@@ -89,7 +93,8 @@ class Surrogate():
                 'scheduler': optim.lr_scheduler.StepLR,
                 'metrics_subset': [0, 4, 11],
                 'validation_subset': [4],
-                'model': sm.MLP
+                'model': sm.MLP,
+                'input_size': 256 if surrogate_config['preprocess'] else 1021
             },
             {
               'name': 'mlp_best_ap',
@@ -100,7 +105,8 @@ class Surrogate():
               'scheduler': optim.lr_scheduler.CosineAnnealingLR,
               'metrics_subset': [11],
               'validation_subset': [11],
-              'model': sm.MLP
+              'model': sm.MLP,
+              'input_size': 256 if surrogate_config['preprocess'] else 1021
             },
             {
               'name': 'kan_best_uwvl',
@@ -112,7 +118,8 @@ class Surrogate():
               'metrics_subset': [0],
               'validation_subset': [0],
               'grid_size': 10,
-              'spline_order': 3
+              'spline_order': 3,
+              'input_size': 256 if surrogate_config['preprocess'] else 1021
             },
             {
               'name': 'kan_best_cioul',
@@ -124,7 +131,8 @@ class Surrogate():
               'metrics_subset': [4],
               'validation_subset': [4],
               'grid_size': 25,
-              'spline_order': 1
+              'spline_order': 1,
+              'input_size': 256 if surrogate_config['preprocess'] else 1021
             },
             {
               'name': 'kan_best_ap',
@@ -137,7 +145,8 @@ class Surrogate():
               'model': sm.KAN,
               'spline_order': 1,
               'grid_size': 25,
-              'model': sm.KAN
+              'model': sm.KAN,
+              'input_size': 256 if surrogate_config['preprocess'] else 1021
             },
             {
                 'name': 'kan_best_overall',
@@ -149,7 +158,8 @@ class Surrogate():
                 'validation_subset': [0, 4, 11],
                 'spline_order': 1,
                 'grid_size': 10,
-                'model': sm.KAN
+                'model': sm.KAN,
+                'input_size': 256 if surrogate_config['preprocess'] else 1021
             }
         ]
         self.classifier_models = [
@@ -161,7 +171,8 @@ class Surrogate():
                 'lr': 0.0001,
                 'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
                 'model': sm.MLP,
-                'output_size': 1
+                'output_size': 1,
+                'input_size': 256 if surrogate_config['preprocess'] else 1021
             },
             {
                 'name': 'best_kan_classifier',
@@ -172,7 +183,8 @@ class Surrogate():
                 'scheduler': optim.lr_scheduler.CosineAnnealingWarmRestarts,
                 'lr': 0.1,
                 'spline_order': 2,
-                'grid_size': 1
+                'grid_size': 1,
+                'input_size': 256 if surrogate_config['preprocess'] else 1021
             }
         ]
         self.trust_calc_strategy = surrogate_config["trust_calc_strategy"]
@@ -182,6 +194,7 @@ class Surrogate():
         self.weights_dir = weights_dir
         self.num_epochs = surrogate_config['surrogate_train_epochs']
         self.batch_size = surrogate_config['surrogate_batch_size']
+        self.preprocess = surrogate_config.get('preprocess', False)
         
         self.pset = primitives.pset
         self.reg_trust = 0
@@ -192,8 +205,35 @@ class Surrogate():
         self.METRICS = surrogate_config["surrogate_metrics"]
         self.opt_directions = surrogate_config["opt_directions"]
         
+        # Initialize VAE preprocessors for inference if preprocessing is enabled
+        self.cls_vae_preprocessor = None
+        self.reg_vae_preprocessor = None
+        if self.preprocess:
+            self.cls_vae_preprocessor = VAEPreprocessor(None, None, None)
+            self.reg_vae_preprocessor = VAEPreprocessor(None, None, None)
+        
         ensure_deap_classes(self.objectives, codec_config)
         self.toolbox = base.Toolbox()
+    
+    
+    def load_vae_weights(self):
+        """Load VAE weights for inference if preprocessing is enabled."""
+        if not self.preprocess:
+            return False
+        
+        cls_vae_weights_path = os.path.join(self.weights_dir, 'cls_vae_weights.pth')
+        reg_vae_weights_path = os.path.join(self.weights_dir, 'reg_vae_weights.pth')
+        
+        cls_loaded = False
+        reg_loaded = False
+        
+        if self.cls_vae_preprocessor:
+            cls_loaded = self.cls_vae_preprocessor.load_vae_weights(cls_vae_weights_path)
+            
+        if self.reg_vae_preprocessor:
+            reg_loaded = self.reg_vae_preprocessor.load_vae_weights(reg_vae_weights_path)
+            
+        return cls_loaded and reg_loaded
     
     
     # This function converts string representations of genomes from a file like out.csv into deap individuals
@@ -282,14 +322,23 @@ class Surrogate():
     # inference models is a list of models where the first entry is the classifier model index to use and the
     # rest are the indices of the sub-surrogate regressor models 
     def get_inferences(self, inference_models, inference_df, cls_genome_scaler, reg_genome_scaler):
+        # Apply VAE preprocessing if enabled
+        cls_inference_df = inference_df.copy()
+        if self.preprocess and self.cls_vae_preprocessor:
+            cls_inference_df = self.cls_vae_preprocessor.preprocess_inference_data(inference_df)
+        
         # inference with cls model
         cls_model = inference_models[0]
         cls_dict = self.classifier_models[cls_model]
-        cls_infs = cse.get_inferences(cls_dict, self.device, inference_df, cls_genome_scaler, self.weights_dir) # list of inferences. status of 1 means failed 0 means not
+        cls_infs = cse.get_inferences(cls_dict, self.device, cls_inference_df, cls_genome_scaler, self.weights_dir) # list of inferences. status of 1 means failed 0 means not
 
-        # make df with successful individuals
+        # make df with successful individuals for regression
         success_indices = [i for i, status in enumerate(cls_infs) if status == 0]
         reg_inf_df = inference_df.iloc[success_indices]
+        
+        # Apply VAE preprocessing for regression if enabled
+        if self.preprocess and self.reg_vae_preprocessor:
+            reg_inf_df = self.reg_vae_preprocessor.preprocess_inference_data(reg_inf_df)
 
         # inference with reg models
         reg_infs = self.get_reg_inferences(inference_models[1:], reg_inf_df, reg_genome_scaler)
@@ -331,6 +380,12 @@ class Surrogate():
     # takes in a list of deap individuals and assigns them inferred fitnesses
     # used for downselecting 
     def set_fitnesses(self, inference_models, cls_genome_scaler, reg_genome_scaler, deap_list):
+        # Load VAE weights if preprocessing is enabled
+        if self.preprocess:
+            vae_loaded = self.load_vae_weights()
+            if not vae_loaded:
+                print("Warning: Failed to load VAE weights for preprocessing")
+        
         deap_list = copy.deepcopy(deap_list)
         invalid_deap = []
         valid_deap = []
