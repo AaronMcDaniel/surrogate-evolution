@@ -336,8 +336,12 @@ class Pipeline:
         
         if self.surrogate_enabled:
             print('    Preparing surrogate...')
-            all_subsurrogate_metrics = self.prepare_surrogate()
-                        
+            try:
+                all_subsurrogate_metrics = self.prepare_surrogate()
+            except KeyError as e:
+                print(f"KeyError occurred while preparing surrogate. Not enough training data.")
+                all_subsurrogate_metrics = None
+
         print('    Waiting for jobs...')
         # wait for job to finish
         while True:
