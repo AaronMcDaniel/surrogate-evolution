@@ -34,7 +34,7 @@ from surrogates.preprocessing import VAEPreprocessor
 
 
 # job file params
-JOB_NAME = 'b_evo'
+JOB_NAME = 's_evo'
 NODES = 1
 CORES = 8
 MEM = '24GB'
@@ -64,6 +64,8 @@ def ensure_deap_classes(objectives, codec_config):
 class Pipeline:
     def __init__(self, output_dir, config_dir, force_wipe = False, clean = False) -> None:
         self.output_dir = output_dir
+        global JOB_NAME
+        JOB_NAME = f'{JOB_NAME}_{os.path.basename(output_dir)}'
         self.force_wipe = force_wipe
         self.clean = clean
         self.logs_dir = os.path.join(self.output_dir, 'logs')
