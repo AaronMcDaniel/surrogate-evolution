@@ -270,16 +270,20 @@ def build_dataset(
     print("complete_reg_set: ",  complete_reg_set.head())
     print("complete_reg_set cols: ",  complete_reg_set.columns.tolist())
 
-    complete_reg_set, reg_num_train_rem = remove_dupes(complete_reg_set, 'genome', reg_concat_idx)
-    complete_cls_set, cls_num_train_rem = remove_dupes(complete_cls_set, 'genome', cls_concat_idx)
+    try:
+        complete_reg_set, reg_num_train_rem = remove_dupes(complete_reg_set, 'genome', reg_concat_idx)
+        complete_cls_set, cls_num_train_rem = remove_dupes(complete_cls_set, 'genome', cls_concat_idx)
 
-    reg_split = reg_concat_idx - reg_num_train_rem
-    cls_split = reg_concat_idx - cls_num_train_rem
+        reg_split = reg_concat_idx - reg_num_train_rem
+        cls_split = reg_concat_idx - cls_num_train_rem
 
-    reg_train_set = complete_reg_set[:reg_split]
-    reg_val_set = complete_reg_set[reg_split:]
-    cls_train_set = complete_cls_set[:cls_split]
-    cls_val_set = complete_cls_set[cls_split:]
+        reg_train_set = complete_reg_set[:reg_split]
+        reg_val_set = complete_reg_set[reg_split:]
+        cls_train_set = complete_cls_set[:cls_split]
+        cls_val_set = complete_cls_set[cls_split:]
+    except Exception as e:
+        print("Error removing dupes and splitting the train/val sets: ", e)
+        print("This is likely due to the dataframes being empty")
 
     # write train/val sets to file
     os.makedirs(outdir, exist_ok=True)

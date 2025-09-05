@@ -330,6 +330,7 @@ class Surrogate():
         # inference with cls model
         cls_model = inference_models[0]
         cls_dict = self.classifier_models[cls_model]
+        print("Columns in cls_inference_df:", cls_inference_df.columns, flush=True)
         cls_infs = cse.get_inferences(cls_dict, self.device, cls_inference_df, cls_genome_scaler, self.weights_dir) # list of inferences. status of 1 means failed 0 means not
 
         # make df with successful individuals for regression
@@ -341,6 +342,7 @@ class Surrogate():
             reg_inf_df = self.reg_vae_preprocessor.preprocess_inference_data(reg_inf_df)
 
         # inference with reg models
+        print("Columns in cls_inference_df:", reg_inf_df.columns, flush=True)
         reg_infs = self.get_reg_inferences(inference_models[1:], reg_inf_df, reg_genome_scaler)
 
         return cls_infs, reg_infs
@@ -367,6 +369,7 @@ class Surrogate():
         # get regression inferences
         for reg_dict in reg_dicts:
             val_subset = reg_dict['validation_subset']
+            print("Columns in inf_df:", inf_df.columns, flush=True)
             inf = se.get_inferences(reg_dict, self.device, inf_df, genome_scaler, self.weights_dir)
 
             # use val_subset to map inferences to correct df cols
@@ -401,6 +404,7 @@ class Surrogate():
             except:
                 invalid_deap.append(genome)
         # step 2: get inferences on these genomes
+        print("Columns in inference_df:", inference_df.columns, flush=True)
         failed, inferred_df = self.get_inferences(inference_models, inference_df, cls_genome_scaler, reg_genome_scaler)
         # at this stage, the inferred_df contains the set of individuals predicted as valid by the classifier
 

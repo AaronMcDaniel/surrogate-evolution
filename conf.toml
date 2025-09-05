@@ -8,7 +8,7 @@ population_size = 30
 # unsustainable population size
 unsustainable_population_size = 500
 # number of parents to be selected to mate
-num_parents = 20
+num_parents = 6
 # types of crossovers and their probabilities
 crossovers = {one_point = 0.5, one_point_leaf_biased = 0.3}
 # types of mutations and their probabilities
@@ -26,7 +26,7 @@ selection_method_parents = "NSGA2" # Need to define all enums
 # strategy for selecting elite individuals
 selection_method_elite_pool = "SPEA2" # Need to define all enums
 # max size of elite pool
-max_elite_pool = 50
+max_elite_pool = 4
 # source of genomes to train the surrogate with each generation 
 train_pool_source = "All" 
 # source of genomes used to calculate the trust value of the surrogate(s)
@@ -48,7 +48,10 @@ ssi_sustainable_population_size = 500
 # whether to use surrogate when calling the final downselect operation on the unsustainable population
 surrogate_in_final_downselect = false
 # number of parents selected in the ssi loop
-num_parents_ssi = 30
+num_parents_ssi = 20
+# percent of individuals submitted for evaluation that should be sourced from ssi
+ssi_population_percentage = 0.8
+
 
 [model]
 # number of epochs to train individuals for
@@ -101,6 +104,10 @@ min_batch_in_val_data = 2
 pretrained = true
 # folder containing surrogate datasets used in pretraining the model
 pretrained_dir = '/storage/ice-shared/vip-vvk/data/AOT/surrogate_dataset'
+# flag that determines whether inputs to the surrogate are preprocessed using a VAE
+preprocess = false
+# batch size to use when training the preprocessor VAE
+preprocess_batch_size = 16
 
 
 [data]

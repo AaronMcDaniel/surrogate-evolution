@@ -7,8 +7,9 @@
 # Configuration
 ORIGINAL_SCRIPT="main_ssi.job"
 SCRIPT_ARGS=(
-    '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_not_seeded -c conf_gens.toml -n 100 -e nas -r'
-    '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_no_pretrain -c conf_nopre.toml -n 100 -e nas -s seeds.txt -r'
+    '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_no_pretrain_30 -c conf_nopre.toml -n 100 -e nas -r'
+    '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_30 -c conf_gens.toml -n 100 -e nas -r'
+    '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30 -c conf_gens_vae.toml -n 100 -e nas -r'
     # Add more script argument sets here as needed
 )
 RESTART_TIME_SECONDS=$((17 * 3600 + 45 * 60))  # 17h 45m in seconds

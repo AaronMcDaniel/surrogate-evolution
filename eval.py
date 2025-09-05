@@ -28,6 +28,7 @@ from torch.cuda.amp import autocast, GradScaler
 import utils as u
 import criterion as c
 from codec import Codec
+import random
 
 
 # wrapper function to log important information
@@ -464,6 +465,12 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
 
 
 if __name__ == '__main__':
+    SEED = 93
+    # set random seed for reproducibility
+    torch.manual_seed(SEED)
+    np.random.seed(SEED)
+    random.seed(SEED)
+
     # parses arguments from sbatch job
     parser = argparse.ArgumentParser()
     parser.add_argument("index", type=int)

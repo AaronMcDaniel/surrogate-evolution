@@ -30,7 +30,6 @@ import re
 from custom_selection import dbea_selection, lexicase_selection
 import surrogates.surrogate_dataset as sd
 from torch.utils.data import DataLoader
-from surrogates.preprocessing import VAEPreprocessor
 
 
 # job file params
@@ -272,6 +271,8 @@ class Pipeline:
             os.makedirs(self.surrogate_weights_dir)
             self.init_pop(seed_file)
 
+        print("Output dir:", self.output_dir, flush=True)
+
         # if surrogate should be "pretrained", load existing data
         if self.surrogate_pretrained:
             self.cls_surrogate_pretrained_data = pd.read_pickle(f'{self.surrogate_pretrained_dir}/pretrain_cls_train.pkl')
@@ -340,8 +341,8 @@ class Pipeline:
             print('    Preparing surrogate...')
             try:
                 all_subsurrogate_metrics = self.prepare_surrogate()
-            except KeyError as e:
-                print(f"KeyError occurred while preparing surrogate. Not enough training data.")
+            except Exception as e:
+                print("Error occurred while preparing surrogate. Likely due to training data being empty.")
                 all_subsurrogate_metrics = None
 
         print('    Waiting for jobs...')
@@ -536,9 +537,12 @@ class Pipeline:
         print(time.time(), flush=True)
         while True:
             time.sleep(30)  # Check status every 30 seconds
+            print(f"Checking squeue -j {job_id}", flush=True)
             p = subprocess.Popen(['squeue', '-j', job_id], stdout=subprocess.PIPE)
             text = p.stdout.read().decode('utf-8')
-            if len(text.split('\n')) <= 2:  # Only header line remains
+            print("squeue response:\n", text, flush=True)
+            jobs = text.split('\n')[1:-1]
+            if len(jobs) == 0:  # Only header line remains
                 print('    Training job completed!')
                 break
         print(time.time(), flush=True)
@@ -573,39 +577,44 @@ class Pipeline:
         print('    Building surrogate train and val datasets...')
         # implement growing sliding window till gen 7 (then use prev 5 gens as val and everything before that as train)
         name = 'surr_evolution'
-        if self.gen_count == 2: # use train val split from gen 1 at gen 2
-            if rebuild:
-                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0.2, include_only=[1])
-            reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
-            reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
-            # reg_subset_val_df = reg_val_df
-            cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
-            cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
-            # cls_subset_val_df = cls_val_df
-        elif self.gen_count < 7: # grows here
-            if rebuild:
-                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=[1])
-            reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
-            cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
-            if rebuild:
-                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[1:])
-            reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
-            cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
-            # build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
-            # reg_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
-            # cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
-        else: # slides here
-            if rebuild:
-                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=seen_gens[:-5])
-            reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
-            cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
-            if rebuild:
-                build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-5:])
-            reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
-            cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
-            # build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
-            # reg_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
-            # cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
+
+        try:
+            if self.gen_count == 2: # use train val split from gen 1 at gen 2
+                if rebuild:
+                    build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0.2, include_only=[1])
+                reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
+                reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
+                # reg_subset_val_df = reg_val_df
+                cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
+                cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
+                # cls_subset_val_df = cls_val_df
+            elif self.gen_count < 7: # grows here
+                if rebuild:
+                    build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=[1])
+                reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
+                cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
+                if rebuild:
+                    build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[1:])
+                reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
+                cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
+                # build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
+                # reg_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
+                # cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
+            else: # slides here
+                if rebuild:
+                    build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=seen_gens[:-5])
+                reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
+                cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
+                if rebuild:
+                    build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-5:])
+                reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
+                cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
+                # build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
+                # reg_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
+                # cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
+        except FileNotFoundError as e:
+            print('    ----Warning: no surrogate training data found. failed to prepare surrogate----')
+            return None
             
 
         # concatenate online datasets wit pretrained datasets
@@ -727,7 +736,10 @@ class Pipeline:
         return condensed
     
 
-    def downselect(self, unsustainable_pop, fully_trust_surrogate=False, for_ssi=False):
+    def downselect(self, unsustainable_pop, fully_trust_surrogate=False, for_ssi=False, custom_population_size=None):
+        population_size = self.population_size
+        if custom_population_size:
+            population_size = custom_population_size
         print('Downselecting...')
         if self.surrogate_enabled and (self.surrogate_in_final_downselect or for_ssi) and self.gen_count != 1 and os.listdir(self.surrogate_weights_dir):
             unsustainable_pop_copy = copy.deepcopy(unsustainable_pop)
@@ -737,21 +749,21 @@ class Pipeline:
 
             # define sizes for stages of selection
             # selection where we trust surrogate classification AND regression values
-            num_tw_select = int(self.surrogate.reg_trust * self.surrogate.cls_trust * self.population_size)
+            num_tw_select = int(self.surrogate.reg_trust * self.surrogate.cls_trust * population_size)
             # selection where we trust surrogate classification AND NOT regression
-            num_utw_select = int((1 - self.surrogate.reg_trust) * self.surrogate.cls_trust * self.population_size)
+            num_utw_select = int((1 - self.surrogate.reg_trust) * self.surrogate.cls_trust * population_size)
             # selection where we don't trust any of the surrogate's predictions
-            num_rand_other_select = (self.population_size - num_tw_select - num_utw_select) 
+            num_rand_other_select = (population_size - num_tw_select - num_utw_select) 
             
             # create downselect function for trustwrothy surrogate ratio
             if self.selection_method_trusted == 'NSGA2':
                 if fully_trust_surrogate:
-                    self.toolbox.register("downselect", tools.selNSGA2, k = self.population_size)
+                    self.toolbox.register("downselect", tools.selNSGA2, k = population_size)
                 else:
                     self.toolbox.register("downselect", tools.selNSGA2, k = num_tw_select)
             # TODO add other if statements for other selections strategies
 
-            if len(valid_deap) < (self.population_size * self.surrogate.cls_trust):
+            if len(valid_deap) < (population_size * self.surrogate.cls_trust):
                 downselect_pool = invalid_deap + valid_deap
             else:
                 downselect_pool = valid_deap
@@ -852,8 +864,10 @@ class Pipeline:
     def simulated_surrogate_injection_new(self, curr_pop):
         curr_pop = copy.deepcopy(curr_pop)
         print('Beginning Simulated Surrogate Injection')
+        self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents_ssi)
         
         for i in range(self.num_gens_ssi):
+            print("Len of cur pop", len(curr_pop), flush=True)
             valid = None
             if i > 0:
                 _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
@@ -866,7 +880,7 @@ class Pipeline:
                 parents = self.select_parents(valid) 
             else:
                 parents = valid
-                            
+
             unsustainable_pop = self.overpopulate(parents, ssi=True)
             if i == self.num_gens_ssi - 1:
                 downselected = tools.selNSGA2(valid, int(self.population_size*self.ssi_population_percentage))
@@ -874,9 +888,12 @@ class Pipeline:
                 curr_pop = {self.__get_hash(str(x)):x for x in downselected}
             else:
                 curr_pop = unsustainable_pop
+                print("Len of cur pop", len(unsustainable_pop), flush=True)
 
             print(f'{i + 1} Generations of SSI Completed')
+        self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents)
         return curr_pop
+
     
     def save_ssi_metrics(self, ssi_gen, valid_individuals):
         """Save surrogate-predicted metrics to outssi.csv."""

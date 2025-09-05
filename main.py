@@ -45,10 +45,16 @@ def print_random_state_fingerprint(random_state, np_random_state):
     print("RANDOM HASH", py_hash)
     print("NP RANDOM HASH", np_hash)
 
+SEED = 93
+random.seed(SEED)
+np.random.seed(SEED)
+
 GaPipeline = Pipeline(output_dir, config_dir, force_flag, clean)
 GaPipeline.initialize(seed_file)
-SEED = 60
 while GaPipeline.gen_count <= num_gen:
+    random.seed(int(SEED*(GaPipeline.gen_count+1)))
+    np.random.seed(int(SEED*(GaPipeline.gen_count+1)))
+    
     print(f'---------- Generation {GaPipeline.gen_count} ----------')
     if not GaPipeline.attempt_resume:
         GaPipeline.evaluate_gen()

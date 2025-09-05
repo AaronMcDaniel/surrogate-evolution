@@ -12,6 +12,7 @@ from deap import tools
 import copy
 import hashlib
 import math
+import torch
 
 parser = argparse.ArgumentParser()
     
@@ -50,10 +51,20 @@ def print_random_state_fingerprint(random_state, np_random_state):
     print("RANDOM HASH", py_hash)
     print("NP RANDOM HASH", np_hash)
 
+SEED = 93
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+
+REMOVE_PARTITIONED_POPULATION_ABLATION = False
+
 GaPipeline = Pipeline(output_dir, config_dir, force_flag, clean)
 GaPipeline.initialize(seed_file)
-SEED = 61
 while GaPipeline.gen_count <= num_gen:
+    random.seed(int(SEED*(GaPipeline.gen_count+1)))
+    np.random.seed(int(SEED*(GaPipeline.gen_count+1)))
+    torch.manual_seed(int(SEED*(GaPipeline.gen_count+1)))
+    
     print(f'---------- Generation {GaPipeline.gen_count} ----------')
     if not GaPipeline.attempt_resume:
         GaPipeline.evaluate_gen()
@@ -64,6 +75,7 @@ while GaPipeline.gen_count <= num_gen:
 
     random.seed(int(SEED*(GaPipeline.gen_count+1)))
     np.random.seed(int(SEED*(GaPipeline.gen_count+1)))
+    torch.manual_seed(int(SEED*(GaPipeline.gen_count+1)))
     
     if not GaPipeline.attempt_resume:
         elites = GaPipeline.update_elite_pool() # elites are selected from existing elite pool and current pop
@@ -76,21 +88,22 @@ while GaPipeline.gen_count <= num_gen:
     print_random_state_fingerprint(random.getstate(), np.random.get_state())
 
     unsustainable_pop = None
-    if ssi and (GaPipeline.gen_count >= ssi_start_gen) and ((GaPipeline.gen_count - ssi_start_gen) % ssi_freq == 0):
+    if ssi and (GaPipeline.gen_count >= ssi_start_gen) and ((GaPipeline.gen_count - ssi_start_gen) % ssi_freq == 0) and all_subsurrogate_metrics is not None:
         # returns pop dict
         selection_pool = copy.deepcopy(elites + GaPipeline.current_deap_pop)
         selection_pool = {GaPipeline.get_hash_public(str(x)):x for x in selection_pool}
         unsustainable_pop = GaPipeline.simulated_surrogate_injection_new(selection_pool)
-        remove_hashes = set()
-        for hash in selection_pool:
-            if hash in unsustainable_pop:
-                remove_hashes.add(hash)
-        for hash in remove_hashes:
-            del selection_pool[hash]
-        k = math.ceil(GaPipeline.population_size*(1-GaPipeline.ssi_population_percentage))
-        retained_pop = tools.selNSGA2(list(selection_pool.values()), k=k)
-        retained_pop = GaPipeline.overpopulate(retained_pop, custom_pop_size=k)
-        unsustainable_pop.update(retained_pop)
+        if not REMOVE_PARTITIONED_POPULATION_ABLATION:
+            remove_hashes = set()
+            for hash in selection_pool:
+                if hash in unsustainable_pop:
+                    remove_hashes.add(hash)
+            for hash in remove_hashes:
+                del selection_pool[hash]
+            k = math.ceil(GaPipeline.population_size*(1-GaPipeline.ssi_population_percentage))
+            retained_pop = tools.selNSGA2(list(selection_pool.values()), k=k)
+            retained_pop = GaPipeline.overpopulate(retained_pop, custom_pop_size=k)
+            unsustainable_pop.update(retained_pop)
     else:
         selected_parents = GaPipeline.select_parents(elites + GaPipeline.current_deap_pop) 
         unsustainable_pop = GaPipeline.overpopulate(selected_parents)

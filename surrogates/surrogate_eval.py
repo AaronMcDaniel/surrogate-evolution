@@ -157,6 +157,7 @@ def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir)
     # get model and load weights
     model, _, _, _, val_subset = build_configuration(model_dict, device)
     model.load_state_dict(torch.load(f'{weights_dir}/{model_dict["name"]}.pth', map_location=device))
+    print('Columns in inference_df:', inference_df.columns, flush=True)
     genomes = np.stack(inference_df['genome'].values)
 
     # scale features with train scaler

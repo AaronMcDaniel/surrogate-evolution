@@ -20,7 +20,7 @@ parser.add_argument('--include_min_max', action='store_true', help='If set, incl
 args = parser.parse_args()
 
 
-csv_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_not_seeded/out.csv'
+csv_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/out.csv'
 USER = args.username
 output_dir = f'/home/hice1/{USER}/scratch/surrogate-evolution/analysis/graphs/metricsPlotting/'
 

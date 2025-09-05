@@ -13,11 +13,11 @@ from pareto_utils import find_pareto_indices, gen_plot
 
 parser = argparse.ArgumentParser()
 parser.add_argument('username', type=str)
-parser.add_argument('cross_generation_pareto_front', type=bool, default=False)
+parser.add_argument('--cross_gen', action='store_true', help='If set, hall of fame is computed from all populations up to and including the current generation')
 
 args = parser.parse_args()
 USER = args.username
-CROSS_GENERATION_PARETO_FRONT = args.cross_generation_pareto_front
+CROSS_GENERATION_PARETO_FRONT = args.cross_gen
 
 
 def generate_fronts(df, objectives, directions, name, gen, colors, marker, reached_max, cached_fronts=None):
@@ -94,17 +94,17 @@ if __name__ == "__main__":
     
     # HERE IS WHERE YOU ADD FRONTS
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
-    baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_no_pretrain/out.csv'
+    baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_30/out.csv'
     df_baseline = pd.read_csv(baseline_path)
-    # surrogate_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/testing_baseline2/testing_baseline/out.csv'
-    # df_surrogate = pd.read_csv(surrogate_path)
-    ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_not_seeded/out.csv'
+    surrogate_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/out.csv'
+    df_surrogate = pd.read_csv(surrogate_path)
+    ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_no_pretrain_30/out.csv'
     df_ssi = pd.read_csv(ssi_path)
     # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
     dataframes = [
-        {'df': df_baseline, 'name': 'Baseline', 'colors': ['xkcd:cerulean', 'xkcd:azure', 'xkcd:slate grey', 'xkcd:sky blue'], 'marker': 'o'}, 
-        # {'df': df_surrogate, 'name': 'Surrogate', 'colors': ['xkcd:gold', 'xkcd:amber', 'xkcd:dark grey', 'xkcd:charcoal'], 'marker': '^'},
-        {'df': df_ssi, 'name': 'SSI', 'colors': ['xkcd:lime green', 'xkcd:forest green', 'xkcd:grey', 'xkcd:slate'], 'marker': 's'}
+        {'df': df_baseline, 'name': 'SSI', 'colors': ['xkcd:cerulean', 'xkcd:azure', 'xkcd:slate grey', 'xkcd:sky blue'], 'marker': 'o'}, 
+        {'df': df_surrogate, 'name': 'SSI_vae', 'colors': ['xkcd:gold', 'xkcd:amber', 'xkcd:dark grey', 'xkcd:charcoal'], 'marker': '^'},
+        {'df': df_ssi, 'name': 'SSI_nopre', 'colors': ['xkcd:lime green', 'xkcd:forest green', 'xkcd:grey', 'xkcd:slate'], 'marker': 's'}
     ]
 
     min_gens = []

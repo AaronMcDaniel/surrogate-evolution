@@ -9,8 +9,16 @@ import argparse
 import surrogates.surrogate_dataset as sd
 from torch.utils.data import DataLoader
 from surrogates.preprocessing import VAEPreprocessor
+import torch
+import numpy as np
+import random
 
 def main():
+    SEED = 93
+    torch.manual_seed(SEED)
+    np.random.seed(SEED)
+    random.seed(SEED)
+
     parser = argparse.ArgumentParser(description='Train surrogate models on GPU')
     parser.add_argument('gen_num', type=int, help='Generation number')
     parser.add_argument('output_dir', type=str, help='Output directory')
@@ -52,6 +60,10 @@ def main():
         cls_val_df.to_pickle(os.path.join(train_data_dir, f'cls_val.pkl'))
         reg_train_df.to_pickle(os.path.join(train_data_dir, f'reg_train.pkl'))
         reg_val_df.to_pickle(os.path.join(train_data_dir, f'reg_val.pkl'))
+
+    torch.manual_seed(SEED+1)
+    np.random.seed(SEED+1)
+    random.seed(SEED+1)
 
     # Create and train surrogate
     config_path = os.path.join(args.output_dir, 'conf.toml')
