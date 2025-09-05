@@ -861,6 +861,59 @@ class Pipeline:
             print(f'{i + 1} Generations of SSI Completed')
         return curr_pop
 
+    def simulated_surrogate_injection_ablation(self, curr_pop, override_fitnesses=False,
+                        downselect_incoming_population=False, normal_unsustainable_population_size=False,
+                        mix_elites=False, old_downselect=False, partitioned_population=False):
+        curr_pop = copy.deepcopy(curr_pop)
+        print('Beginning Simulated Surrogate Injection')
+        self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents_ssi)
+        self.toolbox.register("select_elitists", tools.selSPEA2, k = 10)
+        elite_list = []
+        
+        for i in range(self.num_gens_ssi):
+            print("Len of cur pop", len(curr_pop), flush=True)
+            valid = None
+            if i > 0 or override_fitnesses:
+                _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+            else:
+                valid = list(curr_pop.values())  
+            self.save_ssi_metrics(i, valid)
+            
+            parents = None
+            if len(valid) != self.num_parents or downselect_incoming_population:
+                parents = self.select_parents(valid) 
+            else:
+                parents = valid
+
+            
+            if mix_elites:
+                elite_list = self.toolbox.select_elitists(valid + elite_list)
+                parents += elite_list
+
+            unsustainable_pop = self.overpopulate(parents, ssi=(not normal_unsustainable_population_size))
+            if i == self.num_gens_ssi - 1:
+                population_size_to_use = self.population_size
+                if partitioned_population:
+                    population_size_to_use = int(self.population_size*self.ssi_population_percentage)
+
+                if old_downselect:
+                    self.downselect(valid, for_ssi=True, custom_population_size=population_size_to_use)
+                    downselected = self.current_deap_pop
+                    curr_pop = self.current_population
+                else:
+                    downselected = tools.selNSGA2(valid, population_size_to_use)
+                    curr_pop = {self.__get_hash(str(x)):x for x in downselected}
+                self.save_ssi_metrics(i+1, downselected)
+            else:
+                curr_pop = unsustainable_pop
+                print("Len of cur pop", len(unsustainable_pop), flush=True)
+
+            print(f'{i + 1} Generations of SSI Completed')
+        self.toolbox.register("select_elitists", tools.selSPEA2, k = self.max_elite_pool)
+        self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents)
+        return curr_pop
+    
+    
     def simulated_surrogate_injection_new(self, curr_pop):
         curr_pop = copy.deepcopy(curr_pop)
         print('Beginning Simulated Surrogate Injection')
