@@ -154,10 +154,17 @@ def get_val_scores(cfg, model_dict, train_df, val_df, weights_dir):
 
 
 def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir):
+    
+    # Check if DataFrame is empty to avoid np.stack error
+    if inference_df.empty or len(inference_df['genome'].values) == 0:
+        print("Warning: Empty inference_df passed to get_inferences.", flush=True)
+        raise ValueError("Empty inference_df passed to get_inferences.")
+    
     # get model and load weights
     model, _, _, _, val_subset = build_configuration(model_dict, device)
     model.load_state_dict(torch.load(f'{weights_dir}/{model_dict["name"]}.pth', map_location=device))
     print('Columns in inference_df:', inference_df.columns, flush=True)
+    print('First entry in inference_df:', inference_df.head(1), flush=True)
     genomes = np.stack(inference_df['genome'].values)
 
     # scale features with train scaler

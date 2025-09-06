@@ -331,18 +331,25 @@ class Surrogate():
         cls_model = inference_models[0]
         cls_dict = self.classifier_models[cls_model]
         print("Columns in cls_inference_df:", cls_inference_df.columns, flush=True)
+        print('First entry in cls_inference_df:', cls_inference_df.head(1), flush=True)
         cls_infs = cse.get_inferences(cls_dict, self.device, cls_inference_df, cls_genome_scaler, self.weights_dir) # list of inferences. status of 1 means failed 0 means not
 
         # make df with successful individuals for regression
         success_indices = [i for i, status in enumerate(cls_infs) if status == 0]
         reg_inf_df = inference_df.iloc[success_indices]
         
+        # Check if all individuals were predicted to fail by classifier
+        if reg_inf_df.empty:
+            print("Warning: All individuals predicted to fail by classifier.", flush=True)
+            raise ValueError("All individuals predicted to fail by classifier. No regression inferences to make.")
+        
         # Apply VAE preprocessing for regression if enabled
         if self.preprocess and self.reg_vae_preprocessor:
             reg_inf_df = self.reg_vae_preprocessor.preprocess_inference_data(reg_inf_df)
 
         # inference with reg models
-        print("Columns in cls_inference_df:", reg_inf_df.columns, flush=True)
+        print("Columns in reg_inf_df:", reg_inf_df.columns, flush=True)
+        print('First entry in reg_inf_df:', reg_inf_df.head(1), flush=True)
         reg_infs = self.get_reg_inferences(inference_models[1:], reg_inf_df, reg_genome_scaler)
 
         return cls_infs, reg_infs
@@ -355,6 +362,12 @@ class Surrogate():
 
         # create returned dataframe and populate hash column
         reg_infs = pd.DataFrame(columns=['hash'] + list(self.objectives.keys()))
+        
+        # If input dataframe is empty, return empty result
+        if inf_df.empty:
+            print("Warning: Empty inf_df passed to get_reg_inferences.", flush=True)
+            raise ValueError("Empty inf_df passed to get_reg_inferences.")
+
         reg_infs['hash'] = inf_df['hash']
 
         # dynamically create column mapping using metrics list indices
@@ -370,6 +383,8 @@ class Surrogate():
         for reg_dict in reg_dicts:
             val_subset = reg_dict['validation_subset']
             print("Columns in inf_df:", inf_df.columns, flush=True)
+            print('First entry in inf_df:', inf_df.head(1), flush=True)
+
             inf = se.get_inferences(reg_dict, self.device, inf_df, genome_scaler, self.weights_dir)
 
             # use val_subset to map inferences to correct df cols
@@ -405,6 +420,7 @@ class Surrogate():
                 invalid_deap.append(genome)
         # step 2: get inferences on these genomes
         print("Columns in inference_df:", inference_df.columns, flush=True)
+        print('First entry in inference_df:', inference_df.head(1), flush=True)
         failed, inferred_df = self.get_inferences(inference_models, inference_df, cls_genome_scaler, reg_genome_scaler)
         # at this stage, the inferred_df contains the set of individuals predicted as valid by the classifier
 

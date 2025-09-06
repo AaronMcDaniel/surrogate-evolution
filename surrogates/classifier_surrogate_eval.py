@@ -222,6 +222,11 @@ def val_one_epoch(model, device, val_loader, scheduler):
 # gets a list of inferences of either ones or zeros on an inference df (needs to have a genome column with encoded genome)
 # inference of 1 means genome is predicted to fail, 0 means good genome
 def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir):
+    # Check if DataFrame is empty
+    if inference_df.empty or len(inference_df['genome'].values) == 0:
+        print("Warning: Empty inference_df passed to classifier get_inferences.", flush=True)
+        raise ValueError("Empty inference_df passed to classifier get_inferences.")
+    
     # construct model
     model, _, _, _ = build_configuration(model_dict=model_dict, device=device)
     model.load_state_dict(torch.load(f'{weights_dir}/{model_dict["name"]}.pth', map_location=device))

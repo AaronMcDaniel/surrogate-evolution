@@ -723,12 +723,16 @@ class Pipeline:
         print(indices)
 
         for reg_key, reg_val in scores['regressors'].items():
+            if reg_val == None:
+                print(f"Regressor {reg_key} has no scores. This could be due to it having inf or nan losses when training. Skipping...")
+                continue
             for idx, objective in zip(indices, best_models.keys()):
                 if idx in name_to_dict[reg_key]['validation_subset']:
                     if reg_val[objective] < best_models[objective]['score']:
                         best_models[objective]['model'] = reg_key
                         best_models[objective]['score'] = reg_val[objective]
 
+        print("Best models:", best_models, flush=True)
         condensed = []
         for name, model in best_models.items():
             condensed.append(list(name_to_dict.keys()).index(model['model']))
