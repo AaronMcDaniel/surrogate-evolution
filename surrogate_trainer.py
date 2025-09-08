@@ -14,10 +14,10 @@ import numpy as np
 import random
 
 def main():
-    SEED = 93
-    torch.manual_seed(SEED)
-    np.random.seed(SEED)
-    random.seed(SEED)
+    # SEED = 93
+    # torch.manual_seed(SEED)
+    # np.random.seed(SEED)
+    # random.seed(SEED)
 
     parser = argparse.ArgumentParser(description='Train surrogate models on GPU')
     parser.add_argument('gen_num', type=int, help='Generation number')
@@ -39,7 +39,9 @@ def main():
     if config['preprocess']:
         cls_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
         cls_loader = DataLoader(dataset=cls_dataset, batch_size=config['preprocess_batch_size'], shuffle=True, drop_last=True)
-        cls_vaePreprocessor = VAEPreprocessor(cls_train_df, cls_val_df, cls_loader)
+        cls_val_dataset = sd.ClassifierSurrogateDataset(cls_val_df, mode='val', genomes_scaler=cls_dataset.genomes_scaler)
+        cls_val_loader = DataLoader(dataset=cls_val_dataset, batch_size=config['preprocess_batch_size'], shuffle=False)
+        cls_vaePreprocessor = VAEPreprocessor(cls_train_df, cls_val_df, cls_loader, cls_val_loader)
         cls_vaePreprocessor.process()
         
         # Save classifier VAE weights
@@ -48,7 +50,9 @@ def main():
 
         reg_dataset = sd.SurrogateDataset(reg_train_df, mode='train')
         reg_loader = DataLoader(dataset=reg_dataset, batch_size=config['preprocess_batch_size'], shuffle=True, drop_last=True)
-        reg_vaePreprocessor = VAEPreprocessor(reg_train_df, reg_val_df, reg_loader)
+        reg_val_dataset = sd.SurrogateDataset(reg_val_df, mode='val', genomes_scaler=reg_dataset.genomes_scaler)
+        reg_val_loader = DataLoader(dataset=reg_val_dataset, batch_size=config['preprocess_batch_size'], shuffle=False)
+        reg_vaePreprocessor = VAEPreprocessor(reg_train_df, reg_val_df, reg_loader, reg_val_loader)
         reg_vaePreprocessor.process()
         
         # Save regressor VAE weights
@@ -61,9 +65,9 @@ def main():
         reg_train_df.to_pickle(os.path.join(train_data_dir, f'reg_train.pkl'))
         reg_val_df.to_pickle(os.path.join(train_data_dir, f'reg_val.pkl'))
 
-    torch.manual_seed(SEED+1)
-    np.random.seed(SEED+1)
-    random.seed(SEED+1)
+    # torch.manual_seed(SEED+1)
+    # np.random.seed(SEED+1)
+    # random.seed(SEED+1)
 
     # Create and train surrogate
     config_path = os.path.join(args.output_dir, 'conf.toml')

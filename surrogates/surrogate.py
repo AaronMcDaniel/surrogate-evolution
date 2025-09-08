@@ -336,12 +336,13 @@ class Surrogate():
 
         # make df with successful individuals for regression
         success_indices = [i for i, status in enumerate(cls_infs) if status == 0]
+        print(f"Number of individuals classified as valid: {len(success_indices)} out of {len(cls_inference_df)}", flush=True)
         reg_inf_df = inference_df.iloc[success_indices]
         
-        # Check if all individuals were predicted to fail by classifier
+        # Check if predictions are missing
         if reg_inf_df.empty:
-            print("Warning: All individuals predicted to fail by classifier.", flush=True)
-            raise ValueError("All individuals predicted to fail by classifier. No regression inferences to make.")
+            print("Warning: Inference df is empty.", flush=True)
+            raise ValueError("Inference df is empty after classification. No regression inferences to make.")
         
         # Apply VAE preprocessing for regression if enabled
         if self.preprocess and self.reg_vae_preprocessor:

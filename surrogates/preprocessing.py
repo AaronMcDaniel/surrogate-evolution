@@ -15,19 +15,34 @@ class BaseVAE(nn.Module):
         super(BaseVAE, self).__init__()
         self.latent_dim = latent_dim
 
-        # Encoder
+        # Encoder with dropout for regularization
         self.fc1 = nn.Linear(input_dim, 512)
+        self.dropout1 = nn.Dropout(0.1)
         self.fc2_mu = nn.Linear(512, latent_dim)
         self.fc2_logvar = nn.Linear(512, latent_dim)
 
-        # Decoder
+        # Decoder with dropout for regularization
         self.fc3 = nn.Linear(latent_dim, 512)
+        self.dropout2 = nn.Dropout(0.1)
         self.fc4 = nn.Linear(512, input_dim)
+        
+        # Initialize weights properly
+        self._init_weights()
+    
+    def _init_weights(self):
+        """Initialize weights with Xavier initialization for better stability."""
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                nn.init.constant_(m.bias, 0)
 
     def encode(self, x):
         h = F.relu(self.fc1(x))
+        h = self.dropout1(h)
         mu = self.fc2_mu(h)
         logvar = self.fc2_logvar(h)
+        # Clamp logvar to prevent extreme values
+        logvar = torch.clamp(logvar, min=-10, max=10)
         return mu, logvar
 
     def reparameterize(self, mu, logvar):
@@ -37,6 +52,7 @@ class BaseVAE(nn.Module):
 
     def decode(self, z):
         h = F.relu(self.fc3(z))
+        h = self.dropout2(h)
         return self.fc4(h)
 
     def forward(self, x):
@@ -48,22 +64,26 @@ class VAEPreprocessor():
     def __init__(self, train_df, val_df, train_loader, val_loader=None):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.vae = BaseVAE().to(self.device)
-        self.optimizer = optim.Adam(self.vae.parameters(), lr=5e-4)
-        self.epochs = 40
+        self.optimizer = optim.Adam(self.vae.parameters(), lr=1e-4)  # Reduced learning rate
+        self.epochs = 80
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.train_df = train_df
         self.val_df = val_df
     
-    def vae_loss_function(recon_x, x, mu, logvar):
+    @staticmethod
+    def vae_loss_function(recon_x, x, mu, logvar, beta=1.0):
         recon_loss = F.mse_loss(recon_x, x, reduction='mean')
         kl_div = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
-        return recon_loss + kl_div
+        return recon_loss + beta * kl_div
 
     def train_vae(self):
         self.vae.train()
 
         for epoch in range(self.epochs):
+            # Beta scheduling for KL divergence weight
+            beta = min(1.0, epoch / 20.0)  # Gradually increase KL weight over first 20 epochs
+            
             data_iter = tqdm(self.train_loader, desc=f'Training Epoch {epoch+1}')
             total_loss = 0
             total_recon_loss = 0
@@ -73,11 +93,24 @@ class VAEPreprocessor():
                 vector = vector.to(self.device)
                 self.optimizer.zero_grad()
                 recon, mu, logvar = self.vae(vector)
-                loss = VAEPreprocessor.vae_loss_function(recon, vector, mu, logvar)
+                
+                # Check for NaN/inf in model outputs
+                if torch.isnan(recon).any() or torch.isinf(recon).any():
+                    print(f"NaN/inf detected in reconstruction at epoch {epoch+1}, batch {ctrt}")
+                    break
+                    
+                loss = VAEPreprocessor.vae_loss_function(recon, vector, mu, logvar, beta)
                 recon_loss = F.mse_loss(recon, vector, reduction='mean').item()
                 kl_div = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp()).item()
                 
+                # Check for NaN/inf in loss
+                if torch.isnan(loss) or torch.isinf(loss):
+                    print(f"NaN/inf detected in loss at epoch {epoch+1}, batch {ctrt}")
+                    break
+                
                 loss.backward()
+                # Gradient clipping to prevent explosion
+                torch.nn.utils.clip_grad_norm_(self.vae.parameters(), max_norm=1.0)
                 self.optimizer.step()
                 
                 total_loss += loss.item()
@@ -98,7 +131,7 @@ class VAEPreprocessor():
                     for vector, _ in self.val_loader:
                         vector = vector.to(self.device)
                         recon, mu, logvar = self.vae(vector)
-                        loss = self.vae_loss_function(recon, vector, mu, logvar)
+                        loss = VAEPreprocessor.vae_loss_function(recon, vector, mu, logvar, beta)
                         recon_loss = F.mse_loss(recon, vector, reduction='mean').item()
                         kl_div = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp()).item()
                         val_loss += loss.item()
@@ -123,11 +156,11 @@ class VAEPreprocessor():
                 vector = vector.to(self.device)
                 recon, mu, _ = self.vae(vector)
                 recon_loss = F.mse_loss(recon, vector, reduction='mean').item()
-                total_recon_loss += recon_loss
+                total_recon_loss += recon_loss / genomes.shape[0]
                 latent_vectors.append(mu.cpu().numpy())
                 # ctr += 1
         
-        print(f"Reconstruction Loss on Dataset: {total_recon_loss:.2f}")
+        print(f"Reconstruction Loss on Dataset: {total_recon_loss:.6f}")
         data_df['genome'] = latent_vectors
     
     def process(self):
@@ -154,18 +187,8 @@ class VAEPreprocessor():
     
     def preprocess_inference_data(self, inference_df):
         """Apply VAE preprocessing to inference data (genome column only)."""
-        self.vae.eval()
-        genomes = np.stack(inference_df['genome'].values)
-        latent_vectors = []
         
-        with torch.no_grad():
-            for i in range(genomes.shape[0]):
-                vector = torch.from_numpy(genomes[i,:]).float()
-                vector = vector.to(self.device)
-                _, mu, _ = self.vae(vector)  # Only use the mean (mu) for inference
-                latent_vectors.append(mu.cpu().numpy())
-        
-        # Create a copy of the dataframe with preprocessed genomes
-        processed_df = inference_df.copy()
-        processed_df['genome'] = latent_vectors
-        return processed_df
+        copy_df = inference_df.copy()
+        self.apply_vae(copy_df)
+
+        return copy_df
