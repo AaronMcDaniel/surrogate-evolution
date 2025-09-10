@@ -100,10 +100,11 @@ def find_pareto_indices(df, objectives, directions):
     return front, dominated_indices
 
 
-def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch, best_epoch_direction, USER):
+def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch, best_epoch_direction, USER, TWO_OBJECTIVES):
     metric_a = objectives[0]
     metric_b = objectives[1]
-    metric_c = objectives[2]
+    if not TWO_OBJECTIVES:
+        metric_c = objectives[2]
 
     #PLOT 1
     plt.subplot(2, 1, 1)
@@ -138,39 +139,40 @@ def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds
 
     plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
-    #PLOT 2
-    plt.subplot(2, 1, 2)
-    xrange = bounds[5] - bounds[4]
-    yrange = bounds[3] - bounds[2]
-    plt.xlim(bounds[4] -  (bounds_margin * xrange), bounds[5] + (bounds_margin * xrange))
-    plt.ylim(bounds[2] - (bounds_margin * yrange), bounds[3] + (bounds_margin * yrange))
-    plt.title("Pareto Front Generation " + str(gen))
-    plt.xlabel(metric_c)
-    plt.ylabel(metric_b)
-    
-    for one_front in all_fronts:
-        front = one_front['front']
-        front_bottom = one_front['front_bottom']
-        colors = one_front['colors']
-        marker = one_front['marker']
-        name = one_front['name']
-        x_steps, y_steps = stepify_pareto_points_2d(front_bottom[metric_c].to_numpy(), front_bottom[metric_b].to_numpy(), [directions[2], directions[1]])
-        if one_front['reached_max']:
-            color1 = one_front['colors'][2]
-            color2 = one_front['colors'][3]
-        else:
-            color1 = one_front['colors'][0]
-            color2 = one_front['colors'][1]
-        plt.scatter(front[metric_c], front[metric_b], color=color1, marker=marker, label=name[0] + ': Overall Pareto Optimal')
-        plt.scatter(front_bottom[metric_c], front_bottom[metric_b], color=color2, marker=marker, label=name[0] + ': Recalculated Pareto Optimal')
-        plt.plot(x_steps, y_steps, color=color2, label='_' + name[0] + ': Pareto Frontier')
+    if not TWO_OBJECTIVES:
+        #PLOT 2
+        plt.subplot(2, 1, 2)
+        xrange = bounds[5] - bounds[4]
+        yrange = bounds[3] - bounds[2]
+        plt.xlim(bounds[4] -  (bounds_margin * xrange), bounds[5] + (bounds_margin * xrange))
+        plt.ylim(bounds[2] - (bounds_margin * yrange), bounds[3] + (bounds_margin * yrange))
+        plt.title("Pareto Front Generation " + str(gen))
+        plt.xlabel(metric_c)
+        plt.ylabel(metric_b)
+        
+        for one_front in all_fronts:
+            front = one_front['front']
+            front_bottom = one_front['front_bottom']
+            colors = one_front['colors']
+            marker = one_front['marker']
+            name = one_front['name']
+            x_steps, y_steps = stepify_pareto_points_2d(front_bottom[metric_c].to_numpy(), front_bottom[metric_b].to_numpy(), [directions[2], directions[1]])
+            if one_front['reached_max']:
+                color1 = one_front['colors'][2]
+                color2 = one_front['colors'][3]
+            else:
+                color1 = one_front['colors'][0]
+                color2 = one_front['colors'][1]
+            plt.scatter(front[metric_c], front[metric_b], color=color1, marker=marker, label=name[0] + ': Overall Pareto Optimal')
+            plt.scatter(front_bottom[metric_c], front_bottom[metric_b], color=color2, marker=marker, label=name[0] + ': Recalculated Pareto Optimal')
+            plt.plot(x_steps, y_steps, color=color2, label='_' + name[0] + ': Pareto Frontier')
 
 
-    for benchmark in benchmarks:
-        benchmark_df = benchmark['df']
-        plt.scatter(benchmark_df[metric_c], benchmark_df[metric_b], color=benchmark['color'], marker=benchmark['marker'], label=benchmark['name'])
+        for benchmark in benchmarks:
+            benchmark_df = benchmark['df']
+            plt.scatter(benchmark_df[metric_c], benchmark_df[metric_b], color=benchmark['color'], marker=benchmark['marker'], label=benchmark['name'])
 
-    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
     plt.tight_layout()
     plt.savefig(f'/home/hice1/{USER}/scratch/surrogate-evolution/analysis/graphs/paretoTestingBaseline/pareto_gen' + str(gen) + '.jpg')

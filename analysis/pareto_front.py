@@ -13,11 +13,13 @@ from pareto_utils import find_pareto_indices, gen_plot
 
 parser = argparse.ArgumentParser()
 parser.add_argument('username', type=str)
+parser.add_argument('--two_objectives', action='store_true', help='If set, only two objectives are used for pareto optimality')
 parser.add_argument('--cross_gen', action='store_true', help='If set, hall of fame is computed from all populations up to and including the current generation')
 
 args = parser.parse_args()
 USER = args.username
 CROSS_GENERATION_PARETO_FRONT = args.cross_gen
+TWO_OBJECTIVES = args.two_objectives
 
 
 def generate_fronts(df, objectives, directions, name, gen, colors, marker, reached_max, cached_fronts=None):
@@ -83,7 +85,7 @@ def generate_fronts(df, objectives, directions, name, gen, colors, marker, reach
 if __name__ == "__main__":
     # grab the objectives and best epoch criteria from the config and transform them to how I was previously representing that data (True = want to minimize, False = maximize)
     # configs = toml.load('conf.toml')
-    configs = toml.load('/storage/ice-shared/vip-vvk/data/AOT/baseline_evo_working/conf.toml')
+    configs = toml.load('/home/hice1/psomu3/scratch/surrogate-evolution/conf_gens_vae.toml')
     pipeline_config = configs["pipeline"]
     cfg_objectives = pipeline_config['objectives']
     cfg_best_epoch = pipeline_config['best_epoch_criteria']
@@ -104,7 +106,7 @@ if __name__ == "__main__":
     dataframes = [
         {'df': df_baseline, 'name': 'SSI', 'colors': ['xkcd:cerulean', 'xkcd:azure', 'xkcd:slate grey', 'xkcd:sky blue'], 'marker': 'o'}, 
         {'df': df_surrogate, 'name': 'SSI_vae', 'colors': ['xkcd:gold', 'xkcd:amber', 'xkcd:dark grey', 'xkcd:charcoal'], 'marker': '^'},
-        {'df': df_ssi, 'name': 'SSI_nopre', 'colors': ['xkcd:lime green', 'xkcd:forest green', 'xkcd:grey', 'xkcd:slate'], 'marker': 's'}
+        # {'df': df_ssi, 'name': 'SSI_nopre', 'colors': ['xkcd:lime green', 'xkcd:forest green', 'xkcd:grey', 'xkcd:slate'], 'marker': 's'}
     ]
 
     min_gens = []
@@ -112,13 +114,22 @@ if __name__ == "__main__":
     # here are the limits for setting the effective max in the dataset for graphing purposes
     bounds_limits = [-np.inf, 60, -np.inf, 2.1, -1000000, np.inf]
     bounds_margin = 0.1
-    bounds = {'min_objective_1': [], 'max_objective_1': [], 'min_objective_2': [], 'max_objective_2': [], 'min_objective_3': [], 'max_objective_3': []}
-    #bounds = {'min_uw_val_epoch_loss': [], 'max_uw_val_epoch_loss': [], 'min_ciou_loss': [], 'max_ciou_loss': [], 'min_average_precision': [], 'max_average_precision': []}
+    if TWO_OBJECTIVES:
+        bounds = {'min_objective_1': [], 'max_objective_1': [], 'min_objective_2': [], 'max_objective_2': []}
+    else:
+        bounds = {'min_objective_1': [], 'max_objective_1': [], 'min_objective_2': [], 'max_objective_2': [], 'min_objective_3': [], 'max_objective_3': []}
+
     for dataframe in dataframes:
         df = dataframe['df']
-        df = df[['gen', 'hash', 'genome', objectives[0], objectives[1], objectives[2]]]
+        if TWO_OBJECTIVES:
+            df = df[['gen', 'hash', 'genome', objectives[0], objectives[1]]]
+        else:
+            df = df[['gen', 'hash', 'genome', objectives[0], objectives[1], objectives[2]]]
         df = df.dropna()
-        df = df.drop_duplicates(subset=[objectives[0], objectives[1], objectives[2]])
+        if TWO_OBJECTIVES:
+            df = df.drop_duplicates(subset=[objectives[0], objectives[1]])
+        else:
+            df = df.drop_duplicates(subset=[objectives[0], objectives[1], objectives[2]])
         min_gens.append(df['gen'].min())
         max_gens.append(df['gen'].max())
         
@@ -126,8 +137,9 @@ if __name__ == "__main__":
         bounds['max_objective_1'].append(df[df[objectives[0]] < bounds_limits[1]][objectives[0]].max())
         bounds['min_objective_2'].append(df[df[objectives[1]] > bounds_limits[2]][objectives[1]].min())
         bounds['max_objective_2'].append(df[df[objectives[1]] < bounds_limits[3]][objectives[1]].max())
-        bounds['min_objective_3'].append(df[df[objectives[2]] > bounds_limits[4]][objectives[2]].min())
-        bounds['max_objective_3'].append(df[df[objectives[2]] < bounds_limits[5]][objectives[2]].max())
+        if not TWO_OBJECTIVES:
+            bounds['min_objective_3'].append(df[df[objectives[2]] > bounds_limits[4]][objectives[2]].min())
+            bounds['max_objective_3'].append(df[df[objectives[2]] < bounds_limits[5]][objectives[2]].max())
         
         dataframe['df'] = df
 
@@ -176,11 +188,15 @@ if __name__ == "__main__":
         bounds['max_objective_1'].append(df[df[objectives[0]] < bounds_limits[1]][objectives[0]].max())
         bounds['min_objective_2'].append(df[df[objectives[1]] > bounds_limits[2]][objectives[1]].min())
         bounds['max_objective_2'].append(df[df[objectives[1]] < bounds_limits[3]][objectives[1]].max())
-        bounds['min_objective_3'].append(df[df[objectives[2]] > bounds_limits[4]][objectives[2]].min())
-        bounds['max_objective_3'].append(df[df[objectives[2]] < bounds_limits[5]][objectives[2]].max())
+        if not TWO_OBJECTIVES:
+            bounds['min_objective_3'].append(df[df[objectives[2]] > bounds_limits[4]][objectives[2]].min())
+            bounds['max_objective_3'].append(df[df[objectives[2]] < bounds_limits[5]][objectives[2]].max())
 
     # find the max and mins for each objective for all data that will be plotted
-    bounds = [min(bounds['min_objective_1']), max(bounds['max_objective_1']), min(bounds['min_objective_2']), max(bounds['max_objective_2']), min(bounds['min_objective_3']), max(bounds['max_objective_3'])]
+    if TWO_OBJECTIVES:
+        bounds = [min(bounds['min_objective_1']), max(bounds['max_objective_1']), min(bounds['min_objective_2']), max(bounds['max_objective_2'])]
+    else:
+        bounds = [min(bounds['min_objective_1']), max(bounds['max_objective_1']), min(bounds['min_objective_2']), max(bounds['max_objective_2']), min(bounds['min_objective_3']), max(bounds['max_objective_3'])]
     print(bounds)
  
     gens = []
@@ -215,7 +231,7 @@ if __name__ == "__main__":
                     'front_bottom': front_result['front_bottom'].copy()
                 }
 
-        gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch, best_epoch_direction, USER)
+        gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds_margin, best_epoch, best_epoch_direction, USER, TWO_OBJECTIVES)
         
         print('GEN:', gen, flush=True)
         for one_front in all_fronts:
@@ -227,12 +243,20 @@ if __name__ == "__main__":
                 name = one_front['name']
                 print('length of ' + name.lower() + ' fronts:', len(df_current), len(front), len(front_top), len(front_bottom))   
 
-                hv_front = front[[objectives[0], objectives[1], objectives[2]]].to_numpy() 
-                hv_front[:, 2] = hv_front[:, 2] * -1
-                hv_max = np.array([1000000, 2, 0]) #hv_front.max(axis=0)
-                hv_min = np.array([0, 0, -1]) #hv_front.min(axis=0)
-                hv_front = (hv_front - hv_min) / (hv_max - hv_min)
-                ref_point = np.array([1, 1, 1])
+                if TWO_OBJECTIVES:
+                    hv_front = front[[objectives[0], objectives[1]]].to_numpy() 
+                    hv_front[:, 1] = hv_front[:, 1] * -1
+                    hv_max = np.array([2, 0]) #hv_front.max(axis=0)
+                    hv_min = np.array([0, -1]) #hv_front.min(axis=0)
+                    hv_front = (hv_front - hv_min) / (hv_max - hv_min)
+                    ref_point = np.array([1, 1])
+                else:
+                    hv_front = front[[objectives[0], objectives[1], objectives[2]]].to_numpy() 
+                    hv_front[:, 2] = hv_front[:, 2] * -1
+                    hv_max = np.array([1000000, 2, 0]) #hv_front.max(axis=0)
+                    hv_min = np.array([0, 0, -1]) #hv_front.min(axis=0)
+                    hv_front = (hv_front - hv_min) / (hv_max - hv_min)
+                    ref_point = np.array([1, 1, 1])
                 hv = Hypervolume(ref_point=ref_point)
                 if name not in list(all_hvs.keys()):
                     all_hvs[name] = []
