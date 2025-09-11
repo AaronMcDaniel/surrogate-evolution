@@ -23,6 +23,9 @@ parser.add_argument('-r', '--remove', action='store_true', help='Cleans output d
 parser.add_argument('-conf', '--configuration', type=str, required=True, help='The path to the configuration file')
 parser.add_argument('-s', '--seed_file', type=str, required=False, help='The path to seeding .txt file')
 
+# 0-indexed in this order: override_fitnesses, downselect_incoming_population, normal_unsustainable_population_size, mix_elites, old_downselect, partitioned_population
+parser.add_argument('-a', '--ablation', type=int, required=False, default=-1, help='Index of ablation flag to enable (0–5) in simulated_surrogate_injection_ablation(). If None, all flags are False.')
+parser.add_argument('-rp', '--remove_partition', action='store_true', required=False, default=False, help='Flag to choose running with or without partition. Part of ablation.')
 args = parser.parse_args()
 
 output_dir = args.outputs
@@ -31,6 +34,11 @@ force_flag = args.force
 num_gen = args.num_generations
 clean = args.remove
 seed_file = args.seed_file
+ablation_index = args.ablation
+rp = args.remove_partition
+
+print(ablation_index)
+ablation_args = [i == ablation_index for i in range(6)]
 
 configs = toml.load(config_dir)
 pipeline_config = configs["pipeline"]
@@ -56,7 +64,7 @@ random.seed(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 
-REMOVE_PARTITIONED_POPULATION_ABLATION = False
+REMOVE_PARTITIONED_POPULATION_ABLATION = rp
 
 GaPipeline = Pipeline(output_dir, config_dir, force_flag, clean)
 GaPipeline.initialize(seed_file)
@@ -92,7 +100,7 @@ while GaPipeline.gen_count <= num_gen:
         # returns pop dict
         selection_pool = copy.deepcopy(elites + GaPipeline.current_deap_pop)
         selection_pool = {GaPipeline.get_hash_public(str(x)):x for x in selection_pool}
-        unsustainable_pop = GaPipeline.simulated_surrogate_injection_new(selection_pool)
+        unsustainable_pop = GaPipeline.simulated_surrogate_injection_ablation(selection_pool, *ablation_args)
         if not REMOVE_PARTITIONED_POPULATION_ABLATION:
             remove_hashes = set()
             for hash in selection_pool:

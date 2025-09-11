@@ -861,9 +861,9 @@ class Pipeline:
             print(f'{i + 1} Generations of SSI Completed')
         return curr_pop
 
-    def simulated_surrogate_injection_ablation(self, curr_pop, override_fitnesses=False,
-                        downselect_incoming_population=False, normal_unsustainable_population_size=False,
-                        mix_elites=False, old_downselect=False, partitioned_population=False):
+    def simulated_surrogate_injection_ablation(self, curr_pop, override_fitnesses: bool,
+                        downselect_incoming_population: bool, normal_unsustainable_population_size: bool,
+                        mix_elites: bool, old_downselect: bool, partitioned_population: bool):
         curr_pop = copy.deepcopy(curr_pop)
         print('Beginning Simulated Surrogate Injection')
         self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents_ssi)

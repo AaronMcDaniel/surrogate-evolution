@@ -99,15 +99,35 @@ if __name__ == "__main__":
     
     # HERE IS WHERE YOU ADD FRONTS
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
-    ssi_1_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_30/outssi.csv'
+    ssi_1_path = '/storage/ice-shared/vip-vvk/data/AOT/abb32/ablation0/outssi.csv'
     df_ssi_1 = pd.read_csv(ssi_1_path)
-    ssi_2_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/outssi.csv'
+    ssi_2_path = '/storage/ice-shared/vip-vvk/data/AOT/abb32/ablation1/outssi.csv'
     df_ssi_2 = pd.read_csv(ssi_2_path)
+    ssi_3_path = '/storage/ice-shared/vip-vvk/data/AOT/abb32/ablation2/outssi.csv'
+    df_ssi_3 = pd.read_csv(ssi_2_path)
+
     # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
     dataframes = [
-        {'df': df_ssi_1, 'name': 'SSI', 'colors': ['xkcd:cerulean', 'xkcd:azure', 'xkcd:slate grey', 'xkcd:sky blue'], 'marker': 'o'}, 
-        {'df': df_ssi_2, 'name': 'SSI VAE', 'colors': ['xkcd:lime green', 'xkcd:forest green', 'xkcd:grey', 'xkcd:slate'], 'marker': 's'}
+        {
+            'df': df_ssi_1, 
+            'name': 'SSI Ablation 0', 
+            'colors': ['xkcd:cerulean', 'xkcd:azure', 'xkcd:slate grey', 'xkcd:sky blue'], 
+            'marker': 'o'
+        }, 
+        {
+            'df': df_ssi_2, 
+            'name': 'SSI Ablation 1', 
+            'colors': ['xkcd:lime green', 'xkcd:forest green', 'xkcd:grey', 'xkcd:slate'], 
+            'marker': 's'
+        },
+        {
+            'df': df_ssi_3, 
+            'name': 'SSI Ablation 2', 
+            'colors': ['xkcd:magenta', 'xkcd:violet', 'xkcd:charcoal', 'xkcd:lavender'], 
+            'marker': 'D'
+        }
     ]
+
 
     gens_superset = set()
     # here are the limits for setting the effective max in the dataset for graphing purposes

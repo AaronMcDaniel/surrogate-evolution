@@ -100,11 +100,35 @@ if __name__ == "__main__":
     df_surrogate = pd.read_csv(surrogate_path)
     ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_no_pretrain_30/out.csv'
     df_ssi = pd.read_csv(ssi_path)
+
+    # ablation paths 
+    ssi_1_path = '/storage/ice-shared/vip-vvk/data/AOT/abb32/ablation0/out.csv'
+    df_ssi_1 = pd.read_csv(ssi_1_path)
+    ssi_2_path = '/storage/ice-shared/vip-vvk/data/AOT/abb32/ablation1/out.csv'
+    df_ssi_2 = pd.read_csv(ssi_2_path)
+    ssi_3_path = '/storage/ice-shared/vip-vvk/data/AOT/abb32/ablation2/out.csv'
+    df_ssi_3 = pd.read_csv(ssi_3_path)
+
     # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
     dataframes = [
-        {'df': df_baseline, 'name': 'SSI', 'colors': ['xkcd:cerulean', 'xkcd:azure', 'xkcd:slate grey', 'xkcd:sky blue'], 'marker': 'o'}, 
-        {'df': df_surrogate, 'name': 'SSI_vae', 'colors': ['xkcd:gold', 'xkcd:amber', 'xkcd:dark grey', 'xkcd:charcoal'], 'marker': '^'},
-        {'df': df_ssi, 'name': 'SSI_nopre', 'colors': ['xkcd:lime green', 'xkcd:forest green', 'xkcd:grey', 'xkcd:slate'], 'marker': 's'}
+        {
+            'df': df_ssi_1, 
+            'name': 'SSI Ablation 0', 
+            'colors': ['xkcd:cerulean', 'xkcd:azure', 'xkcd:slate grey', 'xkcd:sky blue'], 
+            'marker': 'o'
+        }, 
+        { 
+            'df': df_ssi_2, 
+            'name': 'SSI Ablation 1', 
+            'colors': ['xkcd:red', 'xkcd:red', 'xkcd:red', 'xkcd:red'], 
+            'marker': 's'
+        },
+        {
+            'df': df_ssi_3, 
+            'name': 'SSI Ablation 2', 
+            'colors': ['xkcd:magenta', 'xkcd:violet', 'xkcd:charcoal', 'xkcd:lavender'], 
+            'marker': 'D'
+        }
     ]
 
     min_gens = []

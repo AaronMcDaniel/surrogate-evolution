@@ -4,8 +4,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
 #SBATCH --time=18:00:00
-#SBATCH --output="/storage/ice-shared/vip-vvk/data/AOT/psomu3/evolution_logs/evolution.%A.%a.log"
-#SBATCH --error="/storage/ice-shared/vip-vvk/data/AOT/psomu3/evolution_logs/evolution_error.%A.%a.log"
+#SBATCH --output="/storage/ice-shared/vip-vvk/data/AOT/abb32/evolution_logs/evolution.%A.%a.log"
+#SBATCH --error="/storage/ice-shared/vip-vvk/data/AOT/abb32/evolution_logs/evolution_error.%A.%a.log"
 
 # Parse command line arguments
 output_dir=""
@@ -16,7 +16,7 @@ force_wipe=""
 clear_dir=""
 conda_environment="nas"  # default value
 
-while getopts ":o:c:n:e:s:fr" opt; do
+while getopts ":o:c:n:e:s:a:frp" opt; do
   case $opt in
     o) output_dir="$OPTARG"
     ;;
@@ -28,9 +28,13 @@ while getopts ":o:c:n:e:s:fr" opt; do
     ;;
     s) seed_file="$OPTARG"
     ;;
+    a) ablation_index="$OPTARG"
+    ;;
     f) force_wipe="-f"
     ;;
     r) clear_dir="-r"
+    ;;
+    p) partition="-rp"
     ;;
 
     \?) echo "Invalid option -$OPTARG" >&2
@@ -43,4 +47,4 @@ module load anaconda3/2023.03
 module load cuda/12.1.1
 
 # Run the Python script with the parsed arguments
-conda run -n ${conda_environment} --no-capture-output python -u main_ssi.py -o "$output_dir" -conf "$conf_file" -n "$num_generations" -s "$seed_file" $force_wipe $clear_dir
+conda run -n ${conda_environment} --no-capture-output python -u main_ssi.py -o "$output_dir" -conf "$conf_file" -n "$num_generations" -s "$seed_file" -a "$ablation_index" $force_wipe $clear_dir $partition
