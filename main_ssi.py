@@ -22,6 +22,7 @@ parser.add_argument('-n', '--num_generations', type=int, required=True, help='Th
 parser.add_argument('-r', '--remove', action='store_true', help='Cleans output directory of non-pareto-optimal individual weights')
 parser.add_argument('-conf', '--configuration', type=str, required=True, help='The path to the configuration file')
 parser.add_argument('-s', '--seed_file', type=str, required=False, help='The path to seeding .txt file')
+parser.add_argument('--seed', type=int, required=False, help='Random Seed')
 
 args = parser.parse_args()
 
@@ -32,6 +33,12 @@ num_gen = args.num_generations
 clean = args.remove
 seed_file = args.seed_file
 
+DEFAULT_SEED = 93
+if args.seed is not None:
+    SEED = int(args.seed)
+else:
+    SEED = DEFAULT_SEED
+    
 configs = toml.load(config_dir)
 pipeline_config = configs["pipeline"]
 ssi = pipeline_config['ssi']
@@ -51,7 +58,6 @@ def print_random_state_fingerprint(random_state, np_random_state):
     print("RANDOM HASH", py_hash)
     print("NP RANDOM HASH", np_hash)
 
-SEED = 93
 random.seed(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
@@ -92,7 +98,15 @@ while GaPipeline.gen_count <= num_gen:
         # returns pop dict
         selection_pool = copy.deepcopy(elites + GaPipeline.current_deap_pop)
         selection_pool = {GaPipeline.get_hash_public(str(x)):x for x in selection_pool}
-        unsustainable_pop = GaPipeline.simulated_surrogate_injection_new(selection_pool)
+        
+        # Using ablation method instead of simulated_surrogate_injection_new
+        print("=== USING SIMULATED_SURROGATE_INJECTION_ABLATION ===")
+        unsustainable_pop = GaPipeline.simulated_surrogate_injection_ablation(
+            selection_pool,
+            override_fitnesses=True,
+            mix_elites=True,
+            partitioned_population=True
+        )
         if not REMOVE_PARTITIONED_POPULATION_ABLATION:
             remove_hashes = set()
             for hash in selection_pool:

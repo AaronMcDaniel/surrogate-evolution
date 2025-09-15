@@ -4,8 +4,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
 #SBATCH --time=18:00:00
-#SBATCH --output="/storage/ice-shared/vip-vvk/data/AOT/psomu3/evolution_logs/evolution.%A.%a.log"
-#SBATCH --error="/storage/ice-shared/vip-vvk/data/AOT/psomu3/evolution_logs/evolution_error.%A.%a.log"
+#SBATCH --output="/storage/ice-shared/vip-vvk/data/AOT/glu49/evolution_logs/evolution.%A.%a.log"
+#SBATCH --error="/storage/ice-shared/vip-vvk/data/AOT/glu49/evolution_logs/evolution_error.%A.%a.log"
 
 # Parse command line arguments
 output_dir=""
@@ -15,8 +15,10 @@ seed_file=""
 force_wipe=""
 clear_dir=""
 conda_environment="nas"  # default value
+DEFAULT_SEED=93
+SEED="$DEFAULT_SEED"
 
-while getopts ":o:c:n:e:s:fr" opt; do
+while getopts ":o:c:n:e:s:frS:" opt; do
   case $opt in
     o) output_dir="$OPTARG"
     ;;
@@ -27,6 +29,8 @@ while getopts ":o:c:n:e:s:fr" opt; do
     e) conda_environment="$OPTARG"
     ;;
     s) seed_file="$OPTARG"
+    ;;
+    S) SEED="$OPTARG"
     ;;
     f) force_wipe="-f"
     ;;
@@ -43,4 +47,4 @@ module load anaconda3/2023.03
 module load cuda/12.1.1
 
 # Run the Python script with the parsed arguments
-conda run -n ${conda_environment} --no-capture-output python -u main_ssi.py -o "$output_dir" -conf "$conf_file" -n "$num_generations" -s "$seed_file" $force_wipe $clear_dir
+conda run -n ${conda_environment} --no-capture-output python -u main_ssi.py -o "$output_dir" -conf "$conf_file" -n "$num_generations" -s "$seed_file" --seed "$SEED" $force_wipe $clear_dir
