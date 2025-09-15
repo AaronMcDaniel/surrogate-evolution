@@ -9,7 +9,7 @@ ORIGINAL_SCRIPT="main_ssi.job"
 SCRIPT_ARGS=(
     '-o /storage/ice-shared/vip-vvk/data/AOT/abb32/ablation3 -c conf_gens.toml -n 100 -e nas -a 3 -r -s seeds.txt'
     '-o /storage/ice-shared/vip-vvk/data/AOT/abb32/ablation4 -c conf_gens.toml -n 100 -e nas -a 4 -r -s seeds.txt'
-    '-o /storage/ice-shared/vip-vvk/data/AOT/abb32/ablation5 -c conf_gens.toml -n 100 -e nas -a 5 -r -s seeds.txt -rp'
+    '-o /storage/ice-shared/vip-vvk/data/AOT/abb32/ablation5 -c conf_gens.toml -n 100 -e nas -r -s seeds.txt -rp'
     # Add more script argument sets here as needed
 )
 RESTART_TIME_SECONDS=$((17 * 3600 + 45 * 60))  # 17h 45m in seconds

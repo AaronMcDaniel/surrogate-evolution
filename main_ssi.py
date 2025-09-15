@@ -38,7 +38,7 @@ ablation_index = args.ablation
 rp = args.remove_partition
 
 print(ablation_index)
-ablation_args = [i == ablation_index for i in range(6)]
+ablation_args = [i == ablation_index for i in range(5)]
 
 configs = toml.load(config_dir)
 pipeline_config = configs["pipeline"]

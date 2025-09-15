@@ -755,7 +755,7 @@ class Pipeline:
             # selection where we don't trust any of the surrogate's predictions
             num_rand_other_select = (population_size - num_tw_select - num_utw_select) 
             
-            # create downselect function for trustwrothy surrogate ratio
+            # create downselect function for trustworthy surrogate ratio
             if self.selection_method_trusted == 'NSGA2':
                 if fully_trust_surrogate:
                     self.toolbox.register("downselect", tools.selNSGA2, k = population_size)
@@ -863,7 +863,7 @@ class Pipeline:
 
     def simulated_surrogate_injection_ablation(self, curr_pop, override_fitnesses: bool,
                         downselect_incoming_population: bool, normal_unsustainable_population_size: bool,
-                        mix_elites: bool, old_downselect: bool, partitioned_population: bool):
+                        mix_elites: bool, random_downselect: bool):
         curr_pop = copy.deepcopy(curr_pop)
         print('Beginning Simulated Surrogate Injection')
         self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents_ssi)
@@ -893,16 +893,13 @@ class Pipeline:
             unsustainable_pop = self.overpopulate(parents, ssi=(not normal_unsustainable_population_size))
             if i == self.num_gens_ssi - 1:
                 population_size_to_use = self.population_size
-                if partitioned_population:
-                    population_size_to_use = int(self.population_size*self.ssi_population_percentage)
-
-                if old_downselect:
-                    self.downselect(valid, for_ssi=True, custom_population_size=population_size_to_use)
-                    downselected = self.current_deap_pop
-                    curr_pop = self.current_population
+                # we sample from valid because this is the last generation, and we don't want to keep the unsustainable size
+                if random_downselect:
+                    downselected = random.sample(valid, population_size_to_use)
                 else:
                     downselected = tools.selNSGA2(valid, population_size_to_use)
-                    curr_pop = {self.__get_hash(str(x)):x for x in downselected}
+                
+                curr_pop = {self.__get_hash(str(x)):x for x in downselected}
                 self.save_ssi_metrics(i+1, downselected)
             else:
                 curr_pop = unsustainable_pop
