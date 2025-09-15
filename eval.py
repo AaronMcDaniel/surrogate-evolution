@@ -296,6 +296,9 @@ def engine(cfg, genome):
     val_seed = cfg['val_seed']
     # Check if tracking average false positives is enabled (default to False for backwards compatibility)
     track_avg_fp = cfg.get('track_average_false_positives', False)
+    # Min object area for eiou calculation (default to 0 for backwards compatibility)
+    min_object_area = cfg.get('min_object_area', 0)
+
     
     # set device and load data
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -325,7 +328,7 @@ def engine(cfg, genome):
         epoch_preds = {}
 
         train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, loss_weights, iou_type, max_batch=batches_per_epoch)
-        epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds, max_batch=batches_per_epoch, track_avg_fp=track_avg_fp)
+        epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds, max_batch=batches_per_epoch, track_avg_fp=track_avg_fp, min_object_area=min_object_area)
 
         # update metrics_df and all_preds with current epoch's data
         epoch_metrics['epoch_num'] = epoch
@@ -375,7 +378,7 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, l
     return train_epoch_loss
 
 
-def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds, max_batch=None, track_avg_fp=False):
+def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds, max_batch=None, track_avg_fp=False, min_object_area=0):
     confidences, confusion_status = [], []
     val_epoch_loss, iou_loss, giou_loss, diou_loss, ciou_loss, center_loss, size_loss, obj_loss = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     num_preds, num_labels, total_tp, total_fp, total_fn = 0, 0, 0, 0, 0
@@ -401,7 +404,7 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
                 # update epoch_preds
                 epoch_preds[(flight_id, frame_id)] = outputs[j]
 
-                matches, fp, fn = u.match_boxes(pred_boxes, true_boxes, iou_thresh, conf_thresh, "val", iou_type)
+                matches, fp, fn = u.match_boxes(pred_boxes, true_boxes, iou_thresh, conf_thresh, "val", iou_type, min_object_area)
                 num_tp = len(matches)
                 num_fp = len(fp)
                 num_fn = len(fn)
@@ -424,7 +427,7 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
                 size_loss += loss_tensor[5]
                 obj_loss += loss_tensor[6]
 
-                curve_matches, curve_fp, _ = u.match_boxes(pred_boxes, true_boxes, iou_thresh, 0.0, 'val', iou_type)
+                curve_matches, curve_fp, _ = u.match_boxes(pred_boxes, true_boxes, iou_thresh, 0.0, 'val', iou_type, min_object_area)
 
                 for _, (true_pos, _) in curve_matches.items():
                     confidences.append(true_pos[4].item())
