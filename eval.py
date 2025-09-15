@@ -114,12 +114,18 @@ def process_preds_truths(target, output):
     return pred_boxes, true_boxes, flight_id, frame_id
 
 
-def create_metrics_df():
-    return pd.DataFrame(columns=['epoch_num', 'train_epoch_loss', 'uw_val_epoch_loss', 'val_epoch_loss', 
-                                'iou_loss', 'giou_loss', 'diou_loss', 'ciou_loss',
-                                'center_loss', 'size_loss', 'obj_loss', 'precision', 
-                                'recall', 'f1_score', 'average_precision', 
-                                'true_positives', 'false_positives', 'false_negatives'])
+def create_metrics_df(track_avg_fp=False):
+    columns = ['epoch_num', 'train_epoch_loss', 'uw_val_epoch_loss', 'val_epoch_loss', 
+               'iou_loss', 'giou_loss', 'diou_loss', 'ciou_loss',
+               'center_loss', 'size_loss', 'obj_loss', 'precision', 
+               'recall', 'f1_score', 'average_precision', 
+               'true_positives', 'false_positives', 'false_negatives']
+    
+    # Conditionally add average false positives column if tracking is enabled
+    if track_avg_fp:
+        columns.insert(-3, 'average_false_positives')  # Insert before the last 3 columns
+        
+    return pd.DataFrame(columns=columns)
 
 
 # saves latest model's weights to disc and checks if current epoch is also the best epoch
@@ -288,6 +294,8 @@ def engine(cfg, genome):
     best_epoch_criteria = cfg['best_epoch_criteria']
     train_seed = cfg['train_seed']
     val_seed = cfg['val_seed']
+    # Check if tracking average false positives is enabled (default to False for backwards compatibility)
+    track_avg_fp = cfg.get('track_average_false_positives', False)
     
     # set device and load data
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -309,7 +317,7 @@ def engine(cfg, genome):
 
     # all_preds = list of epoch_preds = { (flight_id, frame_id) -> output dict = { 'boxes': [box1, box2, ...], 'scores': ... }}, index is epoch_num - 1
     all_preds = []
-    metrics_df = create_metrics_df()
+    metrics_df = create_metrics_df(track_avg_fp)
 
     for epoch in range(1, num_epochs + 1):
        
@@ -317,7 +325,7 @@ def engine(cfg, genome):
         epoch_preds = {}
 
         train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, loss_weights, iou_type, max_batch=batches_per_epoch)
-        epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds, max_batch=batches_per_epoch)
+        epoch_metrics = val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds, max_batch=batches_per_epoch, track_avg_fp=track_avg_fp)
 
         # update metrics_df and all_preds with current epoch's data
         epoch_metrics['epoch_num'] = epoch
@@ -367,7 +375,7 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, l
     return train_epoch_loss
 
 
-def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds, max_batch=None):
+def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weights, iou_type, epoch_preds, max_batch=None, track_avg_fp=False):
     confidences, confusion_status = [], []
     val_epoch_loss, iou_loss, giou_loss, diou_loss, ciou_loss, center_loss, size_loss, obj_loss = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     num_preds, num_labels, total_tp, total_fp, total_fn = 0, 0, 0, 0, 0
@@ -436,6 +444,7 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
     center_loss/= (num_preds + 1e-9)
     size_loss /= (num_preds + 1e-9)
     obj_loss /= (num_preds + 1e-9)
+    avg_fp = total_fp / (num_preds + 1e-9)
     uw_val_epoch_loss = iou_loss + giou_loss + diou_loss + ciou_loss + center_loss + size_loss + obj_loss
     epoch_f1, epoch_pre, epoch_rec = u.f1_score(total_tp, total_fn, total_fp)
     pre_curve, rec_curve = u.precision_recall_curve(confidences, confusion_status, num_labels)
@@ -461,6 +470,11 @@ def val_one_epoch(model, device, val_loader, iou_thresh, conf_thresh, loss_weigh
         'false_positives': total_fp,
         'false_negatives': total_fn,
     }
+    
+    # Conditionally add average false positives if tracking is enabled
+    if track_avg_fp:
+        epoch_metrics['average_false_positives'] = avg_fp
+        
     return epoch_metrics
 
 

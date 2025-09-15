@@ -59,6 +59,10 @@ class Surrogate():
         pipeline_config = configs["pipeline"]
         codec_config = configs["codec"]
         model_config = configs["model"]
+        
+        # Check if tracking average false positives is enabled (needed for model configuration)
+        track_avg_fp = pipeline_config.get('track_average_false_positives', False)
+        
         self.models = [ # these are the regressor models but are simply called 'models' for compatibility reasons with the pipeline
             {
                 'name': 'mlp_best_overall',
@@ -145,7 +149,6 @@ class Surrogate():
               'model': sm.KAN,
               'spline_order': 1,
               'grid_size': 25,
-              'model': sm.KAN,
               'input_size': 256 if surrogate_config['preprocess'] else 1021
             },
             {
@@ -162,6 +165,43 @@ class Surrogate():
                 'input_size': 256 if surrogate_config['preprocess'] else 1021
             }
         ]
+        
+        # Add models specific to average false positives if tracking is enabled
+        if track_avg_fp:
+            # Add MLP model for average false positives
+            self.models.append({
+              'name': 'mlp_best_avg_fp',
+              'dropout': 0.2,
+              'hidden_sizes': [1024, 512, 256],
+              'optimizer': optim.Adam,
+              'lr': 0.01,
+              'scheduler': optim.lr_scheduler.StepLR,
+              'metrics_subset': [12],
+              'validation_subset': [12],
+              'model': sm.MLP,
+              'input_size': 256 if surrogate_config['preprocess'] else 1021
+            })
+            
+            # Add KAN model for average false positives
+            self.models.append({
+              'name': 'kan_best_avg_fp',
+              'hidden_sizes': [1024, 512, 256],
+              'optimizer': optim.AdamW,
+              'lr': 0.001,
+              'scheduler': optim.lr_scheduler.StepLR,
+              'metrics_subset': [12],
+              'validation_subset': [12],
+              'model': sm.KAN,
+              'spline_order': 1,
+              'grid_size': 15,
+              'input_size': 256 if surrogate_config['preprocess'] else 1021
+            })
+            
+            # Update overall models to include average false positives metric
+            for model in self.models:
+                if model['name'] in ['mlp_best_overall', 'kan_best_overall']:
+                    if 12 not in model['metrics_subset']:
+                        model['metrics_subset'].append(12)
         self.classifier_models = [
             {
                 'name': 'best_mlp_classifier',
@@ -204,6 +244,13 @@ class Surrogate():
         
         self.METRICS = surrogate_config["surrogate_metrics"]
         self.opt_directions = surrogate_config["opt_directions"]
+        
+        # Check if tracking average false positives is enabled and conditionally add it
+        if track_avg_fp:
+            # Add average false positives metric if not already present
+            if "mse_average_false_positives" not in self.METRICS:
+                self.METRICS = self.METRICS + ["mse_average_false_positives"]
+                self.opt_directions = self.opt_directions + ['min']
         
         # Initialize VAE preprocessors for inference if preprocessing is enabled
         self.cls_vae_preprocessor = None
@@ -420,8 +467,6 @@ class Surrogate():
             except:
                 invalid_deap.append(genome)
         # step 2: get inferences on these genomes
-        print("Columns in inference_df:", inference_df.columns, flush=True)
-        print('First entry in inference_df:', inference_df.head(1), flush=True)
         failed, inferred_df = self.get_inferences(inference_models, inference_df, cls_genome_scaler, reg_genome_scaler)
         # at this stage, the inferred_df contains the set of individuals predicted as valid by the classifier
 
