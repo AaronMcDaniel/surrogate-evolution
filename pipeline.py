@@ -938,14 +938,13 @@ class Pipeline:
             else:
                 parents = valid
 
-            unsustainable_pop = self.overpopulate(parents, ssi=True)
             if i == self.num_gens_ssi - 1:
                 downselected = tools.selNSGA2(valid, int(self.population_size*self.ssi_population_percentage))
                 self.save_ssi_metrics(i+1, downselected)
                 curr_pop = {self.__get_hash(str(x)):x for x in downselected}
             else:
-                curr_pop = unsustainable_pop
-                print("Len of cur pop", len(unsustainable_pop), flush=True)
+                curr_pop = self.overpopulate(parents, ssi=True)
+                print("Len of cur pop", len(curr_pop), flush=True)
 
             print(f'{i + 1} Generations of SSI Completed')
         self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents)

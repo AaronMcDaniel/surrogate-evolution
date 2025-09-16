@@ -52,3 +52,4 @@ s_evo_*.job
 job_*.out
 job_*.err
 restart_counter.txt
+gentest.py
