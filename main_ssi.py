@@ -26,6 +26,8 @@ parser.add_argument('-s', '--seed_file', type=str, required=False, help='The pat
 # 0-indexed in this order: override_fitnesses, downselect_incoming_population, normal_unsustainable_population_size, mix_elites, old_downselect, partitioned_population
 parser.add_argument('-a', '--ablation', type=int, required=False, default=-1, help='Index of ablation flag to enable (0–5) in simulated_surrogate_injection_ablation(). If None, all flags are False.')
 parser.add_argument('-rp', '--remove_partition', action='store_true', required=False, default=False, help='Flag to choose running with or without partition. Part of ablation.')
+parser.add_argument('-sg', '--ssi_loops',type=int, required=False, default=-1, help='Number of generations to run SSI for.')
+
 args = parser.parse_args()
 
 output_dir = args.outputs
@@ -36,9 +38,21 @@ clean = args.remove
 seed_file = args.seed_file
 ablation_index = args.ablation
 rp = args.remove_partition
+ssi_loops = args.ssi_loops
 
-print(ablation_index)
-ablation_args = [i == ablation_index for i in range(5)]
+# Map ablation index to keyword arguments
+ablation_kwargs = {
+    'override_fitnesses': ablation_index == 0,
+    'downselect_incoming_population': ablation_index == 1,
+    'normal_unsustainable_population_size': ablation_index == 2,
+    'mix_elites': ablation_index == 3,
+    'random_downselect': ablation_index == 4,
+    'keep_same_population_size': ablation_index == 5,
+    'num_ssi_loops': ssi_loops
+}
+
+print(f"Ablation args: {ablation_kwargs}")
+print(f'Remove partitioned population ablation: {rp}')
 
 configs = toml.load(config_dir)
 pipeline_config = configs["pipeline"]
@@ -100,7 +114,7 @@ while GaPipeline.gen_count <= num_gen:
         # returns pop dict
         selection_pool = copy.deepcopy(elites + GaPipeline.current_deap_pop)
         selection_pool = {GaPipeline.get_hash_public(str(x)):x for x in selection_pool}
-        unsustainable_pop = GaPipeline.simulated_surrogate_injection_ablation(selection_pool, *ablation_args)
+        unsustainable_pop = GaPipeline.simulated_surrogate_injection_ablation(selection_pool, **ablation_kwargs)
         if not REMOVE_PARTITIONED_POPULATION_ABLATION:
             remove_hashes = set()
             for hash in selection_pool:
