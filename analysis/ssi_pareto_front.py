@@ -268,5 +268,5 @@ if __name__ == "__main__":
     plt.xlabel('Generation')
     plt.ylabel('Hypervolume')
     plt.tight_layout()
-    plt.savefig(f'/home/hice1/{USER}/scratch/surrogate-evolution/analysis/graphs/paretoTestingBaseline/pareto_hypervolume.jpg')
+    plt.savefig(f'/home/hice1/{USER}/scratch/surrogate-evolution/analysis/graphs/paretoSSIRetest/pareto_hypervolume.jpg')
     plt.close()
