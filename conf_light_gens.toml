@@ -44,7 +44,7 @@ ssi_start_gen = 2
 # size of unsustainable population during ssi
 ssi_unsustainable_population_size = 2000
 # size of sustainable population during ssi
-ssi_sustainable_population_size = 500
+ssi_sustainable_population_size = 200
 # whether to use surrogate when calling the final downselect operation on the unsustainable population
 surrogate_in_final_downselect = false
 # number of parents to select in ssi loop

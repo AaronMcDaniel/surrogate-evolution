@@ -895,9 +895,11 @@ class Pipeline:
                 elite_list = self.toolbox.select_elitists(valid + elite_list)
                 parents += elite_list
             if keep_same_population_size:
-                unsustainable_pop = self.overpopulate(parents, ssi=(not normal_unsustainable_population_size), custom_pop_size=self.population_size)
+                unsustainable_pop = self.overpopulate(parents, ssi=True, custom_pop_size=self.population_size)
+            elif normal_unsustainable_population_size:
+                unsustainable_pop = self.overpopulate(parents, ssi=True, custom_pop_size=self.ssi_sus_pop_size)
             else:
-                unsustainable_pop = self.overpopulate(parents, ssi=(not normal_unsustainable_population_size))
+                unsustainable_pop = self.overpopulate(parents, ssi=True)
 
             if i == self.num_gens_ssi - 1:
                 population_size_to_use = self.population_size
