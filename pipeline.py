@@ -864,7 +864,7 @@ class Pipeline:
     def simulated_surrogate_injection_ablation(self, curr_pop, override_fitnesses: bool = False,
                         downselect_incoming_population: bool = False, normal_unsustainable_population_size: bool = False,
                         mix_elites: bool = False, random_downselect: bool = False, keep_same_population_size: bool = False,
-                        num_ssi_loops: int = 0):
+                        num_ssi_loops: int = 0, remove_partitioned_population: bool = False):
         curr_pop = copy.deepcopy(curr_pop)
         print('Beginning Simulated Surrogate Injection')
         num_parents_ssi_to_use = self.num_parents_ssi if keep_same_population_size else self.num_parents
@@ -902,7 +902,7 @@ class Pipeline:
                 unsustainable_pop = self.overpopulate(parents, ssi=True)
 
             if i == self.num_gens_ssi - 1:
-                population_size_to_use = self.population_size
+                population_size_to_use = self.population_size if remove_partitioned_population else int(self.population_size*self.ssi_population_percentage)
                 # we sample from valid because this is the last generation, and we don't want to keep the unsustainable size
                 if random_downselect:
                     print(f'Randomly downselecting {population_size_to_use} individuals')
