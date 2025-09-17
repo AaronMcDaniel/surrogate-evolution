@@ -96,17 +96,20 @@ if __name__ == "__main__":
     
     # HERE IS WHERE YOU ADD FRONTS
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
-    baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_30/out.csv'
+    baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30/out.csv'
     df_baseline = pd.read_csv(baseline_path)
     surrogate_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/out.csv'
     df_surrogate = pd.read_csv(surrogate_path)
-    ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_no_pretrain_30/out.csv'
+    ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_two_30/out.csv'
     df_ssi = pd.read_csv(ssi_path)
+    fourth_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_two_30/out.csv'
+    df_four = pd.read_csv(fourth_path)
     # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
     dataframes = [
-        {'df': df_baseline, 'name': 'SSI', 'colors': ['xkcd:cerulean', 'xkcd:azure', 'xkcd:slate grey', 'xkcd:sky blue'], 'marker': 'o'}, 
+        {'df': df_baseline, 'name': 'Base', 'colors': ['xkcd:cerulean', 'xkcd:azure', 'xkcd:slate grey', 'xkcd:sky blue'], 'marker': 'o'}, 
         {'df': df_surrogate, 'name': 'SSI_vae', 'colors': ['xkcd:gold', 'xkcd:amber', 'xkcd:dark grey', 'xkcd:charcoal'], 'marker': '^'},
-        # {'df': df_ssi, 'name': 'SSI_nopre', 'colors': ['xkcd:lime green', 'xkcd:forest green', 'xkcd:grey', 'xkcd:slate'], 'marker': 's'}
+        {'df': df_ssi, 'name': 'Base_two', 'colors': ['xkcd:lime green', 'xkcd:forest green', 'xkcd:grey', 'xkcd:slate'], 'marker': 's'},
+        {'df': df_four, 'name': 'SSI_vae_two', 'colors': ['xkcd:red', 'xkcd:red', 'xkcd:red', 'xkcd:red'], 'marker': 'o'},
     ]
 
     min_gens = []
@@ -121,6 +124,11 @@ if __name__ == "__main__":
 
     for dataframe in dataframes:
         df = dataframe['df']
+        
+        if TWO_OBJECTIVES and len(objectives) > 2:
+            objectives = objectives[1:]
+            directions = directions[1:]
+            bounds_limits = bounds_limits[2:]
         if TWO_OBJECTIVES:
             df = df[['gen', 'hash', 'genome', objectives[0], objectives[1]]]
         else:
