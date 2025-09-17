@@ -863,10 +863,12 @@ class Pipeline:
 
     def simulated_surrogate_injection_ablation(self, curr_pop, override_fitnesses: bool = False,
                         downselect_incoming_population: bool = False, normal_unsustainable_population_size: bool = False,
-                        mix_elites: bool = False, random_downselect: bool = False, keep_same_population_size: bool = False, num_ssi_loops: int = 0):
+                        mix_elites: bool = False, random_downselect: bool = False, keep_same_population_size: bool = False,
+                        num_ssi_loops: int = 0):
         curr_pop = copy.deepcopy(curr_pop)
         print('Beginning Simulated Surrogate Injection')
-        self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents_ssi)
+        num_parents_ssi_to_use = self.num_parents_ssi if keep_same_population_size else self.num_parents
+        self.toolbox.register("select_parents", tools.selNSGA2, k = num_parents_ssi_to_use)
         self.toolbox.register("select_elitists", tools.selSPEA2, k = 10)
         elite_list = []
 
@@ -893,7 +895,7 @@ class Pipeline:
                 elite_list = self.toolbox.select_elitists(valid + elite_list)
                 parents += elite_list
             if keep_same_population_size:
-                unsustainable_pop = self.overpopulate(parents, ssi=(not normal_unsustainable_population_size), custom_pop_size=len(parents))
+                unsustainable_pop = self.overpopulate(parents, ssi=(not normal_unsustainable_population_size), custom_pop_size=self.population_size)
             else:
                 unsustainable_pop = self.overpopulate(parents, ssi=(not normal_unsustainable_population_size))
 
