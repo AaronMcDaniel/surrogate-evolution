@@ -100,11 +100,10 @@ class Pipeline:
             else:
                 self.clear_outputs()
                 os.makedirs(self.logs_dir)
-                shutil.copy(config_dir, os.path.join(output_dir, "conf.toml"))
         else:
             os.makedirs(self.output_dir)
             os.makedirs(self.logs_dir)
-            shutil.copy(config_dir, os.path.join(output_dir, "conf.toml"))
+        shutil.copy(config_dir, os.path.join(output_dir, "conf.toml"))
 
         # Begin by loading config attributes
         configs = toml.load(config_dir)
@@ -537,10 +536,8 @@ class Pipeline:
         print(time.time(), flush=True)
         while True:
             time.sleep(30)  # Check status every 30 seconds
-            print(f"Checking squeue -j {job_id}", flush=True)
             p = subprocess.Popen(['squeue', '-j', job_id], stdout=subprocess.PIPE)
             text = p.stdout.read().decode('utf-8')
-            print("squeue response:\n", text, flush=True)
             jobs = text.split('\n')[1:-1]
             if len(jobs) == 0:  # Only header line remains
                 print('    Training job completed!')
@@ -928,16 +925,13 @@ class Pipeline:
             valid = None
             if i > 0:
                 _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
-            else:
-                valid = list(curr_pop.values())  
-            self.save_ssi_metrics(i, valid)
-            
-            parents = None
-            if len(valid) != self.num_parents:
                 parents = self.select_parents(valid) 
             else:
+                valid = list(curr_pop.values())  
                 parents = valid
-
+            
+            self.save_ssi_metrics(i, valid)
+            
             if i == self.num_gens_ssi - 1:
                 downselected = tools.selNSGA2(valid, int(self.population_size*self.ssi_population_percentage))
                 self.save_ssi_metrics(i+1, downselected)
