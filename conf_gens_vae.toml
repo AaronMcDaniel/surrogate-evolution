@@ -18,7 +18,7 @@ surrogate_enabled = true
 # whether to track average false positives as a metric (backwards compatibility)
 track_average_false_positives = false
 # GA objectives to optimize for and their weights (matter only relative to each other)
-objectives = {ciou_loss = -1, average_precision = 1}
+objectives = {uw_val_epoch_loss = -1, ciou_loss = -1, average_precision = 1}
 # strategy for down selecting individuals trusted by the surrogate
 selection_method_trusted = "NSGA2" # Need to define all enums
 # strategy for down selecting individuals untrusted by the surrogate
