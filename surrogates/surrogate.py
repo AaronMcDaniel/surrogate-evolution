@@ -256,8 +256,8 @@ class Surrogate():
         self.cls_vae_preprocessor = None
         self.reg_vae_preprocessor = None
         if self.preprocess:
-            self.cls_vae_preprocessor = VAEPreprocessor(None, None, None)
-            self.reg_vae_preprocessor = VAEPreprocessor(None, None, None)
+            self.cls_vae_preprocessor = VAEPreprocessor.for_inference()
+            self.reg_vae_preprocessor = VAEPreprocessor.for_inference()
         
         ensure_deap_classes(self.objectives, codec_config)
         self.toolbox = base.Toolbox()
@@ -382,8 +382,20 @@ class Surrogate():
         cls_infs = cse.get_inferences(cls_dict, self.device, cls_inference_df, cls_genome_scaler, self.weights_dir) # list of inferences. status of 1 means failed 0 means not
 
         # make df with successful individuals for regression
-        success_indices = [i for i, status in enumerate(cls_infs) if status == 0]
-        print(f"Number of individuals classified as valid: {len(success_indices)} out of {len(cls_inference_df)}", flush=True)
+        success_indices = []
+        flip_chance = 1 - self.cls_trust if hasattr(self, 'cls_trust') and self.cls_trust is not None else 0
+        
+        for i, status in enumerate(cls_infs):
+            if status == 0:
+                # Individual classified as valid
+                success_indices.append(i)
+            else:
+                # Individual classified as failed, but give it a chance to be flipped back
+                if random.random() < flip_chance:
+                    success_indices.append(i)
+        
+        print(f"Number of individuals classified as valid: {len([i for i, status in enumerate(cls_infs) if status == 0])} out of {len(cls_inference_df)}", flush=True)
+        print(f"Number of individuals after trust-based flipping: {len(success_indices)} out of {len(cls_inference_df)}", flush=True)
         reg_inf_df = inference_df.iloc[success_indices]
         
         # Check if predictions are missing

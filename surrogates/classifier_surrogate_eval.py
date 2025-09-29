@@ -238,6 +238,13 @@ def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir)
         with autocast():
             inferences = model(genomes)
     inferences = inferences.sigmoid().cpu().detach().numpy()
+    
+    # Debug: Show classifier prediction statistics
+    print(f"Classifier raw predictions - Min: {inferences.min():.4f}, Max: {inferences.max():.4f}, Mean: {inferences.mean():.4f}, Std: {inferences.std():.4f}")
+    valid_count = np.sum(inferences.flatten() <= 0.5)
+    invalid_count = np.sum(inferences.flatten() > 0.5)
+    print(f"Classifier predictions: {valid_count} valid (<=0.5), {invalid_count} invalid (>0.5)")
+    
     inferences = (inferences.flatten() > 0.5).astype(int)
     return inferences
     

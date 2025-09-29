@@ -6,7 +6,6 @@ from tqdm import tqdm
 import numpy as np
 import os
 
-
 # Base VAE Class
 class BaseVAE(nn.Module):
     latent_dim = 256
@@ -70,6 +69,20 @@ class VAEPreprocessor():
         self.val_loader = val_loader
         self.train_df = train_df
         self.val_df = val_df
+    
+    @classmethod
+    def for_inference(cls):
+        """Create a VAEPreprocessor instance for inference only (no training data needed)."""
+        preprocessor = cls.__new__(cls)
+        preprocessor.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        preprocessor.vae = BaseVAE().to(preprocessor.device)
+        preprocessor.optimizer = None
+        preprocessor.epochs = 80
+        preprocessor.train_loader = None
+        preprocessor.val_loader = None
+        preprocessor.train_df = None
+        preprocessor.val_df = None
+        return preprocessor
     
     @staticmethod
     def vae_loss_function(recon_x, x, mu, logvar, beta=1.0):
@@ -150,6 +163,19 @@ class VAEPreprocessor():
         # ctr = 1
         genomes = np.stack(data_df['genome'].values)
         latent_vectors = []
+        
+        # Check genome dimensions
+        if genomes.shape[0] == 0:
+            print("Warning: Empty genome data for VAE preprocessing")
+            return
+        
+        print(f"VAE input shape: {genomes.shape}, Expected input dim: {self.vae.fc1.in_features}")
+        
+        # Verify genome dimension matches VAE input dimension
+        if genomes.shape[1] != self.vae.fc1.in_features:
+            print(f"Error: Genome dimension {genomes.shape[1]} doesn't match VAE input dimension {self.vae.fc1.in_features}")
+            return
+        
         with torch.no_grad():
             for i in range(genomes.shape[0]):
                 vector = torch.from_numpy(genomes[i,:]).float()
@@ -188,7 +214,7 @@ class VAEPreprocessor():
     def preprocess_inference_data(self, inference_df):
         """Apply VAE preprocessing to inference data (genome column only)."""
         
-        copy_df = inference_df.copy()
+        copy_df = inference_df.copy(deep=True)
         self.apply_vae(copy_df)
 
         return copy_df
