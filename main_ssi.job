@@ -4,8 +4,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
 #SBATCH --time=18:00:00
-#SBATCH --output="/storage/ice-shared/vip-vvk/data/AOT/abb32/evolution_logs/evolution.%A.%a.log"
-#SBATCH --error="/storage/ice-shared/vip-vvk/data/AOT/abb32/evolution_logs/evolution_error.%A.%a.log"
+#SBATCH --output="/storage/ice-shared/vip-vvk/data/AOT/psomu3/evolution_logs/evolution.%j.log"
+#SBATCH --error="/storage/ice-shared/vip-vvk/data/AOT/psomu3/evolution_logs/evolution_error.%j.log"
 
 # Parse command line arguments
 output_dir=""
@@ -14,9 +14,11 @@ num_generations=1
 seed_file=""
 force_wipe=""
 clear_dir=""
+experimentation=""
 conda_environment="nas"  # default value
+initialization_seed="93"  # default value
 
-while getopts ":o:c:n:e:s:a:l:frp" opt; do
+while getopts ":o:c:n:e:s:i:a:l:frxp" opt; do
   case $opt in
     o) output_dir="$OPTARG"
     ;;
@@ -32,12 +34,18 @@ while getopts ":o:c:n:e:s:a:l:frp" opt; do
     ;;
     l) loops="$OPTARG"
     ;;
+    i) initialization_seed="$OPTARG"
+    ;;
     f) force_wipe="-f"
     ;;
     r) clear_dir="-r"
     ;;
     p) partition="-rp"
     ;;
+    x) experimentation="-x"
+    ;;
+
+>>>>>>> pranav_evo_runs
     \?) echo "Invalid option -$OPTARG" >&2
         exit 1
     ;;
@@ -48,4 +56,4 @@ module load anaconda3/2023.03
 module load cuda/12.1.1
 
 # Run the Python script with the parsed arguments
-conda run -n ${conda_environment} --no-capture-output python -u main_ssi.py -o "$output_dir" -conf "$conf_file" -n "$num_generations" -s "$seed_file" -a "$ablation_index" -sg "$loops" $force_wipe $clear_dir $partition
+conda run -n ${conda_environment} --no-capture-output python -u main_ssi.py -o "$output_dir" -conf "$conf_file" -n "$num_generations" -s "$seed_file" -a "$ablation_index" -sg "$loops" -i $initialization_seed $force_wipe $clear_dir $experimentation $partition

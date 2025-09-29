@@ -205,9 +205,9 @@ def val_one_epoch(predictions, device, val_loader, iou_thresh, conf_thresh, loss
 
 
 # get predictions
-pred_file = open(predictions_path, 'rb')
-predictions = pickle.load(pred_file)
-pred_file.close()
+# pred_file = open(predictions_path, 'rb')
+# predictions = pickle.load(pred_file)
+# pred_file.close()
 
 with open('/gv1/projects/GRIP_Precog_Opt/data_loading/airborne-detection-starter-kit-master/data/everything.pkl', 'rb') as file:
     labels_cache = pickle.load(file)

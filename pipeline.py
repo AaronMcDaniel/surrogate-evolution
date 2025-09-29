@@ -100,11 +100,10 @@ class Pipeline:
             else:
                 self.clear_outputs()
                 os.makedirs(self.logs_dir)
-                shutil.copy(config_dir, os.path.join(output_dir, "conf.toml"))
         else:
             os.makedirs(self.output_dir)
             os.makedirs(self.logs_dir)
-            shutil.copy(config_dir, os.path.join(output_dir, "conf.toml"))
+        shutil.copy(config_dir, os.path.join(output_dir, "conf.toml"))
 
         # Begin by loading config attributes
         configs = toml.load(config_dir)
@@ -537,10 +536,8 @@ class Pipeline:
         print(time.time(), flush=True)
         while True:
             time.sleep(30)  # Check status every 30 seconds
-            print(f"Checking squeue -j {job_id}", flush=True)
             p = subprocess.Popen(['squeue', '-j', job_id], stdout=subprocess.PIPE)
             text = p.stdout.read().decode('utf-8')
-            print("squeue response:\n", text, flush=True)
             jobs = text.split('\n')[1:-1]
             if len(jobs) == 0:  # Only header line remains
                 print('    Training job completed!')
@@ -723,12 +720,16 @@ class Pipeline:
         print(indices)
 
         for reg_key, reg_val in scores['regressors'].items():
+            if reg_val == None:
+                print(f"Regressor {reg_key} has no scores. This could be due to it having inf or nan losses when training. Skipping...")
+                continue
             for idx, objective in zip(indices, best_models.keys()):
                 if idx in name_to_dict[reg_key]['validation_subset']:
                     if reg_val[objective] < best_models[objective]['score']:
                         best_models[objective]['model'] = reg_key
                         best_models[objective]['score'] = reg_val[objective]
 
+        print("Best models:", best_models, flush=True)
         condensed = []
         for name, model in best_models.items():
             condensed.append(list(name_to_dict.keys()).index(model['model']))
@@ -932,28 +933,287 @@ class Pipeline:
             valid = None
             if i > 0:
                 _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
-            else:
-                valid = list(curr_pop.values())  
-            self.save_ssi_metrics(i, valid)
-            
-            parents = None
-            if len(valid) != self.num_parents:
                 parents = self.select_parents(valid) 
             else:
+                valid = list(curr_pop.values())  
                 parents = valid
-
-            unsustainable_pop = self.overpopulate(parents, ssi=True)
+            
+            self.save_ssi_metrics(i, valid)
+            
             if i == self.num_gens_ssi - 1:
                 downselected = tools.selNSGA2(valid, int(self.population_size*self.ssi_population_percentage))
                 self.save_ssi_metrics(i+1, downselected)
                 curr_pop = {self.__get_hash(str(x)):x for x in downselected}
             else:
-                curr_pop = unsustainable_pop
-                print("Len of cur pop", len(unsustainable_pop), flush=True)
+                curr_pop = self.overpopulate(parents, ssi=True)
+                print("Len of cur pop", len(curr_pop), flush=True)
 
             print(f'{i + 1} Generations of SSI Completed')
         self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents)
         return curr_pop
+
+    def simulated_surrogate_injection_stepwise(self, curr_pop, fill_interval=1, start_generation=1):
+        """
+        Stepwise population builder that gradually adds best individuals from each generation.
+        
+        Strategy: At generation i, insert N/(K/i) of the best individuals into final population.
+        This balances exploitation (selecting best at each step) with exploration 
+        (allowing population evolution across generations).
+        
+        Args:
+            curr_pop: Current population dictionary
+            fill_interval: Fill population every Nth generation (e.g., 2 = every 2nd generation)
+            start_generation: Generation at which to start filling population (1-indexed)
+            
+        Returns:
+            Final population with stepwise accumulated best individuals
+        """
+        curr_pop = copy.deepcopy(curr_pop)
+        print(f'Beginning Stepwise Simulated Surrogate Injection (fill every {fill_interval} generations, starting at generation {start_generation})')
+        self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents_ssi)
+        
+        # Final population size calculation
+        N = int(self.population_size * self.ssi_population_percentage)  # Final target size
+        K = self.num_gens_ssi  # Number of generations
+        
+        # Initialize accumulator for final population
+        final_population = {}
+        
+        # Calculate filling stages for information
+        filling_generations = []
+        for g in range(1, self.num_gens_ssi + 1):
+            if g >= start_generation and (g - start_generation) % fill_interval == 0:
+                filling_generations.append(g)
+        
+        num_filling_stages = len(filling_generations)
+        individuals_per_stage = N // num_filling_stages if num_filling_stages > 0 else N
+        
+        print(f"Target final population size: {N}, Generations: {K}")
+        print(f"Filling at generations: {filling_generations}")
+        print(f"Individuals per filling stage: {individuals_per_stage} (with remainder distributed to later stages)")
+        
+        print(f"The following SSI generation debug statements are 1-indexed", flush=True)
+        for i in range(self.num_gens_ssi):
+            generation = i + 1  # 1-indexed for calculations
+            print(f"Generation {generation}/{K}, Current pop size: {len(curr_pop)}", flush=True)
+            
+            # Set fitnesses for current population
+            valid = None
+            if i > 0:
+                _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+                parents = self.select_parents(valid) 
+            else:
+                valid = list(curr_pop.values())  
+                parents = valid
+            
+            # Save metrics for this generation
+            self.save_ssi_metrics(i, valid)
+            
+            # Check if we should fill population at this generation
+            should_fill = (generation >= start_generation and 
+                          (generation - start_generation) % fill_interval == 0)
+            
+            if should_fill:
+                # Calculate how many individuals to add at each filling stage
+                # Number of filling stages = generations that meet the criteria
+                filling_generations = []
+                for g in range(1, self.num_gens_ssi + 1):
+                    if g >= start_generation and (g - start_generation) % fill_interval == 0:
+                        filling_generations.append(g)
+                
+                num_filling_stages = len(filling_generations)
+                individuals_per_stage = N // num_filling_stages if num_filling_stages > 0 else N
+                
+                # Handle remainder by adding extra individuals to later stages
+                current_stage = filling_generations.index(generation) + 1
+                extra_individuals = N % num_filling_stages if num_filling_stages > 0 else 0
+                if current_stage > num_filling_stages - extra_individuals:
+                    individuals_to_add = individuals_per_stage + 1
+                else:
+                    individuals_to_add = individuals_per_stage
+                
+                # Don't exceed remaining capacity
+                remaining_capacity = N - len(final_population)
+                individuals_to_add = min(individuals_to_add, remaining_capacity)
+                
+                if individuals_to_add > 0:
+                    # Filter out individuals we already have in final population
+                    valid_filtered = [ind for ind in valid if self.__get_hash(str(ind)) not in final_population]
+                    
+                    if len(valid_filtered) > 0:
+                        # Select best individuals from filtered candidates
+                        individuals_to_select = min(individuals_to_add, len(valid_filtered))
+                        best_individuals = tools.selNSGA2(valid_filtered, individuals_to_select)
+                        
+                        # Add to final population (no need to check hash since we pre-filtered)
+                        for individual in best_individuals:
+                            hash_val = self.__get_hash(str(individual))
+                            final_population[hash_val] = individual
+                        
+                        print(f"Added {len(best_individuals)}/{individuals_to_add} individuals to final population (total: {len(final_population)}/{N})")
+                    else:
+                        print(f"No new candidates available (all {len(valid)} individuals already in final population)")
+            else:
+                print(f"Skipping population fill at generation {generation}")
+            
+            # If we've reached target size, break early
+            if len(final_population) >= N:
+                print(f"Reached target population size {N} at generation {generation}")
+                break
+            
+            # Continue evolution for next generation (if not last generation)
+            if i < self.num_gens_ssi - 1:
+                curr_pop = self.overpopulate(parents, ssi=True)
+                print(f"Evolved population size: {len(curr_pop)}", flush=True)
+            
+            print(f'Generation {generation} of Stepwise SSI Completed')
+        
+        # Final metrics save
+        final_individuals = list(final_population.values())
+        self.save_ssi_metrics(self.num_gens_ssi, final_individuals)
+        
+        print(f'Stepwise SSI completed with final population size: {len(final_population)}')
+        
+        # Reset toolbox
+        self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents)
+        
+        return final_population
+
+    def simulated_surrogate_injection_stepwise_balanced(self, curr_pop, fill_interval=1, start_generation=1):
+        """
+        Balanced stepwise populator with exponential scheduling.
+        
+        Improvements:
+        1. Uses exponential scheduling for more balanced selection over time
+        2. Flexible generation-based filling schedule
+        
+        Args:
+            curr_pop: Current population dictionary
+            fill_interval: Fill population every Nth generation (e.g., 2 = every 2nd generation)
+            start_generation: Generation at which to start filling population (1-indexed)
+            
+        Returns:
+            Final population with balanced stepwise selection
+        """
+        curr_pop = copy.deepcopy(curr_pop)
+        print(f'Beginning Balanced Stepwise Simulated Surrogate Injection (fill every {fill_interval} generations, starting at generation {start_generation})')
+        self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents_ssi)
+        
+        # Final population size calculation
+        N = int(self.population_size * self.ssi_population_percentage)
+        K = self.num_gens_ssi
+        
+        # Initialize accumulator for final population
+        final_population = {}
+        generation_contributions = []  # Track how many from each generation
+        
+        # Pre-compute allocation for all filling generations to avoid last cycle truncation
+        filling_generations = []
+        for g in range(1, self.num_gens_ssi + 1):
+            if g >= start_generation and (g - start_generation) % fill_interval == 0:
+                filling_generations.append(g)
+        
+        # Calculate raw exponential allocations
+        raw_allocations = {}
+        total_raw = 0
+        for gen in filling_generations:
+            base_allocation = N / K
+            exponential_weight = (gen / K) ** 1.5
+            raw_allocation = max(1, int(base_allocation * exponential_weight))
+            raw_allocations[gen] = raw_allocation
+            total_raw += raw_allocation
+        
+        # Scale down if total exceeds target, ensuring last cycle gets fair share
+        if total_raw > N:
+            scale_factor = N / total_raw
+            scaled_allocations = {}
+            allocated_so_far = 0
+            for i, gen in enumerate(filling_generations):
+                if i == len(filling_generations) - 1:  # Last generation gets remainder
+                    scaled_allocations[gen] = N - allocated_so_far
+                else:
+                    scaled_allocation = max(1, int(raw_allocations[gen] * scale_factor))
+                    scaled_allocations[gen] = scaled_allocation
+                    allocated_so_far += scaled_allocation
+        else:
+            scaled_allocations = raw_allocations
+        
+        print(f"Target final population size: {N}, Generations: {K}")
+        print(f"Filling generations and allocations: {scaled_allocations}")
+        
+        for i in range(self.num_gens_ssi):
+            generation = i + 1
+            print(f"Generation {generation}/{K}, Current pop size: {len(curr_pop)}", flush=True)
+            
+            # Set fitnesses for current population
+            valid = None
+            if i > 0:
+                _, valid = self.surrogate.set_fitnesses(self.sub_surrogates, self.cls_genome_scaler, self.reg_genome_scaler, list(curr_pop.values()))
+                parents = self.select_parents(valid)
+            else:
+                valid = list(curr_pop.values())  
+                parents = valid
+            
+            self.save_ssi_metrics(i, valid)
+            
+            # Check if we should fill population at this generation
+            should_fill = (generation >= start_generation and 
+                          (generation - start_generation) % fill_interval == 0)
+            
+            if should_fill:
+                # Use pre-computed allocation for this generation
+                individuals_to_add = scaled_allocations.get(generation, 0)
+                
+                # Don't exceed remaining capacity
+                remaining_capacity = N - len(final_population)
+                individuals_to_add = min(individuals_to_add, remaining_capacity)
+                
+                if individuals_to_add > 0:
+                    # Filter out individuals we already have in final population
+                    valid_filtered = [ind for ind in valid if self.__get_hash(str(ind)) not in final_population]
+                    
+                    if len(valid_filtered) > 0:
+                        # Select best individuals from filtered candidates
+                        individuals_to_select = min(individuals_to_add, len(valid_filtered))
+                        selected = tools.selNSGA2(valid_filtered, individuals_to_select)
+                        
+                        # Add to final population (no need to check hash since we pre-filtered)
+                        for individual in selected:
+                            hash_val = self.__get_hash(str(individual))
+                            final_population[hash_val] = individual
+                        
+                        generation_contributions.append((generation, len(selected)))
+                        print(f"Gen {generation}: Added {len(selected)}/{individuals_to_add} individuals (total: {len(final_population)}/{N})")
+                    else:
+                        generation_contributions.append((generation, 0))
+                        print(f"Gen {generation}: No new candidates available (all {len(valid)} individuals already in final population)")
+            else:
+                print(f"Skipping population fill at generation {generation}")
+            
+            # Early termination if target reached
+            if len(final_population) >= N:
+                print(f"Reached target population size {N} at generation {generation}")
+                break
+            
+            # Continue evolution
+            if i < self.num_gens_ssi - 1:
+                curr_pop = self.overpopulate(parents, ssi=True)
+        
+        # Final metrics save
+        final_individuals = list(final_population.values())
+        self.save_ssi_metrics(self.num_gens_ssi, final_individuals)
+        
+        # Log contribution summary
+        print("Generation contributions:")
+        for gen, count in generation_contributions:
+            print(f"  Gen {gen}: {count} individuals")
+        
+        print(f'Balanced Stepwise SSI completed with final population size: {len(final_population)}')
+        
+        # Reset toolbox
+        self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents)
+        
+        return final_population
 
     
     def save_ssi_metrics(self, ssi_gen, valid_individuals):

@@ -59,6 +59,10 @@ class Surrogate():
         pipeline_config = configs["pipeline"]
         codec_config = configs["codec"]
         model_config = configs["model"]
+        
+        # Check if tracking average false positives is enabled (needed for model configuration)
+        track_avg_fp = pipeline_config.get('track_average_false_positives', False)
+        
         self.models = [ # these are the regressor models but are simply called 'models' for compatibility reasons with the pipeline
             {
                 'name': 'mlp_best_overall',
@@ -145,7 +149,6 @@ class Surrogate():
               'model': sm.KAN,
               'spline_order': 1,
               'grid_size': 25,
-              'model': sm.KAN,
               'input_size': 256 if surrogate_config['preprocess'] else 1021
             },
             {
@@ -162,6 +165,43 @@ class Surrogate():
                 'input_size': 256 if surrogate_config['preprocess'] else 1021
             }
         ]
+        
+        # Add models specific to average false positives if tracking is enabled
+        if track_avg_fp:
+            # Add MLP model for average false positives
+            self.models.append({
+              'name': 'mlp_best_avg_fp',
+              'dropout': 0.2,
+              'hidden_sizes': [1024, 512, 256],
+              'optimizer': optim.Adam,
+              'lr': 0.01,
+              'scheduler': optim.lr_scheduler.StepLR,
+              'metrics_subset': [12],
+              'validation_subset': [12],
+              'model': sm.MLP,
+              'input_size': 256 if surrogate_config['preprocess'] else 1021
+            })
+            
+            # Add KAN model for average false positives
+            self.models.append({
+              'name': 'kan_best_avg_fp',
+              'hidden_sizes': [1024, 512, 256],
+              'optimizer': optim.AdamW,
+              'lr': 0.001,
+              'scheduler': optim.lr_scheduler.StepLR,
+              'metrics_subset': [12],
+              'validation_subset': [12],
+              'model': sm.KAN,
+              'spline_order': 1,
+              'grid_size': 15,
+              'input_size': 256 if surrogate_config['preprocess'] else 1021
+            })
+            
+            # Update overall models to include average false positives metric
+            for model in self.models:
+                if model['name'] in ['mlp_best_overall', 'kan_best_overall']:
+                    if 12 not in model['metrics_subset']:
+                        model['metrics_subset'].append(12)
         self.classifier_models = [
             {
                 'name': 'best_mlp_classifier',
@@ -205,12 +245,19 @@ class Surrogate():
         self.METRICS = surrogate_config["surrogate_metrics"]
         self.opt_directions = surrogate_config["opt_directions"]
         
+        # Check if tracking average false positives is enabled and conditionally add it
+        if track_avg_fp:
+            # Add average false positives metric if not already present
+            if "mse_average_false_positives" not in self.METRICS:
+                self.METRICS = self.METRICS + ["mse_average_false_positives"]
+                self.opt_directions = self.opt_directions + ['min']
+        
         # Initialize VAE preprocessors for inference if preprocessing is enabled
         self.cls_vae_preprocessor = None
         self.reg_vae_preprocessor = None
         if self.preprocess:
-            self.cls_vae_preprocessor = VAEPreprocessor(None, None, None)
-            self.reg_vae_preprocessor = VAEPreprocessor(None, None, None)
+            self.cls_vae_preprocessor = VAEPreprocessor.for_inference()
+            self.reg_vae_preprocessor = VAEPreprocessor.for_inference()
         
         ensure_deap_classes(self.objectives, codec_config)
         self.toolbox = base.Toolbox()
@@ -331,18 +378,38 @@ class Surrogate():
         cls_model = inference_models[0]
         cls_dict = self.classifier_models[cls_model]
         print("Columns in cls_inference_df:", cls_inference_df.columns, flush=True)
+        print('First entry in cls_inference_df:', cls_inference_df.head(1), flush=True)
         cls_infs = cse.get_inferences(cls_dict, self.device, cls_inference_df, cls_genome_scaler, self.weights_dir) # list of inferences. status of 1 means failed 0 means not
 
         # make df with successful individuals for regression
-        success_indices = [i for i, status in enumerate(cls_infs) if status == 0]
+        success_indices = []
+        flip_chance = 1 - self.cls_trust if hasattr(self, 'cls_trust') and self.cls_trust is not None else 0
+        
+        for i, status in enumerate(cls_infs):
+            if status == 0:
+                # Individual classified as valid
+                success_indices.append(i)
+            else:
+                # Individual classified as failed, but give it a chance to be flipped back
+                if random.random() < flip_chance:
+                    success_indices.append(i)
+        
+        print(f"Number of individuals classified as valid: {len([i for i, status in enumerate(cls_infs) if status == 0])} out of {len(cls_inference_df)}", flush=True)
+        print(f"Number of individuals after trust-based flipping: {len(success_indices)} out of {len(cls_inference_df)}", flush=True)
         reg_inf_df = inference_df.iloc[success_indices]
+        
+        # Check if predictions are missing
+        if reg_inf_df.empty:
+            print("Warning: Inference df is empty.", flush=True)
+            raise ValueError("Inference df is empty after classification. No regression inferences to make.")
         
         # Apply VAE preprocessing for regression if enabled
         if self.preprocess and self.reg_vae_preprocessor:
             reg_inf_df = self.reg_vae_preprocessor.preprocess_inference_data(reg_inf_df)
 
         # inference with reg models
-        print("Columns in cls_inference_df:", reg_inf_df.columns, flush=True)
+        print("Columns in reg_inf_df:", reg_inf_df.columns, flush=True)
+        print('First entry in reg_inf_df:', reg_inf_df.head(1), flush=True)
         reg_infs = self.get_reg_inferences(inference_models[1:], reg_inf_df, reg_genome_scaler)
 
         return cls_infs, reg_infs
@@ -355,6 +422,12 @@ class Surrogate():
 
         # create returned dataframe and populate hash column
         reg_infs = pd.DataFrame(columns=['hash'] + list(self.objectives.keys()))
+        
+        # If input dataframe is empty, return empty result
+        if inf_df.empty:
+            print("Warning: Empty inf_df passed to get_reg_inferences.", flush=True)
+            raise ValueError("Empty inf_df passed to get_reg_inferences.")
+
         reg_infs['hash'] = inf_df['hash']
 
         # dynamically create column mapping using metrics list indices
@@ -370,6 +443,8 @@ class Surrogate():
         for reg_dict in reg_dicts:
             val_subset = reg_dict['validation_subset']
             print("Columns in inf_df:", inf_df.columns, flush=True)
+            print('First entry in inf_df:', inf_df.head(1), flush=True)
+
             inf = se.get_inferences(reg_dict, self.device, inf_df, genome_scaler, self.weights_dir)
 
             # use val_subset to map inferences to correct df cols
@@ -404,7 +479,6 @@ class Surrogate():
             except:
                 invalid_deap.append(genome)
         # step 2: get inferences on these genomes
-        print("Columns in inference_df:", inference_df.columns, flush=True)
         failed, inferred_df = self.get_inferences(inference_models, inference_df, cls_genome_scaler, reg_genome_scaler)
         # at this stage, the inferred_df contains the set of individuals predicted as valid by the classifier
 
