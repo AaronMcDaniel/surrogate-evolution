@@ -7,9 +7,11 @@
 # Configuration
 ORIGINAL_SCRIPT="main_ssi.job"
 SCRIPT_ARGS=(
-    '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_no_pretrain_30 -c conf_nopre.toml -n 100 -e nas -r'
-    '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_30 -c conf_gens.toml -n 100 -e nas -r'
-    '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30 -c conf_gens_vae.toml -n 100 -e nas -r'
+    '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_2 -c conf_gens_vae.toml -n 30 -e nas -r'
+    '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_3 -c conf_gens_vae.toml -n 30 -e nas -r -i 1820'
+    '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_4 -c conf_gens_vae.toml -n 30 -e nas -r -i 1821'
+    '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_4 -c conf_gens.toml -n 30 -e nas -r -i 1821'
+    '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_3 -c conf_gens.toml -n 30 -e nas -r -i 1820 -x'
     # Add more script argument sets here as needed
 )
 RESTART_TIME_SECONDS=$((17 * 3600 + 45 * 60))  # 17h 45m in seconds
@@ -34,7 +36,28 @@ log "Current restart iteration: $restart_count/$MAX_RESTARTS"
 
 # Check if we've reached max restarts
 if [[ $restart_count -ge $MAX_RESTARTS ]]; then
-    log "Reached maximum restart limit ($MAX_RESTARTS). Stopping orchestrator."
+    log "Reached maximum restart limit ($MAX_RESTARTS). Running cleanup and stopping orchestrator."
+    
+    # Extract output directories from SCRIPT_ARGS and run cleanup
+    for args in "${SCRIPT_ARGS[@]}"; do
+        # Extract the output directory from the arguments (after -o flag)
+        if [[ $args =~ -o[[:space:]]+([^[:space:]]+) ]]; then
+            output_dir="${BASH_REMATCH[1]}"
+            log "Running cleanup in output directory: $output_dir"
+            
+            if [[ -d "$output_dir" ]]; then
+                cd "$output_dir" && find generation_* -type f \( -name "*.pkl" -o -name "*.pth" \) -delete 2>/dev/null
+                if [[ $? -eq 0 ]]; then
+                    log "Cleanup completed successfully in: $output_dir"
+                else
+                    log "Cleanup had issues in: $output_dir (this may be normal if no files to delete)"
+                fi
+            else
+                log "Output directory does not exist: $output_dir"
+            fi
+        fi
+    done
+    
     rm -f "$RESTART_COUNTER_FILE"
     exit 0
 fi

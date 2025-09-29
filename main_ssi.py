@@ -26,6 +26,8 @@ parser.add_argument('-n', '--num_generations', type=int, required=True, help='Th
 parser.add_argument('-r', '--remove', action='store_true', help='Cleans output directory of non-pareto-optimal individual weights')
 parser.add_argument('-conf', '--configuration', type=str, required=True, help='The path to the configuration file')
 parser.add_argument('-s', '--seed_file', type=str, required=False, help='The path to seeding .txt file')
+parser.add_argument('-i', '--initialization_seed', type=int, required=False, help='The initialization seed', default=93)
+parser.add_argument('-x', '--experimentation', action='store_true', help='Enters experimentation mode')
 
 args = parser.parse_args()
 
@@ -35,6 +37,11 @@ force_flag = args.force
 num_gen = args.num_generations
 clean = args.remove
 seed_file = args.seed_file
+SEED = args.initialization_seed
+print("INITIALIZATION SEED:", SEED, flush=True)
+if SEED in [None, 0, '', 'None']:
+    SEED = 93
+experimentation = args.experimentation
 
 configs = toml.load(config_dir)
 pipeline_config = configs["pipeline"]
@@ -55,7 +62,6 @@ def print_random_state_fingerprint(random_state, np_random_state):
     print("RANDOM HASH", py_hash)
     print("NP RANDOM HASH", np_hash)
 
-SEED = 93
 
 def setSeed(seed):
     random.seed(seed)
@@ -69,7 +75,11 @@ REMOVE_PARTITIONED_POPULATION_ABLATION = False
 def perform_ssi(elites):
     selection_pool = copy.deepcopy(elites + GaPipeline.current_deap_pop)
     selection_pool = {GaPipeline.get_hash_public(str(x)):x for x in selection_pool}
-    unsustainable_pop = GaPipeline.simulated_surrogate_injection_new(selection_pool)
+    if not experimentation:
+        unsustainable_pop = GaPipeline.simulated_surrogate_injection_new(selection_pool)
+    else:
+        print("IN EXPERIMENTATION MODE", flush=True)
+        unsustainable_pop = GaPipeline.simulated_surrogate_injection_stepwise_balanced(selection_pool, fill_interval=1, start_generation=3)
     if not REMOVE_PARTITIONED_POPULATION_ABLATION:
         remove_hashes = set()
         for hash in selection_pool:
@@ -127,6 +137,9 @@ while GaPipeline.gen_count <= num_gen:
                 setSeed(int(SEED*(GaPipeline.gen_count+1)) + retry_counter)
                 print(f"SSI attempt {retry_counter} failed with error: {e}. Retrying...")
         setSeed(int(SEED*(GaPipeline.gen_count+1)))
+        
+        if unsustainable_pop is None:
+            print("All SSI attempts failed.", flush=True)
     else:
         selected_parents = GaPipeline.select_parents(elites + GaPipeline.current_deap_pop) 
         unsustainable_pop = GaPipeline.overpopulate(selected_parents)
