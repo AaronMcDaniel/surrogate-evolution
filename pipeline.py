@@ -63,8 +63,7 @@ def ensure_deap_classes(objectives, codec_config):
 class Pipeline:
     def __init__(self, output_dir, config_dir, force_wipe = False, clean = False) -> None:
         self.output_dir = output_dir
-        global JOB_NAME
-        JOB_NAME = f'{JOB_NAME}_{os.path.basename(output_dir)}'
+        self.job_name = f'{JOB_NAME}_{os.path.basename(output_dir)}'
         self.force_wipe = force_wipe
         self.clean = clean
         self.logs_dir = os.path.join(self.output_dir, 'logs')
@@ -325,7 +324,7 @@ class Pipeline:
         # dispatch job
         print('    Dispatching jobs...')
         # os.popen(f"sbatch {JOB_NAME}_{self.gen_count}.job" )
-        sbatch_result = os.popen(f"sbatch {JOB_NAME}_{self.gen_count}.job" ).read()
+        sbatch_result = os.popen(f"sbatch {self.job_name}_{self.gen_count}.job" ).read()
         
         #parse sbatch_result for job id:
         match = re.search(r'Submitted batch job (\d+)', sbatch_result)
@@ -349,7 +348,7 @@ class Pipeline:
         while True:
             time.sleep(300)
             # p = subprocess.Popen(['squeue', '-n', JOB_NAME], stdout=subprocess.PIPE)
-            p = subprocess.Popen(['squeue', '-n', f'{JOB_NAME}_{self.gen_count}'], stdout=subprocess.PIPE)
+            p = subprocess.Popen(['squeue', '-n', f'{self.job_name}_{self.gen_count}'], stdout=subprocess.PIPE)
             text = p.stdout.read().decode('utf-8')
             jobs = text.split('\n')[1:-1]
             if len(jobs) == 0:
@@ -1973,7 +1972,7 @@ class Pipeline:
 
     def create_job_file(self, num_jobs, gen_num):
         batch_script = f"""#!/bin/bash
-#SBATCH --job-name={JOB_NAME}_{gen_num}
+#SBATCH --job-name={self.job_name}_{gen_num}
 #SBATCH --nodes={NODES}
 #SBATCH -G 1
 #SBATCH --cpus-per-task={CORES}
@@ -1991,7 +1990,7 @@ mkdir -p {self.logs_dir}/generation_{gen_num}
 # Execute the Python script with SLURM_ARRAY_TASK_ID as argument. Script also has optional args -i and -o to specify input file and output directory respectively
 conda run -n {ENV_NAME} --no-capture-output python -u {SCRIPT} $SLURM_ARRAY_TASK_ID -i {self.output_dir}/eval_inputs/eval_input_gen{gen_num}.csv -o {self.output_dir}
 """
-        with open(f'{JOB_NAME}_{gen_num}.job', 'w') as fh:
+        with open(f'{self.job_name}_{gen_num}.job', 'w') as fh:
             fh.write(batch_script)
 
 
