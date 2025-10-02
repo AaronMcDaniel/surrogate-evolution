@@ -1071,7 +1071,7 @@ class Pipeline:
         
         return final_population
 
-    def simulated_surrogate_injection_stepwise_balanced(self, curr_pop, fill_interval=1, start_generation=1):
+    def simulated_surrogate_injection_stepwise_balanced(self, curr_pop, fill_interval=1, start_generation=1, schedule=1.5):
         """
         Balanced stepwise populator with exponential scheduling.
         
@@ -1108,27 +1108,51 @@ class Pipeline:
         # Calculate raw exponential allocations
         raw_allocations = {}
         total_raw = 0
-        for gen in filling_generations:
-            base_allocation = N / K
-            exponential_weight = (gen / K) ** 1.5
+        num_filling_gens = len(filling_generations)
+        
+        for i, gen in enumerate(filling_generations):
+            base_allocation = N / num_filling_gens  # Base allocation per filling generation
+            # Use position within filling generations (0 to 1) for exponential weight
+            position_ratio = (i + 1) / num_filling_gens  # 1-indexed position ratio
+            exponential_weight = position_ratio ** schedule
             raw_allocation = max(1, int(base_allocation * exponential_weight))
             raw_allocations[gen] = raw_allocation
             total_raw += raw_allocation
         
-        # Scale down if total exceeds target, ensuring last cycle gets fair share
-        if total_raw > N:
-            scale_factor = N / total_raw
-            scaled_allocations = {}
-            allocated_so_far = 0
-            for i, gen in enumerate(filling_generations):
-                if i == len(filling_generations) - 1:  # Last generation gets remainder
-                    scaled_allocations[gen] = N - allocated_so_far
+        # Scale allocations to exactly N individuals while preserving exponential ratios
+        scale_factor = N / total_raw
+        scaled_allocations = {}
+        allocated_so_far = 0
+        
+        # First pass: calculate scaled allocations for all generations
+        temp_allocations = []
+        for gen in filling_generations:
+            scaled = max(1, int(raw_allocations[gen] * scale_factor))
+            temp_allocations.append(scaled)
+            allocated_so_far += scaled
+        
+        # Second pass: distribute any remainder proportionally to maintain ratios
+        remainder = N - allocated_so_far
+        if remainder != 0:
+            # Distribute remainder based on fractional parts to preserve exponential pattern
+            fractional_parts = []
+            for gen in filling_generations:
+                exact_scaled = raw_allocations[gen] * scale_factor
+                fractional_part = exact_scaled - int(exact_scaled)
+                fractional_parts.append((fractional_part, gen))
+            
+            # Sort by fractional part (largest first) and distribute remainder
+            fractional_parts.sort(reverse=True)
+            for i in range(abs(remainder)):
+                gen_idx = filling_generations.index(fractional_parts[i % len(fractional_parts)][1])
+                if remainder > 0:
+                    temp_allocations[gen_idx] += 1
                 else:
-                    scaled_allocation = max(1, int(raw_allocations[gen] * scale_factor))
-                    scaled_allocations[gen] = scaled_allocation
-                    allocated_so_far += scaled_allocation
-        else:
-            scaled_allocations = raw_allocations
+                    temp_allocations[gen_idx] = max(1, temp_allocations[gen_idx] - 1)
+        
+        # Final allocation mapping
+        for i, gen in enumerate(filling_generations):
+            scaled_allocations[gen] = temp_allocations[i]
         
         print(f"Target final population size: {N}, Generations: {K}")
         print(f"Filling generations and allocations: {scaled_allocations}")
