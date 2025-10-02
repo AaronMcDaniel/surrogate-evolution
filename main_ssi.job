@@ -44,8 +44,6 @@ while getopts ":o:c:n:e:s:i:a:l:frxp" opt; do
     ;;
     x) experimentation="-x"
     ;;
-
->>>>>>> pranav_evo_runs
     \?) echo "Invalid option -$OPTARG" >&2
         exit 1
     ;;
@@ -56,4 +54,4 @@ module load anaconda3/2023.03
 module load cuda/12.1.1
 
 # Run the Python script with the parsed arguments
-conda run -n ${conda_environment} --no-capture-output python -u main_ssi.py -o "$output_dir" -conf "$conf_file" -n "$num_generations" -s "$seed_file" -a "$ablation_index" -sg "$loops" -i $initialization_seed $force_wipe $clear_dir $experimentation $partition
+conda run -n ${conda_environment} --no-capture-output python -u main_ssi.py -o "$output_dir" -conf "$conf_file" -n "$num_generations" -s "$seed_file" -a "$ablation_index" -sg $loops -i $initialization_seed $force_wipe $clear_dir $experimentation $partition

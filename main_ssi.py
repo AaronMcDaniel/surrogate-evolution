@@ -30,8 +30,7 @@ parser.add_argument('-i', '--initialization_seed', type=int, required=False, hel
 parser.add_argument('-x', '--experimentation', action='store_true', help='Enters experimentation mode')
 
 # 0-indexed in this order: override_fitnesses, downselect_incoming_population, normal_unsustainable_population_size, mix_elites, old_downselect, partitioned_population
-parser.add_argument('-a', '--ablation', type=int, required=False, default=-1, help='Index of ablation flag to enable (0–5) in simulated_surrogate_injection_ablation(). If None, all flags are False.')
-parser.add_argument('-rp', '--remove_partition', action='store_true', required=False, default=False, help='Flag to choose running with or without partition. Part of ablation.')
+parser.add_argument('-a', '--ablation', type=str, required=False, default='', help='Name of ablation flag to enable in simulated_surrogate_injection_ablation(). If None, all flags are False.')
 parser.add_argument('-sg', '--ssi_loops',type=int, required=False, default=-1, help='Number of generations to run SSI for.')
 
 args = parser.parse_args()
@@ -43,22 +42,15 @@ num_gen = args.num_generations
 clean = args.remove
 seed_file = args.seed_file
 ablation_index = args.ablation
-rp = args.remove_partition
 ssi_loops = args.ssi_loops
 
 # Map ablation index to keyword arguments
-ablation_kwargs = {
-    'override_fitnesses': ablation_index == 0,
-    'downselect_incoming_population': ablation_index == 1,
-    'normal_unsustainable_population_size': ablation_index == 2,
-    'mix_elites': ablation_index == 3,
-    'random_downselect': ablation_index == 4,
-    'keep_same_population_size': ablation_index == 5,
-    'num_ssi_loops': ssi_loops
-}
+ablation_kwargs = {}
+if ablation_index != '':
+    ablation_kwargs[ablation_index] = True
+ablation_kwargs['num_ssi_loops'] = ssi_loops
 
 print(f"Ablation args: {ablation_kwargs}")
-print(f'Remove partitioned population ablation: {rp}')
 SEED = args.initialization_seed
 print("INITIALIZATION SEED:", SEED, flush=True)
 if SEED in [None, 0, '', 'None']:
@@ -91,7 +83,9 @@ def setSeed(seed):
     torch.manual_seed(seed)
 setSeed(SEED)
 
-REMOVE_PARTITIONED_POPULATION_ABLATION = rp
+REMOVE_PARTITIONED_POPULATION_ABLATION = False
+if ablation_kwargs.get('remove_partitioned_population', False):
+    REMOVE_PARTITIONED_POPULATION_ABLATION = True
 
 
 def perform_ssi(elites, do_ablation):
@@ -155,7 +149,7 @@ while GaPipeline.gen_count <= num_gen:
         max_retries = 5
         while retry_counter < max_retries:
             try:
-                unsustainable_pop = perform_ssi(elites, ablation_index != -1)
+                unsustainable_pop = perform_ssi(elites, ablation_index != '')
                 break  # If successful, exit the loop
             except Exception as e:
                 retry_counter += 1
