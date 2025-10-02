@@ -129,7 +129,12 @@ def create_metrics_df(track_avg_fp=False):
 
 
 # saves latest model's weights to disc and checks if current epoch is also the best epoch
-def save_best_last_epochs(model, metrics_df, curr_epoch, criteria):
+def save_best_last_epochs(model, metrics_df, curr_epoch, criteria, cfg):
+    # Check if storing individual epochs is enabled
+    store_epochs = cfg.get('store_individual_epochs', False)
+    if not store_epochs:
+        return
+        
     last_epoch_out = f'{outdir}/generation_{gen_num}/{hash}/last_epoch.pth'
     best_epoch_out = f'{outdir}/generation_{gen_num}/{hash}/best_epoch.pth'
 
@@ -147,17 +152,21 @@ def save_best_last_epochs(model, metrics_df, curr_epoch, criteria):
 
 
 # saves all model metrics and predictions to disc
-def store_data(metrics_df: pd.DataFrame, all_preds: dict):
+def store_data(metrics_df: pd.DataFrame, all_preds: dict, cfg):
     metrics_out = f'{outdir}/generation_{gen_num}/{hash}/metrics.csv'
-    pickled_preds_out = f'{outdir}/generation_{gen_num}/{hash}/predictions.pkl'
     os.makedirs(os.path.dirname(metrics_out), exist_ok=True)
 
+    # Always save metrics
     metrics_df.to_csv(metrics_out, index=False)
     
-    # pickle the all_preds dictionary
-    with open(pickled_preds_out, 'wb') as f:
-        # serializes all_preds dictionary and writes to out file
-        pickle.dump(all_preds, f)
+    # Only save predictions if enabled in config
+    store_preds = cfg.get('store_individual_preds', False)
+    if store_preds:
+        pickled_preds_out = f'{outdir}/generation_{gen_num}/{hash}/predictions.pkl'
+        # pickle the all_preds dictionary
+        with open(pickled_preds_out, 'wb') as f:
+            # serializes all_preds dictionary and writes to out file
+            pickle.dump(all_preds, f)
 
 
 # returns learning rate scheduler based on configuration defined by the genome
@@ -335,8 +344,8 @@ def engine(cfg, genome):
         all_preds.append(epoch_preds)
 
         # save metrics_df, best/last epochs, predictions to disc
-        store_data(metrics_df, all_preds)
-        save_best_last_epochs(model, metrics_df, epoch, best_epoch_criteria)
+        store_data(metrics_df, all_preds, cfg)
+        save_best_last_epochs(model, metrics_df, epoch, best_epoch_criteria, cfg)
 
 
 def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, loss_weights, iou_type, max_batch=None):
