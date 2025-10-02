@@ -1,15 +1,17 @@
 #!/bin/bash
-#SBATCH --job-name=auto_restart
+#SBATCH --job-name=orchestrator
 #SBATCH --time=18:00:00
-#SBATCH --output=job_%j.out
-#SBATCH --error=job_%j.err
-#SBATCH --output="/storage/ice-shared/vip-vvk/data/AOT/$USER/evolution_logs/orchestration.%j.log"
-#SBATCH --error="/storage/ice-shared/vip-vvk/data/AOT/$USER/evolution_logs/orchestration_error.%j.log"
+
+# Create log directory and redirect output
+LOG_DIR="/storage/ice-shared/vip-vvk/data/AOT/$USER/evolution_logs"
+mkdir -p "$LOG_DIR"
+exec > "$LOG_DIR/orchestrator.$SLURM_JOB_ID.log"
+exec 2> "$LOG_DIR/orchestrator_error.$SLURM_JOB_ID.log"
 
 # Configuration
 ORIGINAL_SCRIPT="main_ssi.job"
 SCRIPT_ARGS=(
-    # '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_2 -c conf_gens_vae.toml -n 30 -e nas -r'
+    '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_2 -c conf_gens_vae.toml -n 30 -e nas -r'
     '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_3 -c conf_gens_vae.toml -n 30 -e nas -r -i 1820'
     '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_4 -c conf_gens_vae.toml -n 30 -e nas -r -i 1821'
     '-o /storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_4 -c conf_gens.toml -n 30 -e nas -r -i 1821'
