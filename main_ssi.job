@@ -4,12 +4,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
 #SBATCH --time=18:00:00
-
-# Create log directory and redirect output
-LOG_DIR="/storage/ice-shared/vip-vvk/data/AOT/$USER/evolution_logs"
-mkdir -p "$LOG_DIR"
-exec > "$LOG_DIR/evolution.$SLURM_JOB_ID.log"
-exec 2> "$LOG_DIR/evolution_error.$SLURM_JOB_ID.log"
+#SBATCH --output="/storage/ice-shared/vip-vvk/data/AOT/%u/evolution_logs/evolution.%A.%a.log"
+#SBATCH --error="/storage/ice-shared/vip-vvk/data/AOT/%u/evolution_logs/evolution_error.%A.%a.log"
 
 # Parse command line arguments
 output_dir=""
