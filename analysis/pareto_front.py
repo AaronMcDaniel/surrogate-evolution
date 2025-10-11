@@ -96,21 +96,32 @@ if __name__ == "__main__":
     
     # HERE IS WHERE YOU ADD FRONTS
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
-    baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30/out.csv'
-    df_baseline = pd.read_csv(baseline_path)
-    surrogate_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/out.csv'
-    df_surrogate = pd.read_csv(surrogate_path)
-    ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_two_30/out.csv'
-    df_ssi = pd.read_csv(ssi_path)
-    fourth_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_two_30/out.csv'
-    df_four = pd.read_csv(fourth_path)
-    # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
-    dataframes = [
-        {'df': df_baseline, 'name': 'Base', 'colors': ['xkcd:cerulean', 'xkcd:azure', 'xkcd:slate grey', 'xkcd:sky blue'], 'marker': 'o'}, 
-        {'df': df_surrogate, 'name': 'SSI_vae', 'colors': ['xkcd:gold', 'xkcd:amber', 'xkcd:dark grey', 'xkcd:charcoal'], 'marker': '^'},
-        {'df': df_ssi, 'name': 'Base_two', 'colors': ['xkcd:lime green', 'xkcd:forest green', 'xkcd:grey', 'xkcd:slate'], 'marker': 's'},
-        {'df': df_four, 'name': 'SSI_vae_two', 'colors': ['xkcd:red', 'xkcd:red', 'xkcd:red', 'xkcd:red'], 'marker': 'o'},
+    out_csv_list_one = [
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_2/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_3/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_4/out.csv',
     ]
+    out_csv_list_two = [
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_2/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_3/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_4/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_5/out.csv',
+    ]
+    out_csv_list_three = [
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_2/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_3/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_4/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_5/out.csv',
+    ]
+    # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
+    
+    dataframes = []
+    dataframes.extend([{'df': pd.read_csv(path), 'name': 'Base_' + str(i), 'colors': ['xkcd:green'] * 4, 'marker': '^'} for i, path in enumerate(out_csv_list_one)])
+    dataframes.extend([{'df': pd.read_csv(path), 'name': 'SSI_' + str(i), 'colors': ['xkcd:red'] * 4, 'marker': 'o'} for i, path in enumerate(out_csv_list_two)])
+    dataframes.extend([{'df': pd.read_csv(path), 'name': 'VAE_' + str(i), 'colors': ['xkcd:purple'] * 4, 'marker': 'x'} for i, path in enumerate(out_csv_list_three)])
 
     min_gens = []
     max_gens = []
