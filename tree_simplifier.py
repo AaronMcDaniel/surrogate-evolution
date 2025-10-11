@@ -469,6 +469,8 @@ def simplify_individual(individual):
     # If no simplification occurred, return the original individual
     if simplified_string == tree_string:
         return individual
+
+    print("Simplified from:", tree_string, "\nto:", simplified_string)
     
     # Create a new individual from the simplified string
     try:
