@@ -412,7 +412,13 @@ class Surrogate():
         print('First entry in reg_inf_df:', reg_inf_df.head(1), flush=True)
         reg_infs = self.get_reg_inferences(inference_models[1:], reg_inf_df, reg_genome_scaler)
 
-        return cls_infs, reg_infs
+        # Create updated classifier results that reflect the post-flipping state
+        # Individuals in success_indices are considered valid (0), others are invalid (1)
+        updated_cls_infs = [1] * len(cls_infs)  # Start with all as invalid
+        for idx in success_indices:
+            updated_cls_infs[idx] = 0  # Mark individuals in success_indices as valid
+        
+        return updated_cls_infs, reg_infs
     
 
     def get_reg_inferences(self, model_idxs, inf_df, genome_scaler):
