@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=auto_restart
 #SBATCH --time=18:00:00
-#SBATCH --output=job_%j.out
-#SBATCH --error=job_%j.err
+#SBATCH --output="/storage/ice-shared/vip-vvk/data/AOT/%u/evolution_logs/orchestrator.%A.%a.log"
+#SBATCH --error="/storage/ice-shared/vip-vvk/data/AOT/%u/evolution_logs/orchestrator_error.%A.%a.log"
 
 # Configuration
 ORIGINAL_SCRIPT="main_ssi.job"
