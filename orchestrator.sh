@@ -7,7 +7,10 @@
 # Configuration
 ORIGINAL_SCRIPT="main_ssi.job"
 SCRIPT_ARGS=(
-    '-o /storage/ice-shared/vip-vvk/data/AOT/abb32/ablation0_0 -c conf_gens.toml -n 100 -e nas -a override_fitnesses -r -s seeds.txt'
+    '-o /storage/ice-shared/vip-vvk/data/AOT/abb32/ablation_loops_2 -c conf_gens.toml -n 100 -e nas -sg 2 -r -s seeds.txt'
+    '-o /storage/ice-shared/vip-vvk/data/AOT/abb32/ablation_loops_20 -c conf_gens.toml -n 100 -e nas -sg 20 -r -s seeds.txt'
+    '-o /storage/ice-shared/vip-vvk/data/AOT/abb32/ablation_loops_80 -c conf_gens.toml -n 100 -e nas -sg 80 -r -s seeds.txt'
+    # '-o /storage/ice-shared/vip-vvk/data/AOT/abb32/ablation0_0 -c conf_gens.toml -n 100 -e nas -a override_fitnesses -r -s seeds.txt'
     # '-o /storage/ice-shared/vip-vvk/data/AOT/abb32/ablation1_0 -c conf_gens.toml -n 100 -e nas -a 1 -r -s seeds.txt'
     # '-o /storage/ice-shared/vip-vvk/data/AOT/abb32/ablation2_0 -c conf_gens.toml -n 100 -e nas -a 2 -r -s seeds.txt'
     # '-o /storage/ice-shared/vip-vvk/data/AOT/abb32/ablation2 -c conf_gens.toml -n 100 -e nas -r -s seeds.txt -rp'
