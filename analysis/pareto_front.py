@@ -10,6 +10,7 @@ from matplotlib.ticker import MaxNLocator
 import toml
 import argparse
 from pareto_utils import find_pareto_indices, gen_plot
+from scipy import stats
 
 parser = argparse.ArgumentParser()
 parser.add_argument('username', type=str)
@@ -98,9 +99,13 @@ if __name__ == "__main__":
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
     out_csv_list_one = [
         '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30/out.csv',
-        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_2/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_2/out.csv',
         '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_3/out.csv',
         '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_4/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30_2/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30_3/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30_4/out.csv',
     ]
     out_csv_list_two = [
         '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30/out.csv',
@@ -108,6 +113,10 @@ if __name__ == "__main__":
         '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_3/out.csv',
         '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_4/out.csv',
         '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_5/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_simplify_30/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_simplify_30_2/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_simplify_30_3/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_simplify_30_4/out.csv',
     ]
     out_csv_list_three = [
         '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/out.csv',
@@ -115,13 +124,19 @@ if __name__ == "__main__":
         '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_3/out.csv',
         '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_4/out.csv',
         '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_5/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_samemut_30/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_samemut_30_2/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_samemut_30_3/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_samemut_30_4/out.csv',
     ]
     # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
     
+    # df_names = ['Base', 'SSI', 'VAE']
+    df_names = ['Base', 'Simplify', 'SameMut']
     dataframes = []
-    dataframes.extend([{'df': pd.read_csv(path), 'name': 'Base_' + str(i), 'colors': ['xkcd:green'] * 4, 'marker': '^'} for i, path in enumerate(out_csv_list_one)])
-    dataframes.extend([{'df': pd.read_csv(path), 'name': 'SSI_' + str(i), 'colors': ['xkcd:red'] * 4, 'marker': 'o'} for i, path in enumerate(out_csv_list_two)])
-    dataframes.extend([{'df': pd.read_csv(path), 'name': 'VAE_' + str(i), 'colors': ['xkcd:purple'] * 4, 'marker': 'x'} for i, path in enumerate(out_csv_list_three)])
+    dataframes.extend([{'df': pd.read_csv(path), 'name': df_names[0] + str(i), 'colors': ['xkcd:green'] * 4, 'marker': '^'} for i, path in enumerate(out_csv_list_one)])
+    dataframes.extend([{'df': pd.read_csv(path), 'name': df_names[1] + str(i), 'colors': ['xkcd:red'] * 4, 'marker': 'o'} for i, path in enumerate(out_csv_list_two)])
+    dataframes.extend([{'df': pd.read_csv(path), 'name': df_names[2] + str(i), 'colors': ['xkcd:purple'] * 4, 'marker': 'x'} for i, path in enumerate(out_csv_list_three)])
 
     min_gens = []
     max_gens = []
@@ -223,6 +238,8 @@ if __name__ == "__main__":
     max_gen = max(max_gens)
     all_hvs = {}
     
+    max_gen = 28
+
     # Cache for storing fronts from previous generation (for CROSS_GENERATION_PARETO_FRONT optimization)
     cached_fronts_by_dataframe = {}
 
@@ -300,4 +317,115 @@ if __name__ == "__main__":
     plt.ylabel('Hypervolume')
     plt.tight_layout()
     plt.savefig(f'/home/hice1/{USER}/scratch/surrogate-evolution/analysis/graphs/paretoTestingBaseline/pareto_hypervolume.jpg')
+    plt.close()
+
+    # Create aggregated hypervolume plot with mean and 95% confidence intervals for each bucket
+    # Set the maximum y-axis value (set to None for automatic scaling)
+    MAX_Y_AXIS = 0.2  # Adjust this value as needed, or set to None for automatic
+    
+    bucket_hvs = {
+        df_names[0]: [],
+        df_names[1]: [],
+        df_names[2]: []
+    }
+    
+    # Organize hypervolumes by bucket
+    for name, hvs in all_hvs.items():
+        if name.startswith(df_names[0]):
+            bucket_hvs[df_names[0]].append(hvs)
+        elif name.startswith(df_names[1]):
+            bucket_hvs[df_names[1]].append(hvs)
+        elif name.startswith(df_names[2]):
+            bucket_hvs[df_names[2]].append(hvs)
+    
+    # Calculate statistics and plot for each bucket
+    bucket_colors = {df_names[0]: 'xkcd:green', df_names[1]: 'xkcd:red', df_names[2]: 'xkcd:purple'}
+    bucket_markers = {df_names[0]: '^', df_names[1]: 'o', df_names[2]: 'x'}
+
+    plt.figure(figsize=(10, 6))
+    
+    # Collect all plotting data first to determine actual maximum
+    all_plot_data = {}
+    all_ci_upper_values = []
+    
+    for bucket_name, hvs_list in bucket_hvs.items():
+        if not hvs_list:  # Skip empty buckets
+            continue
+            
+        # Find the maximum length among all runs in this bucket
+        max_length = max(len(hvs) for hvs in hvs_list)
+        max_length = 28
+        
+        # Calculate statistics generation by generation
+        means = []
+        ci_lower = []
+        ci_upper = []
+        valid_generations = []
+        
+        for gen_idx in range(max_length):
+            # Collect hypervolumes for this generation from all runs that have data
+            gen_hvs = []
+            for hvs in hvs_list:
+                if gen_idx < len(hvs):
+                    gen_hvs.append(hvs[gen_idx])
+            
+            # Only compute statistics if we have at least 2 data points
+            if len(gen_hvs) >= 2:
+                gen_hvs = np.array(gen_hvs)
+                mean_val = np.mean(gen_hvs)
+                std_val = np.std(gen_hvs, ddof=1)  # Sample standard deviation
+                n_samples = len(gen_hvs)
+                
+                # Calculate 95% confidence interval using t-distribution
+                confidence = 0.95
+                alpha = 1 - confidence
+                t_value = stats.t.ppf(1 - alpha/2, n_samples - 1)
+                margin_error = t_value * std_val / np.sqrt(n_samples)
+                
+                upper_bound = mean_val + margin_error
+                means.append(mean_val)
+                ci_lower.append(max(0.0, mean_val - margin_error))  # Clip to 0
+                ci_upper.append(upper_bound)
+                all_ci_upper_values.append(upper_bound)
+                valid_generations.append(gen_idx + 1)  # +1 because generations are 1-indexed
+            else:
+                # Stop when we have less than 2 data points
+                break
+        
+        if means:  # Only store if we have valid data
+            all_plot_data[bucket_name] = {
+                'means': means,
+                'ci_lower': ci_lower,
+                'ci_upper': ci_upper,
+                'valid_generations': valid_generations,
+                'hvs_list_len': len(hvs_list)
+            }
+    
+    # Determine the actual y-axis limit
+    actual_max = max(all_ci_upper_values) if all_ci_upper_values else 1.0
+    y_axis_limit = min(MAX_Y_AXIS, actual_max) if MAX_Y_AXIS is not None else actual_max
+    
+    # Now plot all the data
+    for bucket_name, plot_data in all_plot_data.items():
+        # Plot mean line
+        plt.plot(plot_data['valid_generations'], plot_data['means'], 
+                marker=bucket_markers[bucket_name], 
+                color=bucket_colors[bucket_name], 
+                label=f'{bucket_name} (n={plot_data["hvs_list_len"]})', 
+                linewidth=2)
+        
+        # Plot confidence interval
+        plt.fill_between(plot_data['valid_generations'], plot_data['ci_lower'], plot_data['ci_upper'], 
+                        alpha=0.3, 
+                        color=bucket_colors[bucket_name])
+    
+    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+    plt.ylim(top=y_axis_limit)
+    plt.legend()
+    plt.title("Mean Pareto Front Hypervolumes Per Generation with 95% Confidence Intervals")
+    plt.xlabel('Generation')
+    plt.ylabel('Hypervolume')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(f'/home/hice1/{USER}/scratch/surrogate-evolution/analysis/graphs/paretoTestingBaseline/pareto_hypervolume_aggregated.jpg', dpi=300)
     plt.close()
