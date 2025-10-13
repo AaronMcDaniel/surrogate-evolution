@@ -2,7 +2,6 @@
 Surrogate class and related surrogate functions. This class is used in the pipeline.
 """
 
-
 import copy
 import hashlib
 import inspect
@@ -26,6 +25,7 @@ from surrogates import surrogate_eval as se
 from surrogates import surrogate_eval as rse
 import random
 import os
+from torch_geometric.loader import DataLoader as GDataLoader
 
 file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
 repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
@@ -57,17 +57,30 @@ class Surrogate():
         pipeline_config = configs["pipeline"]
         codec_config = configs["codec"]
         model_config = configs["model"]
+        # Initialize codec and metrics early so we can compute runtime-dependent dimensions
+        self.METRICS = surrogate_config["surrogate_metrics"]
+        # instantiate codec (needed to compute hyperparam vector size)
+        self.codec = Codec(num_classes=model_config["num_classes"], genome_encoding_strat=codec_config["genome_encoding_strat"], surrogate_encoding_strat=codec_config["surrogate_encoding_strat"])
+        # number of distinct layer types used in the String2Vec encoding
+        num_layer_types = len(self.codec.param_mapping)
+        # hyperparam vector length produced by Codec.encode_surrogate:
+        # final_encoding length = 1 (epoch) + (max_param + num_layer_types) * max_layers
+        hyperparam_dim = 1 + (self.codec.max_param + num_layer_types) * self.codec.max_layers
+
         self.models = [ # these are the regressor models but are simply called 'models' for compatibility reasons with the pipeline
             {
-                'name': 'mlp_best_overall',
-                'dropout': 0.4,
-                'hidden_sizes': [2048, 1024, 512],
-                'optimizer': optim.RMSprop,
-                'lr': 0.01,
-                'scheduler': optim.lr_scheduler.CosineAnnealingLR,
-                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-                'validation_subset': [0, 4, 11],
-                'model': sm.MLP
+                'name': 'gnn_surrogate',
+                'model': sm.GNNSurrogate,
+                'num_module_types': model_config["num_module_types"],     # number of module types (vocab)
+                'type_embedding_dim': model_config.get("type_embedding_dim", 16),
+                'hyperparam_dim': model_config.get("hyperparam_dim", hyperparam_dim), # determine hyperparam vector length from codec/data
+                'hidden_dim': 64,
+                'output_dim': len(self.METRICS),
+                'optimizer': torch.optim.Adam,
+                'lr': 0.001,
+                'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau,
+                'metrics_subset': list(range(len(self.METRICS))),
+                'validation_subset': list(range(len(self.METRICS))),
             },
             {
                 'name': 'mlp_best_uwvl',
@@ -186,12 +199,10 @@ class Surrogate():
         self.pset = primitives.pset
         self.reg_trust = 0
         self.cls_trust = 0
-        self.codec = Codec(num_classes=model_config["num_classes"], genome_encoding_strat=codec_config["genome_encoding_strat"], surrogate_encoding_strat=codec_config["surrogate_encoding_strat"])
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         
-        self.METRICS = surrogate_config["surrogate_metrics"]
         self.opt_directions = surrogate_config["opt_directions"]
-        
+
         ensure_deap_classes(self.objectives, codec_config)
         self.toolbox = base.Toolbox()
     
@@ -276,6 +287,49 @@ class Surrogate():
                 if reg_genome_scaler is None: reg_genome_scaler = gs
                 scores['regressors'][regressor_dict['name']] = best_epoch_metrics
             
+        # ─── GNN training block ───────────────────────────────────────────────────
+        for m in self.models:
+            if m['name'] != 'gnn_surrogate':
+                continue
+
+            # Build PyG datasets
+            metric_names = self.surrogate_config["surrogate_metrics"]
+            train_ds = sd.GraphSurrogateDataset(regressor_train_df, self.codec, metric_names)
+            val_ds   = sd.GraphSurrogateDataset(regressor_val_df,   self.codec, metric_names)
+            train_loader = GDataLoader(train_ds, batch_size=self.batch_size, shuffle=True)
+            val_loader   = GDataLoader(val_ds,   batch_size=self.batch_size, shuffle=False)
+
+            # Instantiate model, optimizer, scheduler, loss
+            ModelCls = m['model']
+            model = ModelCls(
+                m['num_module_types'],
+                m['type_embedding_dim'],
+                m['hyperparam_dim'],
+                m['hidden_dim'],
+                m['output_dim'],
+                dropout=m.get('dropout', 0.0)
+            ).to(self.device)
+            optimizer = m['optimizer'](model.parameters(), lr=m['lr'])
+            scheduler = m['scheduler'](optimizer, step_size=10, gamma=0.5)
+            criterion = torch.nn.MSELoss()
+
+            # Training loop
+            for epoch in range(self.num_epochs):
+                model.train()
+                total_loss = 0.0
+                for data, y in train_loader:
+                    data = data.to(self.device)
+                    y    = y.to(self.device)
+                    optimizer.zero_grad()
+                    pred = model(data)
+                    loss = criterion(pred, y)
+                    loss.backward()
+                    optimizer.step()
+                    total_loss += loss.item()
+                scheduler.step()
+
+
+        # ────────────────────────────────────────────────────────────────────────────
         return scores, cls_genome_scaler, reg_genome_scaler
     
     
@@ -438,10 +492,16 @@ class Surrogate():
     
     
 def main():
-    surrogate = Surrogate('conf.toml', os.path.join(repo_dir, 'test/weights/surrogate_weights'))
-    reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_reg_train.pkl'))
+    #surrogate = Surrogate('conf.toml', os.path.join(repo_dir, 'test/weights/surrogate_weights'))
+    surrogate = Surrogate(
+    'conf.toml',
+    os.path.join('/storage/ice-shared/vip-vvk/data/AOT/wlu314',
+                 'train_surrogate',
+                 'surrogate_weights')
+    )
+    reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_reg_train.pkl'))
     reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_reg_val.pkl'))
-    cls_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_cls_train.pkl'))
+    cls_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_cls_train.pkl'))
     cls_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_cls_val.pkl'))
     # inference_models = [0, 5, 6, 7]
     cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
@@ -455,10 +515,16 @@ def main():
     # print(surrogate.calc_ensemble_trust([1, 2, 3], genome_scaler, individuals))
     # print(surrogate.calc_trust(-2, genome_scaler, individuals))
 
-    surrogate = Surrogate('conf.toml', '/storage/ice-shared/vip-vvk/data/AOT/test_surr_evo/surrogate_weights')
-    cls_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_cls_train.pkl'))
+    #surrogate = Surrogate('conf.toml', os.path.join(repo_dir, 'surrogate_weights'))
+    surrogate = Surrogate(
+    'conf.toml',
+    os.path.join('/storage/ice-shared/vip-vvk/data/AOT/wlu314',
+                 'train_surrogate',
+                 'surrogate_weights')
+    )
+    cls_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_cls_train.pkl'))
     cls_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_cls_val.pkl'))
-    reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/pretrain_reg_train.pkl'))
+    reg_train_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_reg_train.pkl'))
     reg_val_df = pd.read_pickle(os.path.join(repo_dir, 'surrogate_dataset/surr_reg_val.pkl'))
     cls_train_dataset = sd.ClassifierSurrogateDataset(cls_train_df, mode='train')
     reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train', metrics_subset=[0, 4, 11])

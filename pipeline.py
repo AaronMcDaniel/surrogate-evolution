@@ -35,7 +35,7 @@ CORES = 8
 MEM = '32GB'
 JOB_TIME = '08:00:00'
 SCRIPT = 'eval.py'
-ENV_NAME = 'pco'
+ENV_NAME = 'nas'
 GPUS = ["V100-16GB", "V100-32GB", "L40S", "A100-40GB", "H100"]
 # ALLOWED_NODES = ['ice108', 'ice107', 'ice110', 'ice143', 'ice144', 'ice145', 'ice151', 'ice162', 'ice163', 'ice164', 'ice165', 'ice175', 'ice176', 'ice179', 'ice183', 'ice185', 'ice191', 'ice192', 'ice193']
 

@@ -20,6 +20,7 @@ import numpy as np
 import inspect
 import enum
 from deap import gp
+from torch_geometric.data import Data
 
 import primitives
 
@@ -289,7 +290,110 @@ class Codec:
             if torch.backends.mps.is_available()
             else "cpu"
         )
+        
+    def encode_surrogate_graph(self, genome_str: str, epoch: int) -> Data:
+        """
+        Encode the genome & epoch into a simple PyG Data object
+        that works with SimpleGCN:
+          - A single node whose features are the flat surrogate encoding
+          - A self-loop edge so GCNConv can aggregate
+        """
+        # Allow selecting an encoding mode. Default behaviour is the existing flat single-node
+        # encoding (works with SimpleGCN). If the codec/surrogate strategy requests a
+        # combined per-module encoding (for CombinedFeatureGCN), build a node-per-layer
+        # representation with type indices and per-node hyperparameter vectors.
+        mode = getattr(self, 'surrogate_encoding_strat', 'String2Vec')
+        mode = mode.lower()
 
+        if mode in ('string2vec', 'flat', 'single_node'):
+            # 1) Get the flat encoding (shape [hyperparam_dim,]) used by MLP surrogates
+            flat = self.encode_surrogate(genome_str, epoch)
+            # 2) Build node-feature matrix: one node with the full vector
+            x = torch.tensor(flat, dtype=torch.float32).unsqueeze(0)  # [1, hyperparam_dim]
+            # 3) Create a self-loop so GCNConv has at least one edge
+            edge_index = torch.tensor([[0, 0],
+                                       [0, 0]], dtype=torch.long)
+            # 4) Wrap in Data (PyG)
+            data = Data(x=x, edge_index=edge_index)
+            # 5) Single-graph batch vector
+            data.batch = torch.zeros(x.size(0), dtype=torch.long)
+            return data
+
+        # Combined per-node encoding: use get_layer_list (robust) to build per-node
+        # type indices and hyperparameter vectors. If anything fails, fall back to
+        # the single-node flat encoding.
+        if mode in ('combined', 'combinedfeature', 'module_combined'):
+            try:
+                layer_list = self.get_layer_list(genome_str)
+                if not layer_list or len(layer_list) <= 1:
+                    # nothing to build (no head + layers), fall back
+                    raise RuntimeError('insufficient layer_list for combined encoding')
+
+                num_layer_types = len(self.param_mapping)
+                # head is first entry; remaining entries are module layers
+                optimizer_layer, scheduler_layer, head_layer = self.construct_head(layer_list[0], num_layer_types)
+                module_layers = layer_list[1:]
+
+                # Build encoded_genome matrix same as encode_surrogate
+                encoded_genome = np.zeros((self.max_param + num_layer_types, self.max_layers))
+                encoded_genome[0:len(optimizer_layer), 0] = optimizer_layer
+                encoded_genome[0:len(scheduler_layer), 1] = scheduler_layer
+                encoded_genome[0:len(head_layer), 2] = head_layer
+
+                for i, layer_info in enumerate(module_layers):
+                    layer = self.construct_vec(layer_info, num_layer_types)
+                    encoded_genome[0:len(layer), i + 2] = layer
+
+                num_nodes = len(module_layers)
+                if num_nodes == 0:
+                    raise RuntimeError('no module layers found')
+
+                # For each node build type index and hyperparam vector
+                type_indices = []
+                hyperparams = []
+                for col_idx in range(2, 2 + num_nodes):
+                    col = encoded_genome[:, col_idx]
+                    type_onehot = col[:num_layer_types]
+                    if np.all(type_onehot == 0):
+                        type_idx = 0
+                    else:
+                        type_idx = int(np.argmax(type_onehot))
+                    type_indices.append(type_idx)
+                    hp = col[num_layer_types:]
+                    hyperparams.append(hp)
+
+                x = torch.tensor(np.array(type_indices), dtype=torch.long).unsqueeze(1)
+                hyperparams = torch.tensor(np.stack(hyperparams), dtype=torch.float32)
+
+                # chain edges + self-loops
+                edge_list = []
+                for i in range(num_nodes - 1):
+                    edge_list.append([i, i + 1])
+                    edge_list.append([i + 1, i])
+                for i in range(num_nodes):
+                    edge_list.append([i, i])
+
+                edge_index = torch.tensor(edge_list, dtype=torch.long).T.contiguous()
+                data = Data(x=x, edge_index=edge_index)
+                data.hyperparams = hyperparams
+                data.batch = torch.zeros(x.size(0), dtype=torch.long)
+                return data
+            except Exception:
+                # fallback to single-node flat encoding
+                flat = self.encode_surrogate(genome_str, epoch)
+                x = torch.tensor(flat, dtype=torch.float32).unsqueeze(0)
+                edge_index = torch.tensor([[0, 0], [0, 0]], dtype=torch.long)
+                data = Data(x=x, edge_index=edge_index)
+                data.batch = torch.zeros(x.size(0), dtype=torch.long)
+                return data
+
+        # Unknown mode: fall back to single-node flat
+        flat = self.encode_surrogate(genome_str, epoch)
+        x = torch.tensor(flat, dtype=torch.float32).unsqueeze(0)
+        edge_index = torch.tensor([[0, 0], [0, 0]], dtype=torch.long)
+        data = Data(x=x, edge_index=edge_index)
+        data.batch = torch.zeros(x.size(0), dtype=torch.long)
+        return data
 
     def pset_info(self):
         pset = primitives.pset

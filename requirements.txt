@@ -15,3 +15,5 @@ toml==0.10.2
 future==1.0.0
 toml==0.10.2
 numpy==1.26.4
+torch-geometric==2.6.1
+torchdata==0.8.0

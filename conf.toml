@@ -96,7 +96,7 @@ min_batch_in_val_data = 2
 # flag that determines whether surrogate 'pretrains' on prev run data
 pretrained = true
 # folder containing surrogate datasets used in pretraining the model
-pretrained_dir = '/home/hice1/tthakur9/scratch/surrogate-evolution/surrogate_dataset'
+pretrained_dir = '/storage/ice-shared/vip-vvk/data/AOT/surrogate_dataset'
 
 
 [data]

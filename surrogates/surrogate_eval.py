@@ -2,7 +2,6 @@
 Train and Validate operations for the regressor surrogates. Called surrogate_eval for compatibility reasons.
 """
 
-
 import inspect
 import os
 import toml
@@ -25,13 +24,9 @@ repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
 
 def prepare_data(model_dict, batch_size, train_df, val_df):
     train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=model_dict['metrics_subset'])
-    print(f'Input val_df: {val_df.shape}')
     val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=model_dict['metrics_subset'], metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-    print(f'val_dataset length: {len(val_dataset.genomes)}')
-    # NOTE removed drop_last for the sake of continuing
-    val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=True) #drop_last=True)
-    print(f'val_loader length: {len(val_loader)}')
+    val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     return train_loader, val_loader, train_dataset, val_dataset
 
 
@@ -263,7 +258,8 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
             torch.cuda.empty_cache()
 
     # calculate surrogate validation loss per batch (NOTE batch loss already meaned by batch size)
-    surrogate_val_loss /= len(data_iter)
+    num_batches = len(data_iter)
+    surrogate_val_loss /= num_batches
 
     # compute the mean of the mse losses for each metric based on num batches
     mse_metrics_per_batch = torch.stack(mse_metrics_per_batch)

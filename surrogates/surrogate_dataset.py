@@ -22,6 +22,7 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler, RobustScaler
 import pickle
 import tqdm
+from torch_geometric.data import Data
 
 
 
@@ -55,9 +56,8 @@ class SurrogateDataset(Dataset):
             self.metrics = best_epochs_df.iloc[:, metrics_subset].values
             self.genomes = self.genomes_scaler.transform(self.genomes)
             
-        # NOTE commented out for debugging
-        # if np.isnan(self.genomes).any() or np.isnan(self.metrics).any():
-        #     breakpoint()
+        if np.isnan(self.genomes).any() or np.isnan(self.metrics).any():
+            breakpoint()
 
     # returns num samples in dataset
     def __len__(self):
@@ -355,6 +355,63 @@ def main():
     reg_val_ds = SurrogateDataset(reg_val_df, 'val', None, reg_train_ds.metrics_scaler, reg_train_ds.genomes_scaler)
     cls_train_df = pd.read_pickle(os.path.join(my_args.outdir, f'{my_args.name}_cls_train.pkl'))
     cls_val_df = pd.read_pickle(os.path.join(my_args.outdir, f'{my_args.name}_reg_val.pkl'))
+
+class GraphSurrogateDataset(torch.utils.data.Dataset):
+    """
+    Given a pandas.DataFrame with columns
+      ['hash','genome','epoch_num', <metrics…> ],
+    this Dataset uses the Codec to produce a PyG Data object
+    and the target metric‐vector y.
+    """
+    def __init__(self, df, codec: Codec, metric_names: list[str]):
+        self.df = df.reset_index(drop=True)
+        self.codec = codec
+        self.metric_names = metric_names
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+        genome_str = row['genome']
+        epoch     = int(row.get('epoch_num', 1))
+
+        # it should return a torch_geometric.data.Data with
+        #   x, edge_index, batch and .hyperparams (tensor)
+        data: Data = self.codec.encode_surrogate_graph(genome_str, epoch)
+
+        # Sanity checks: ensure the Data object contains expected attributes and shapes.
+        try:
+            if not hasattr(data, 'x') or not hasattr(data, 'edge_index') or not hasattr(data, 'batch'):
+                raise ValueError('encoded Data must have attributes x, edge_index, and batch')
+
+            # Combined-mode: data.x should be integer indices and data.hyperparams present
+            if data.x.dtype == torch.long or data.x.dtype == torch.int64:
+                if not hasattr(data, 'hyperparams'):
+                    raise ValueError('combined encoding expected data.hyperparams tensor alongside integer data.x')
+                if data.hyperparams.shape[0] != data.x.shape[0]:
+                    raise ValueError(f'data.hyperparams rows ({data.hyperparams.shape[0]}) != num nodes ({data.x.shape[0]})')
+            else:
+                # Single-node flat encoding: expect 2D float x with shape [1, flat_len]
+                if data.x.dim() != 2:
+                    raise ValueError('flat encoding expects data.x to be 2-dimensional [1, hyperparam_dim]')
+                # Optionally verify flat length matches codec.encode_surrogate output
+                try:
+                    expected_flat = len(self.codec.encode_surrogate(genome_str, epoch))
+                    if data.x.shape[1] != expected_flat:
+                        raise ValueError(f'flat encoding length mismatch: data.x.shape[1]={data.x.shape[1]} != expected={expected_flat}')
+                except Exception:
+                    # If encode_surrogate itself fails, skip strict check but keep shape validations.
+                    pass
+        except Exception as e:
+            raise ValueError(f'Invalid encoded Data for row index {idx} (hash={row.get("hash","?")}): {e}')
+
+        # Build the target vector y ∈ R^{#metrics}
+        y = torch.tensor(
+            [ row[m] for m in self.metric_names ], 
+            dtype=torch.float32
+        )
+        return data, y
 
 if __name__ == "__main__":
     main()

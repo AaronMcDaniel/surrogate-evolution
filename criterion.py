@@ -1,8 +1,6 @@
 """
 Various functions required to compute custom loss metrics.
 """
-
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

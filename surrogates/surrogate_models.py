@@ -11,7 +11,21 @@ import matplotlib.pyplot as plt
 import torchvision.ops as ops
 import numpy as np
 from scipy import linalg
+from GNN import SimpleGCN
 
+# gnn surrogate model
+class GNNSurrogate(nn.Module):
+    def __init__(self, num_module_types, type_embedding_dim, hyperparam_dim, hidden_dim, output_dim, dropout=0.0):
+        super().__init__()
+        # Option 1: Simple single-node GCN (works with codec.encode_surrogate_graph current output)
+        self.net = SimpleGCN(input_dim=hyperparam_dim, hidden_dim=hidden_dim, output_dim=output_dim)
+        # Option 2: CombinedFeatureGCN if codec encodes type indices + hyperparams per node:
+        # self.net = CombinedFeatureGCN(num_module_types, type_embedding_dim, hyperparam_dim, hidden_dim, output_dim)
+    def forward(self, data):
+        # data is a torch_geometric.data.Data
+        # ensure the net returns shape (batch_size, output_dim)
+        return self.net(data)
+    
 # mlp surrogate model
 class MLP(nn.Module):
     def __init__(
