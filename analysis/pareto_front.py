@@ -86,7 +86,7 @@ def generate_fronts(df, objectives, directions, name, gen, colors, marker, reach
 if __name__ == "__main__":
     # grab the objectives and best epoch criteria from the config and transform them to how I was previously representing that data (True = want to minimize, False = maximize)
     # configs = toml.load('conf.toml')
-    configs = toml.load('/home/hice1/psomu3/scratch/surrogate-evolution/conf_gens_vae.toml')
+    configs = toml.load('/home/hice1/abb32/scratch/surrogate-evolution/conf_gens_vae.toml')
     pipeline_config = configs["pipeline"]
     cfg_objectives = pipeline_config['objectives']
     cfg_best_epoch = pipeline_config['best_epoch_criteria']
@@ -98,32 +98,46 @@ if __name__ == "__main__":
     # HERE IS WHERE YOU ADD FRONTS
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
     out_csv_list_one = [
-        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/abb32/ablation_loops_2/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/abb32/ablation_loops_20/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/abb32/ablation_loops_80/out.csv',
+
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30/out.csv',
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_2/out.csv',
-        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_3/out.csv',
-        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_4/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_3/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_4/out.csv',
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30/out.csv',
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30_2/out.csv',
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30_3/out.csv',
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30_4/out.csv',
     ]
     out_csv_list_two = [
-        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30/out.csv',
-        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_2/out.csv',
-        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_3/out.csv',
-        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_4/out.csv',
-        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_5/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_2/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_3/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_4/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30_5/out.csv',
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_simplify_30/out.csv',
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_simplify_30_2/out.csv',
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_simplify_30_3/out.csv',
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_simplify_30_4/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/glu49/ablation_all_flags_off_v3/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/glu49/ablation_all_flags_off_v4/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/glu49/ablation_all_flags_off_v5/out.csv',
+
     ]
     out_csv_list_three = [
-        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/out.csv',
-        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_2/out.csv',
-        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_3/out.csv',
-        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_4/out.csv',
-        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30_5/out.csv',
+        # write 0-5 below
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation1/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation2/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation3/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation4/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation5/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation6/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation7/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation8/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation9/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation10/out.csv',
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_samemut_30/out.csv',
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_samemut_30_2/out.csv',
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_samemut_30_3/out.csv',
@@ -132,11 +146,11 @@ if __name__ == "__main__":
     # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
     
     # df_names = ['Base', 'SSI', 'VAE']
-    df_names = ['Base', 'Simplify', 'SameMut']
+    df_names = ['Loop', 'Base', 'PopPart']
     dataframes = []
-    dataframes.extend([{'df': pd.read_csv(path), 'name': df_names[0] + str(i), 'colors': ['xkcd:green'] * 4, 'marker': '^'} for i, path in enumerate(out_csv_list_one)])
-    dataframes.extend([{'df': pd.read_csv(path), 'name': df_names[1] + str(i), 'colors': ['xkcd:red'] * 4, 'marker': 'o'} for i, path in enumerate(out_csv_list_two)])
-    dataframes.extend([{'df': pd.read_csv(path), 'name': df_names[2] + str(i), 'colors': ['xkcd:purple'] * 4, 'marker': 'x'} for i, path in enumerate(out_csv_list_three)])
+    dataframes.extend([{'df': pd.read_csv(path), 'name': df_names[1] + str(i), 'colors': ['xkcd:green'] * 4, 'marker': '^'} for i, path in enumerate(out_csv_list_two)])
+    dataframes.extend([{'df': pd.read_csv(path), 'name': df_names[2] + str(i), 'colors': ['xkcd:red'] * 4, 'marker': 'o'} for i, path in enumerate(out_csv_list_three)])
+    # dataframes.extend([{'df': pd.read_csv(path), 'name': df_names[2] + str(i), 'colors': ['xkcd:purple'] * 4, 'marker': 'x'} for i, path in enumerate(out_csv_list_three)])
 
     min_gens = []
     max_gens = []
