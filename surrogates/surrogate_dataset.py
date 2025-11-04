@@ -111,7 +111,7 @@ def build_dataset(
         working_dir='/gv1/projects/GRIP_Precog_Opt/outputs', 
         outdir='surrogate_dataset', 
         metrics='uw_val_epoch_loss,iou_loss,giou_loss,diou_loss,ciou_loss,center_loss,size_loss,obj_loss,precision,recall,f1_score,average_precision', 
-        exclude=[], include_only=None, val_ratio=0.3, seed=0
+        exclude=[], include_only=None, val_ratio=0.3, seed=0, return_raw_genomes=False
     ):
 
     os.makedirs(outdir, exist_ok=True)
@@ -181,6 +181,13 @@ def build_dataset(
                     cls_to_add['genome'] = np.clip(tensor, -1000, 1000)
                     cls_to_add['hash'] = genome_hash
                     cls_to_add['label'] = 1
+                    
+                    # Handle encoding based on return_raw_genomes flag
+                    if return_raw_genomes:
+                        # Store the raw genome string instead of encoding
+                        cls_to_add['string_genome'] = genome
+                        cls_to_add['epoch_num'] = i + 1
+                    
 
                     # add combined datapoint to bottom of combined dataframe and lists 
                     cls_data.append(cls_to_add)
@@ -201,6 +208,13 @@ def build_dataset(
             cls_to_add['label'] = 0 
             reg_to_add['hash'] = genome_hash
             reg_to_add['genome'] = np.clip(tensor, -1000, 1000)
+            
+            # Handle encoding based on return_raw_genomes flag as well
+            if return_raw_genomes:
+                cls_to_add['str_genome'] = genome
+                cls_to_add['epoch_num'] = metric_row['epoch_num']
+                reg_to_add['str_genome'] = genome
+                reg_to_add['epoch_num'] = metric_row['epoch_num']
 
             outlier = False
             for heading in metric_headings:
@@ -269,7 +283,7 @@ def build_dataset(
     complete_cls_set, cls_num_train_rem = remove_dupes(complete_cls_set, 'genome', cls_concat_idx)
 
     reg_split = reg_concat_idx - reg_num_train_rem
-    cls_split = reg_concat_idx - cls_num_train_rem
+    cls_split = cls_concat_idx - cls_num_train_rem
 
     reg_train_set = complete_reg_set[:reg_split]
     reg_val_set = complete_reg_set[reg_split:]
