@@ -17,20 +17,20 @@ from torch.utils.data import ConcatDataset
 mode = 'old'
 print("Mode", mode)
 # Load Data
-with open(f'/storage/ice-shared/vip-vvk/data/AOT/surrogate_dataset/pretrain_cls_train.pkl', 'rb') as f:
+with open(f'/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/codestral_reg_train.pkl', 'rb') as f:
     train_df = pickle.load(f)
-with open(f'/storage/ice-shared/vip-vvk/data/AOT/surrogate_dataset/surr_cls_val.pkl', 'rb') as f:
+with open(f'/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/codestral_reg_val.pkl', 'rb') as f:
     val_df = pickle.load(f)
 
 all_df = pd.concat([train_df, val_df])
 # DataLoader Preparation
 batch_size = 16
 train_loader, val_loader, _, _ = prepare_data({'metrics_subset': [0,1,2,3]}, batch_size, all_df, val_df)
-LATENT_DIM = 256
+LATENT_DIM = 512
 
 # Base VAE Class
 class BaseVAE(nn.Module):
-    def __init__(self, input_dim=1021, latent_dim=LATENT_DIM):
+    def __init__(self, input_dim=6151, latent_dim=LATENT_DIM):
         super(BaseVAE, self).__init__()
         self.latent_dim = latent_dim
 
@@ -68,9 +68,53 @@ def loss_function(recon_x, x, mu, logvar):
     kl_div = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
     return recon_loss + kl_div
 
+# 6. Just a larger VAE with more depth and width in layers - 3 layers
+class LargeVAE(BaseVAE):
+    def __init__(self, input_dim=6151, latent_dim=LATENT_DIM, dropout_p=0.3):
+        super(LargeVAE, self).__init__(input_dim, latent_dim)
+        
+        # --- Encoder Layers ---
+        self.fc1 = nn.Linear(input_dim, 1024)
+        self.ln1 = nn.LayerNorm(1024)
+        self.fc3 = nn.Linear(1024, 512)
+        self.ln3 = nn.LayerNorm(512)
+        
+        self.fc3_mu = nn.Linear(512, latent_dim)
+        self.fc3_logvar = nn.Linear(512, latent_dim)
+
+        # --- Decoder Layers ---
+        self.fc4 = nn.Linear(latent_dim, 512)
+        self.ln4 = nn.LayerNorm(512)
+        self.fc5 = nn.Linear(512, 1024)
+        self.ln5 = nn.LayerNorm(1024)
+        self.fc6 = nn.Linear(1024, input_dim)
+        # self.ln6 = nn.LayerNorm(2048)
+        # self.fc7 = nn.Linear(2048, input_dim)
+        
+        # --- Dropout Layer ---
+        self.dropout = nn.Dropout(p=dropout_p)
+
+    def encode(self, x):
+        h = self.dropout(F.gelu(self.ln1(self.fc1(x))))
+        # h = F.gelu(self.ln2(self.fc2(h)))
+        h = self.dropout(F.gelu(self.ln3(self.fc3(h))))
+        
+        mu = self.fc3_mu(h)
+        logvar = self.fc3_logvar(h)
+        return mu, logvar
+
+    def decode(self, z):
+        h = self.dropout(F.gelu(self.ln4(self.fc4(z))))
+        h = self.dropout(F.gelu(self.ln5(self.fc5(h))))
+        # h = F.gelu(self.ln6(self.fc6(h)))
+        
+        # No activation/dropout on the final reconstruction layer
+        return self.fc6(h)
+
+
 # 2. Hierarchical VAE
 class HVAE(BaseVAE):
-    def __init__(self, input_dim=1021, latent_dim=LATENT_DIM):
+    def __init__(self, input_dim=6151, latent_dim=LATENT_DIM):
         super(HVAE, self).__init__(input_dim, latent_dim)
         self.fc2_z2 = nn.Linear(latent_dim, latent_dim)
 
@@ -81,7 +125,7 @@ class HVAE(BaseVAE):
 
 # 3. Normalizing Flow-based VAE
 class NFVAE(BaseVAE):
-    def __init__(self, input_dim=1021, latent_dim=LATENT_DIM, flow_steps=4):
+    def __init__(self, input_dim=6151, latent_dim=LATENT_DIM, flow_steps=4):
         super(NFVAE, self).__init__(input_dim, latent_dim)
         self.transforms = nn.ModuleList([AffineAutoregressive(AutoRegressiveNN(latent_dim, [latent_dim])) for _ in range(flow_steps)])
 
@@ -93,7 +137,7 @@ class NFVAE(BaseVAE):
 
 # 4. MoG-VAE
 class MoGVAE(BaseVAE):
-    def __init__(self, input_dim=1021, latent_dim=32, num_components=5):
+    def __init__(self, input_dim=6151, latent_dim=32, num_components=5):
         super(MoGVAE, self).__init__(input_dim, latent_dim)
         self.num_components = num_components
         self.mixture_weights = nn.Linear(512, num_components)
@@ -131,10 +175,10 @@ class MoGVAE(BaseVAE):
         return self.decode(z), mu, logvar
 # Training Setup
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-vae = BaseVAE().to(device)
+vae = LargeVAE().to(device)
 optimizer = optim.Adam(vae.parameters(), lr=5e-4)
 
-epochs = 40
+epochs = 200
 vae.train()
 for epoch in range(epochs):
     data_iter = tqdm(train_loader, desc=f'Training Epoch {epoch+1}')
@@ -209,9 +253,9 @@ train_df = get_latent_representation(train_df, train_loader)
 val_df = get_latent_representation(val_df, val_loader)
 
 # Save Updated DataFrames
-with open(f'/storage/ice-shared/vip-vvk/data/AOT/psomu3/strong_codec_test/surrogate_dataset/{mode}_codec_cls_train_latent_256.pkl', 'wb') as f:
+with open(f'/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/reg_train_latent_last_token_{LATENT_DIM}.pkl', 'wb') as f:
     pickle.dump(train_df, f)
-with open(f'/storage/ice-shared/vip-vvk/data/AOT/psomu3/strong_codec_test/surrogate_dataset/{mode}_codec_cls_val_latent_256.pkl', 'wb') as f:
+with open(f'/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/reg_val_latent_last_token_{LATENT_DIM}.pkl', 'wb') as f:
     pickle.dump(val_df, f)
 
 print("Mode", mode)
