@@ -16,7 +16,6 @@ from torch.utils.data import ConcatDataset
 import toml
 from transformers import AutoTokenizer, AutoModel
 import subprocess
-# sys.path.append('/home/hice1/psomu3/scratch/surrogate-evolution-2')
 from codec import Codec
 from eval import get_optimizer, get_scheduler
 import traceback
@@ -29,8 +28,9 @@ import hashlib
 import time
 import re
 
-
-cfg = toml.load("/home/hice1/psomu3/scratch/surrogate-evolution-2/conf.toml")
+USER = os.getenv("USER", "psomu3")
+cwd = os.path.dirname(os.getcwd())
+cfg = toml.load(os.path.join(cwd, "conf.toml"))
 
 genome_encoding_strat = cfg["codec"]['genome_encoding_strat']
 num_classes = cfg["model"]['num_classes']
@@ -64,7 +64,7 @@ module load anaconda3/2023.03
 module load cuda/12.1.1
 
 # Execute the pre-analyzer script
-conda run -n {PREANALYZER_ENV} --no-capture-output python -u /home/hice1/psomu3/scratch/surrogate-evolution-2/surrogates/codestral_preanalyzer.py --dataset_file {dataset_file} --dataset_name {dataset_name} --status_dir {status_dir} --start_idx {start_idx}
+conda run -n {PREANALYZER_ENV} --no-capture-output python -u -m surrogates.codestral_preanalyzer --dataset_file {dataset_file} --dataset_name {dataset_name} --status_dir {status_dir} --start_idx {start_idx}
 """
     
     with open(job_file, 'w') as f:
@@ -620,7 +620,7 @@ def decode_and_inspect_model(encoded_genome, codec, num_loss_components=4):
                 print(f"  Updated Mean pooled embedding: {codestral_embeddings['mean_pooled'].shape}", flush=True)
                 
                 # Save the embeddings for future use
-                embedding_save_path = f"/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/codestral_embedding_{abs(hash(encoded_genome))}.npz"
+                embedding_save_path = f"/storage/ice-shared/vip-vvk/data/AOT/{USER}/codestral/codestral_embedding_{abs(hash(encoded_genome))}.npz"
                 np.savez(
                     embedding_save_path,
                     last_token=codestral_embeddings['last_token'],
@@ -684,8 +684,8 @@ def build_codestral_dataset(use_build_dataset=True, dataset_prefix="mix_dataset"
     # Parameters for dataset creation
     holy_grail_csv = "/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/out.csv"
     working_dir = "/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30"
-    outdir = "/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/large_dataset"
-    status_dir = "/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/preanalysis_status"
+    outdir = f"/storage/ice-shared/vip-vvk/data/AOT/{USER}/codestral/large_dataset"
+    status_dir = f"/storage/ice-shared/vip-vvk/data/AOT/{USER}/codestral/preanalysis_status"
 
     print("Building raw genome dataset from holy grail CSV...", flush=True)
     print(f"Input file: {holy_grail_csv}", flush=True)

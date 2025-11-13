@@ -14,14 +14,12 @@ import traceback
 import time
 from pathlib import Path
 
-# Add the project root to the path
-sys.path.append('/home/hice1/psomu3/scratch/surrogate-evolution-2')
-
 import toml
 from codec import Codec
 
 # Load configuration
-cfg = toml.load("/home/hice1/psomu3/scratch/surrogate-evolution-2/conf.toml")
+cwd = os.path.dirname(os.getcwd())
+cfg = toml.load(os.path.join(cwd, "conf.toml"))
 genome_encoding_strat = cfg["codec"]['genome_encoding_strat']
 num_classes = cfg["model"]['num_classes']
 num_loss_comp = cfg["model"]['num_loss_components']
