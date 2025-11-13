@@ -86,7 +86,7 @@ def compute_tsne(genome_matrix, perplexity=30, n_iter=1000, random_state=42, n_c
     
     return tsne_embedding
 
-def create_visualizations(tsne_embedding, df, output_dir):
+def create_visualizations(tsne_embedding, df, output_dir, output_prefix):
     """Create various t-SNE visualizations"""
     os.makedirs(output_dir, exist_ok=True)
     
@@ -103,9 +103,9 @@ def create_visualizations(tsne_embedding, df, output_dir):
     plt.ylabel('t-SNE Component 2', fontsize=14)
     plt.title('t-SNE Visualization of Genome Embeddings', fontsize=16)
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'tsne_basic.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(output_dir, f'{output_prefix}_tsne_basic.png'), dpi=300, bbox_inches='tight')
     plt.close()
-    print(f"Saved: {os.path.join(output_dir, 'tsne_basic.png')}")
+    print(f"Saved: {os.path.join(output_dir, f'{output_prefix}_tsne_basic.png')}")
     
     # 2. Density plot
     print("Creating density plot...")
@@ -117,12 +117,19 @@ def create_visualizations(tsne_embedding, df, output_dir):
     plt.ylabel('t-SNE Component 2', fontsize=14)
     plt.title('t-SNE Density Plot of Genome Embeddings', fontsize=16)
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'tsne_density.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(output_dir, f'{output_prefix}_tsne_density.png'), dpi=300, bbox_inches='tight')
     plt.close()
-    print(f"Saved: {os.path.join(output_dir, 'tsne_density.png')}")
+    print(f"Saved: {os.path.join(output_dir, f'{output_prefix}_tsne_density.png')}")
     
     # 3. Color by performance metrics if available
     metric_columns = [col for col in df.columns if col not in ['genome', 'hash', 'str_genome', 'epoch_num']]
+    if 'average_precision' in df.columns:
+        metric_columns.remove('average_precision')
+        metric_columns.insert(0, 'average_precision')
+    if 'ciou_loss' in df.columns:
+        metric_columns.remove('ciou_loss')
+        metric_columns.insert(0, 'ciou_loss')
+
     
     if metric_columns:
         print(f"Creating visualizations colored by metrics: {metric_columns}")
@@ -150,10 +157,10 @@ def create_visualizations(tsne_embedding, df, output_dir):
                 plt.tight_layout()
                 
                 safe_metric_name = metric.replace('/', '_').replace(' ', '_')
-                plt.savefig(os.path.join(output_dir, f'tsne_by_{safe_metric_name}.png'), 
+                plt.savefig(os.path.join(output_dir, f'{output_prefix}_tsne_by_{safe_metric_name}.png'), 
                            dpi=300, bbox_inches='tight')
                 plt.close()
-                print(f"Saved: {os.path.join(output_dir, f'tsne_by_{safe_metric_name}.png')}")
+                print(f"Saved: {os.path.join(output_dir, f'{output_prefix}_tsne_by_{safe_metric_name}.png')}")
                 
             except Exception as e:
                 print(f"Warning: Could not create plot for {metric}: {e}")
@@ -209,6 +216,8 @@ def main():
                        help='Maximum number of samples to use (for faster testing)')
     parser.add_argument('--random_state', type=int, default=42,
                        help='Random state for reproducibility')
+    parser.add_argument('--output_prefix', type=str, default="codestral",
+                       help='Prefix for output files')
     
     args = parser.parse_args()
     
@@ -236,10 +245,10 @@ def main():
     )
     
     # Create visualizations
-    create_visualizations(tsne_embedding, valid_df, args.output_dir)
+    create_visualizations(tsne_embedding, valid_df, args.output_dir, args.output_prefix)
     
     # Save t-SNE embeddings
-    embedding_file = os.path.join(args.output_dir, 'tsne_embeddings.npz')
+    embedding_file = os.path.join(args.output_dir, f'{args.output_prefix}_tsne_embeddings.npz')
     np.savez(embedding_file, 
              tsne_embedding=tsne_embedding)
     print(f"\nt-SNE embeddings saved to: {embedding_file}")
