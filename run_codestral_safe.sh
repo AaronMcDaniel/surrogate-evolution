@@ -4,8 +4,8 @@
 #SBATCH -c 16
 #SBATCH --mem=64g
 #SBATCH --time=16:00:00
-#SBATCH --output=/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/codestral.%A.%a.log
-#SBATCH --error=/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/codestral_error.%A.%a.log
+#SBATCH --output=/storage/ice-shared/vip-vvk/data/AOT/%u/codestral/codestral.%A.%a.log
+#SBATCH --error=/storage/ice-shared/vip-vvk/data/AOT/%u/codestral/codestral_error.%A.%a.log
 #SBATCH --constraint="H200|H100"
 
 # Set CUDA debugging environment variables
