@@ -275,7 +275,7 @@ def build_dataset(
         complete_cls_set, cls_num_train_rem = remove_dupes(complete_cls_set, 'genome', cls_concat_idx)
 
         reg_split = reg_concat_idx - reg_num_train_rem
-        cls_split = reg_concat_idx - cls_num_train_rem
+        cls_split = cls_concat_idx - cls_num_train_rem
 
         reg_train_set = complete_reg_set[:reg_split]
         reg_val_set = complete_reg_set[reg_split:]
