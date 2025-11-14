@@ -97,57 +97,19 @@ if __name__ == "__main__":
     
     # HERE IS WHERE YOU ADD FRONTS
     # need to create a pandas dataframe then add an entry to the dataframes list with all the needed info
-<<<<<<< HEAD
-    baseline_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30/out.csv'
-    df_baseline = pd.read_csv(baseline_path)
-    surrogate_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/out.csv'
-    df_surrogate = pd.read_csv(surrogate_path)
-    ssi_path = '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_two_30/out.csv'
-    df_ssi = pd.read_csv(ssi_path)
-
-    # ablation paths 
-    ssi_1_path = '/storage/ice-shared/vip-vvk/data/AOT/abb32/ablation0/out.csv'
-    df_ssi_1 = pd.read_csv(ssi_1_path)
-    ssi_2_path = '/storage/ice-shared/vip-vvk/data/AOT/abb32/ablation1/out.csv'
-    df_ssi_2 = pd.read_csv(ssi_2_path)
-    ssi_3_path = '/storage/ice-shared/vip-vvk/data/AOT/abb32/ablation2/out.csv'
-    df_ssi_3 = pd.read_csv(ssi_3_path)
-
-    # every dataframe needs an actual pandas dataframe, a name to display on legends, 4 colors (overall pareto optimal, pareto optimal for 2 objectives, and their past max gen alternatives), and the marker to use on graphs
-    dataframes = [
-        {
-            'df': df_ssi_1, 
-            'name': 'SSI Ablation 0', 
-            'colors': ['xkcd:cerulean', 'xkcd:azure', 'xkcd:slate grey', 'xkcd:sky blue'], 
-            'marker': 'o'
-        }, 
-        { 
-            'df': df_ssi_2, 
-            'name': 'SSI Ablation 1', 
-            'colors': ['xkcd:red', 'xkcd:red', 'xkcd:red', 'xkcd:red'], 
-            'marker': 's'
-        },
-        {
-            'df': df_ssi_3, 
-            'name': 'SSI Ablation 2', 
-            'colors': ['xkcd:magenta', 'xkcd:violet', 'xkcd:charcoal', 'xkcd:lavender'], 
-            'marker': 'D'
-        }
-=======
     out_csv_list_one = [
         # '/storage/ice-shared/vip-vvk/data/AOT/abb32/ablation_loops_2/out.csv',
         # '/storage/ice-shared/vip-vvk/data/AOT/abb32/ablation_loops_20/out.csv',
         # '/storage/ice-shared/vip-vvk/data/AOT/abb32/ablation_loops_80/out.csv',
 
-        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30/out.csv',
-        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_2/out.csv',
-        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_3/out.csv',
-        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_4/out.csv',
-        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30/out.csv',
-        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30_2/out.csv',
-        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30_3/out.csv',
-        # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30_4/out.csv',
->>>>>>> pranav_evo_runs
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_2/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_3/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_baseline_30_4/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30_2/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30_3/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30_4/out.csv',
     ]
     out_csv_list_two = [
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30/out.csv',
