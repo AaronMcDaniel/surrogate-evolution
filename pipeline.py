@@ -63,8 +63,7 @@ def ensure_deap_classes(objectives, codec_config):
 class Pipeline:
     def __init__(self, output_dir, config_dir, force_wipe = False, clean = False) -> None:
         self.output_dir = output_dir
-        global JOB_NAME
-        JOB_NAME = f'{JOB_NAME}_{os.path.basename(output_dir)}'
+        self.job_name = f'{JOB_NAME}_{os.path.basename(output_dir)}'
         self.force_wipe = force_wipe
         self.clean = clean
         self.logs_dir = os.path.join(self.output_dir, 'logs')
@@ -325,7 +324,7 @@ class Pipeline:
         # dispatch job
         print('    Dispatching jobs...')
         # os.popen(f"sbatch {JOB_NAME}_{self.gen_count}.job" )
-        sbatch_result = os.popen(f"sbatch {JOB_NAME}_{self.gen_count}.job" ).read()
+        sbatch_result = os.popen(f"sbatch {self.job_name}_{self.gen_count}.job" ).read()
         
         #parse sbatch_result for job id:
         match = re.search(r'Submitted batch job (\d+)', sbatch_result)
@@ -349,7 +348,7 @@ class Pipeline:
         while True:
             time.sleep(300)
             # p = subprocess.Popen(['squeue', '-n', JOB_NAME], stdout=subprocess.PIPE)
-            p = subprocess.Popen(['squeue', '-n', f'{JOB_NAME}_{self.gen_count}'], stdout=subprocess.PIPE)
+            p = subprocess.Popen(['squeue', '-n', f'{self.job_name}_{self.gen_count}'], stdout=subprocess.PIPE)
             text = p.stdout.read().decode('utf-8')
             jobs = text.split('\n')[1:-1]
             if len(jobs) == 0:
@@ -1079,7 +1078,7 @@ class Pipeline:
         
         return final_population
 
-    def simulated_surrogate_injection_stepwise_balanced(self, curr_pop, fill_interval=1, start_generation=1):
+    def simulated_surrogate_injection_stepwise_balanced(self, curr_pop, fill_interval=1, start_generation=1, schedule=1.5):
         """
         Balanced stepwise populator with exponential scheduling.
         
@@ -1116,27 +1115,51 @@ class Pipeline:
         # Calculate raw exponential allocations
         raw_allocations = {}
         total_raw = 0
-        for gen in filling_generations:
-            base_allocation = N / K
-            exponential_weight = (gen / K) ** 1.5
+        num_filling_gens = len(filling_generations)
+        
+        for i, gen in enumerate(filling_generations):
+            base_allocation = N / num_filling_gens  # Base allocation per filling generation
+            # Use position within filling generations (0 to 1) for exponential weight
+            position_ratio = (i + 1) / num_filling_gens  # 1-indexed position ratio
+            exponential_weight = position_ratio ** schedule
             raw_allocation = max(1, int(base_allocation * exponential_weight))
             raw_allocations[gen] = raw_allocation
             total_raw += raw_allocation
         
-        # Scale down if total exceeds target, ensuring last cycle gets fair share
-        if total_raw > N:
-            scale_factor = N / total_raw
-            scaled_allocations = {}
-            allocated_so_far = 0
-            for i, gen in enumerate(filling_generations):
-                if i == len(filling_generations) - 1:  # Last generation gets remainder
-                    scaled_allocations[gen] = N - allocated_so_far
+        # Scale allocations to exactly N individuals while preserving exponential ratios
+        scale_factor = N / total_raw
+        scaled_allocations = {}
+        allocated_so_far = 0
+        
+        # First pass: calculate scaled allocations for all generations
+        temp_allocations = []
+        for gen in filling_generations:
+            scaled = max(1, int(raw_allocations[gen] * scale_factor))
+            temp_allocations.append(scaled)
+            allocated_so_far += scaled
+        
+        # Second pass: distribute any remainder proportionally to maintain ratios
+        remainder = N - allocated_so_far
+        if remainder != 0:
+            # Distribute remainder based on fractional parts to preserve exponential pattern
+            fractional_parts = []
+            for gen in filling_generations:
+                exact_scaled = raw_allocations[gen] * scale_factor
+                fractional_part = exact_scaled - int(exact_scaled)
+                fractional_parts.append((fractional_part, gen))
+            
+            # Sort by fractional part (largest first) and distribute remainder
+            fractional_parts.sort(reverse=True)
+            for i in range(abs(remainder)):
+                gen_idx = filling_generations.index(fractional_parts[i % len(fractional_parts)][1])
+                if remainder > 0:
+                    temp_allocations[gen_idx] += 1
                 else:
-                    scaled_allocation = max(1, int(raw_allocations[gen] * scale_factor))
-                    scaled_allocations[gen] = scaled_allocation
-                    allocated_so_far += scaled_allocation
-        else:
-            scaled_allocations = raw_allocations
+                    temp_allocations[gen_idx] = max(1, temp_allocations[gen_idx] - 1)
+        
+        # Final allocation mapping
+        for i, gen in enumerate(filling_generations):
+            scaled_allocations[gen] = temp_allocations[i]
         
         print(f"Target final population size: {N}, Generations: {K}")
         print(f"Filling generations and allocations: {scaled_allocations}")
@@ -1957,7 +1980,7 @@ class Pipeline:
 
     def create_job_file(self, num_jobs, gen_num):
         batch_script = f"""#!/bin/bash
-#SBATCH --job-name={JOB_NAME}_{gen_num}
+#SBATCH --job-name={self.job_name}_{gen_num}
 #SBATCH --nodes={NODES}
 #SBATCH -G 1
 #SBATCH --cpus-per-task={CORES}
@@ -1975,7 +1998,7 @@ mkdir -p {self.logs_dir}/generation_{gen_num}
 # Execute the Python script with SLURM_ARRAY_TASK_ID as argument. Script also has optional args -i and -o to specify input file and output directory respectively
 conda run -n {ENV_NAME} --no-capture-output python -u {SCRIPT} $SLURM_ARRAY_TASK_ID -i {self.output_dir}/eval_inputs/eval_input_gen{gen_num}.csv -o {self.output_dir}
 """
-        with open(f'{JOB_NAME}_{gen_num}.job', 'w') as fh:
+        with open(f'{self.job_name}_{gen_num}.job', 'w') as fh:
             fh.write(batch_script)
 
 

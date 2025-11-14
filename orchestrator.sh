@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=auto_restart
+#SBATCH --job-name=orchestrator
 #SBATCH --time=18:00:00
 #SBATCH --output="/storage/ice-shared/vip-vvk/data/AOT/%u/evolution_logs/orchestrator.%A.%a.log"
 #SBATCH --error="/storage/ice-shared/vip-vvk/data/AOT/%u/evolution_logs/orchestrator_error.%A.%a.log"
