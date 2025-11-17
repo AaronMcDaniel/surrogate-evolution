@@ -4,9 +4,14 @@ t-SNE Visualization Script for Codestral Genome Embeddings
 This script loads genome embeddings from a pickle file and creates
 t-SNE visualizations to explore the embedding space.
 """
+import sys, types, numpy as np
+    
+
+
+
 
 import pandas as pd
-import numpy as np
+
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
@@ -129,6 +134,16 @@ def create_visualizations(tsne_embedding, df, output_dir, output_prefix):
     if 'ciou_loss' in df.columns:
         metric_columns.remove('ciou_loss')
         metric_columns.insert(0, 'ciou_loss')
+    
+    #add reverse mapping from tsne vectors to hash values
+    tsne_to_hash = {tuple(tsne_embedding[i]): df.loc[i, 'hash'] for i in range(len(df))}
+    #store as csv
+    hash_mapping_file = os.path.join(output_dir, f'{output_prefix}_tsne_to_hash_mapping.csv')
+    with open(hash_mapping_file, 'w') as f:
+        f.write("TSNE_Component_1,TSNE_Component_2,Hash\n")
+        for i in range(len(df)):
+            f.write(f"{(tsne_embedding[i,0],tsne_embedding[i,1])},{df.loc[i,'hash']}\n")
+    print(f"Saved: {hash_mapping_file}")
 
     
     if metric_columns:
@@ -206,7 +221,7 @@ def main():
                        default='/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/codestral_raw_reg_train.pkl',
                        help='Path to input pickle file')
     parser.add_argument('--output_dir', type=str,
-                       default='/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/tsne_visualizations',
+                       default='/storage/ice-shared/vip-vvk/data/AOT/mgullapalli6/codestral/tsne_visualizations',
                        help='Directory to save visualizations')
     parser.add_argument('--perplexity', type=int, default=30,
                        help='t-SNE perplexity parameter (default: 30)')
