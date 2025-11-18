@@ -17,7 +17,8 @@ conda run -n nas --no-capture-output python -u /home/hice1/%u/scratch/surrogate-
     --input /storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/codestral_reg_val_reduced.pkl \
     --output_dir /storage/ice-shared/vip-vvk/data/AOT/%u/codestral/tsne_visualizations \
     --perplexity 30 \
-    --n_iter 1000
+    --n_iter 1000 \
+    --classification True
 
 echo "t-SNE visualization completed!"
     # --input /storage/ice-shared/vip-vvk/data/AOT/%u/codestral/codestral_reg_val.pkl \
