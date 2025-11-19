@@ -217,7 +217,7 @@ def create_visualizations(tsne_embedding, df, output_dir, output_prefix):
     print(f"\nAll visualizations saved to: {output_dir}")
 #create a function that will classify the tsne mapping without supervision and will find number of clusters and will return a dictionary of the found cluster's hash values using the tsne_to_hash mapping.csv file
 #use HDBSCAN
-def classify_tsne(tsne_embedding, output_dir, output_prefix):
+def classify_tsne(tsne_embedding, output_dir, output_prefix, inputhash):
     from sklearn.cluster import HDBSCAN
    
     #load tsne_to hashfrom csv
@@ -249,13 +249,34 @@ def classify_tsne(tsne_embedding, output_dir, output_prefix):
         cluster_to_hashes[label].append(tsne_to_hash[a])
 
     #store the cluster to hashes mapping as a csv
-    hash_mapping_file = os.path.join(output_dir, f'{output_prefix}_tsne_clusters.csv')
+    hash_mapping_file = os.path.join(output_dir, f'{output_prefix}_tsne_clusters_numbers.txt')
     with open(hash_mapping_file, 'w') as f:
         f.write("Cluster_Label,Hash_Values\n")
         for cluster_label, hash_values in cluster_to_hashes.items():
             f.write(f"{cluster_label},{';'.join(hash_values)}\n")
-    
+    #using --inputhash argument, create a mapping of cluster labels to genome strings
+    hash_to_genome = {}
+    with open(inputhash, 'r') as f:
+        next(f)  # skip header
+        for line in f:
+            dummy = line.strip().split(',')
+            hash_value = dummy[1]
+            genome_str = ','.join(dummy[2:])
+            hash_to_genome[hash_value] = genome_str
+    for cluster_label, hash_values in cluster_to_hashes.items():
+        if cluster_label not in cluster_to_genomes:
+            cluster_to_genomes[cluster_label] = []
+        for hash_value in hash_values:
+            if hash_value in hash_to_genome:
+                cluster_to_genomes[cluster_label].append(hash_to_genome[hash_value])
+    #store the cluster to genomes mapping as a txt file
+    hash_mapping_file = os.path.join(output_dir, f'{output_prefix}_tsne_clusters_genomes.txt')
+    with open(hash_mapping_file, 'w') as f:
+        f.write("Cluster_Label,Genome_Strings\n")
+        for cluster_label, genome_strings in cluster_to_genomes.items():
+            f.write(f"{cluster_label},{';'.join(genome_strings)}\n")
     print(f"Saved: {hash_mapping_file}")
+    return cluster_to_hashes
 def main():
     parser = argparse.ArgumentParser(description='t-SNE Visualization of Genome Embeddings')
     parser.add_argument('--input', type=str, 
@@ -276,7 +297,9 @@ def main():
                        help='Prefix for output files')
     parser.add_argument('--classification', type=bool, default=False,
                        help='Whether we run a classification algorithm on tsne models. Default is False.')
-    
+    parser.add_argument('--inputHash', type=str, 
+                       default='/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/large_dataset/full_out.csv',
+                       help='Path to strings of genomes')
     args = parser.parse_args()
     
     print("="*60)
@@ -305,7 +328,7 @@ def main():
     # Create visualizations
     create_visualizations(tsne_embedding, valid_df, args.output_dir, args.output_prefix)
     if args.classification:
-        cluster_to_hashes = classify_tsne(tsne_embedding, args.output_dir, args.output_prefix)
+        cluster_to_hashes = classify_tsne(tsne_embedding, args.output_dir, args.output_prefix, args.inputHash)
         print(f"Cluster to Hashes mapping saved to 'tsne_cluster_to_hashes_mapping.csv'")
     # Save t-SNE embeddings
     embedding_file = os.path.join(args.output_dir, f'{args.output_prefix}_tsne_embeddings.npz')
