@@ -16,7 +16,8 @@ mutations = {node_replacement = 0.2}
 # whether to use surrogate
 surrogate_enabled = true
 # GA objectives to optimize for and their weights (matter only relative to each other)
-objectives = {uw_val_epoch_loss = -1, ciou_loss = -1, average_precision = 1}
+# objectives = {uw_val_epoch_loss = -1, ciou_loss = -1, average_precision = 1}
+objectives = {ciou_loss = -1, average_precision = 1}
 # strategy for down selecting individuals trusted by the surrogate
 selection_method_trusted = "NSGA2" # Need to define all enums
 # strategy for down selecting individuals untrusted by the surrogate
@@ -82,7 +83,7 @@ surrogate_metrics = ["mse_uw_val_loss", "mse_iou_loss", "mse_giou_loss", "mse_di
 # optimization directions of the genome metrics
 opt_directions = ['min', 'min', 'min', 'min', 'min', 'min', 'min', 'min', 'max', 'max', 'max', 'max']
 # number of epochs to train the surrogates for
-surrogate_train_epochs = 30
+surrogate_train_epochs = 10
 # batch size used in surrogate evaluation
 surrogate_batch_size = 16
 # method of calculating the trust of a surrogate
