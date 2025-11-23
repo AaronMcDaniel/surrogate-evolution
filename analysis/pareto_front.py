@@ -86,7 +86,7 @@ def generate_fronts(df, objectives, directions, name, gen, colors, marker, reach
 if __name__ == "__main__":
     # grab the objectives and best epoch criteria from the config and transform them to how I was previously representing that data (True = want to minimize, False = maximize)
     # configs = toml.load('conf.toml')
-    configs = toml.load('/home/hice1/abb32/scratch/surrogate-evolution/conf_gens_vae.toml')
+    configs = toml.load('/home/hice1/skravtsov3/scratch/surrogate-evolution/conf_gens_vae.toml')
     pipeline_config = configs["pipeline"]
     cfg_objectives = pipeline_config['objectives']
     cfg_best_epoch = pipeline_config['best_epoch_criteria']
@@ -110,6 +110,7 @@ if __name__ == "__main__":
         '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30_2/out.csv',
         '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30_3/out.csv',
         '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_baseline_30_4/out.csv',
+        
     ]
     out_csv_list_two = [
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_ssi_30/out.csv',
@@ -121,9 +122,19 @@ if __name__ == "__main__":
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_simplify_30_2/out.csv',
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_simplify_30_3/out.csv',
         # '/storage/ice-shared/vip-vvk/data/AOT/psomu3/light_simplify_30_4/out.csv',
-        '/storage/ice-shared/vip-vvk/data/AOT/glu49/ablation_all_flags_off_v3/out.csv',
-        '/storage/ice-shared/vip-vvk/data/AOT/glu49/ablation_all_flags_off_v4/out.csv',
-        '/storage/ice-shared/vip-vvk/data/AOT/glu49/ablation_all_flags_off_v5/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/glu49/ablation_all_flags_off_v3/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/glu49/ablation_all_flags_off_v4/out.csv',
+        # '/storage/ice-shared/vip-vvk/data/AOT/glu49/ablation_all_flags_off_v5/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation_baseline1/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation_baseline2/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation_baseline3/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation_baseline4/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation_baseline5/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation_baseline6/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation_baseline7/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation_baseline8/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation_baseline9/out.csv',
+        '/storage/ice-shared/vip-vvk/data/AOT/skravtsov3/ablation_baseline10/out.csv',
 
     ]
     out_csv_list_three = [
@@ -148,8 +159,8 @@ if __name__ == "__main__":
     # df_names = ['Base', 'SSI', 'VAE']
     df_names = ['Loop', 'Base', 'PopPart']
     dataframes = []
-    dataframes.extend([{'df': pd.read_csv(path), 'name': df_names[1] + str(i), 'colors': ['xkcd:green'] * 4, 'marker': '^'} for i, path in enumerate(out_csv_list_two)])
-    dataframes.extend([{'df': pd.read_csv(path), 'name': df_names[2] + str(i), 'colors': ['xkcd:red'] * 4, 'marker': 'o'} for i, path in enumerate(out_csv_list_three)])
+    dataframes.extend([{'df': pd.read_csv(path), 'name': df_names[1] + str(i), 'colors': ['xkcd:green'] * 4, 'marker': 'o'} for i, path in enumerate(out_csv_list_two)])
+    dataframes.extend([{'df': pd.read_csv(path), 'name': df_names[2] + str(i), 'colors': ['xkcd:red'] * 4, 'marker': '^'} for i, path in enumerate(out_csv_list_three)])
     # dataframes.extend([{'df': pd.read_csv(path), 'name': df_names[2] + str(i), 'colors': ['xkcd:purple'] * 4, 'marker': 'x'} for i, path in enumerate(out_csv_list_three)])
 
     min_gens = []
@@ -321,16 +332,27 @@ if __name__ == "__main__":
     # print()
     # print('HYPERVOLUMES', len(all_hvs))
     # print(all_hvs)
+    # Track which base names have been added to legend
+    added_to_hv_legend = set()
+    
     for dataframe in dataframes:
         name = dataframe['name']
-        plt.plot(range(1, len(all_hvs[name]) + 1), all_hvs[name], marker=dataframe['marker'], color=dataframe['colors'][1], label=name)
+        # Extract base name (remove trailing digits)
+        base_name = ''.join([c for c in name if not c.isdigit()])
+        
+        if base_name not in added_to_hv_legend:
+            plt.plot(range(1, len(all_hvs[name]) + 1), all_hvs[name], marker=dataframe['marker'], color=dataframe['colors'][1], label=base_name)
+            added_to_hv_legend.add(base_name)
+        else:
+            plt.plot(range(1, len(all_hvs[name]) + 1), all_hvs[name], marker=dataframe['marker'], color=dataframe['colors'][1])
+    
     plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
-    plt.legend()
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     plt.title("Pareto Front Hypervolumes Per Generation")
     plt.xlabel('Generation')
     plt.ylabel('Hypervolume')
     plt.tight_layout()
-    plt.savefig(f'/home/hice1/{USER}/scratch/surrogate-evolution/analysis/graphs/paretoTestingBaseline/pareto_hypervolume.jpg')
+    plt.savefig(f'/home/hice1/{USER}/scratch/surrogate-evolution/analysis/graphs/paretoTestingBaseline/pareto_hypervolume.jpg', bbox_inches='tight')
     plt.close()
 
     # Create aggregated hypervolume plot with mean and 95% confidence intervals for each bucket
@@ -435,11 +457,11 @@ if __name__ == "__main__":
     
     plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
     plt.ylim(top=y_axis_limit)
-    plt.legend()
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     plt.title("Mean Pareto Front Hypervolumes Per Generation with 95% Confidence Intervals")
     plt.xlabel('Generation')
     plt.ylabel('Hypervolume')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(f'/home/hice1/{USER}/scratch/surrogate-evolution/analysis/graphs/paretoTestingBaseline/pareto_hypervolume_aggregated.jpg', dpi=300)
+    plt.savefig(f'/home/hice1/{USER}/scratch/surrogate-evolution/analysis/graphs/paretoTestingBaseline/pareto_hypervolume_aggregated.jpg', dpi=300, bbox_inches='tight')
     plt.close()

@@ -116,12 +116,17 @@ def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds
     plt.xlabel(metric_a)
     plt.ylabel(metric_b)
     
+    # Track which base names have been added to legend
+    added_to_legend = set()
+    
     for one_front in all_fronts:
         front = one_front['front']
         front_top = one_front['front_top']
         colors = one_front['colors']
         marker = one_front['marker']
         name = one_front['name']
+        # Extract base name (remove trailing digits)
+        base_name = ''.join([c for c in name if not c.isdigit()])
         x_steps, y_steps = stepify_pareto_points_2d(front_top[metric_a].to_numpy(), front_top[metric_b].to_numpy(), [directions[0], directions[1]])
         if one_front['reached_max']:
             color1 = one_front['colors'][2]
@@ -129,9 +134,15 @@ def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds
         else:
             color1 = one_front['colors'][0]
             color2 = one_front['colors'][1]
-        plt.scatter(front[metric_a], front[metric_b], color=color1, marker=marker, label=name[0] + ': Overall Pareto Optimal')
-        plt.scatter(front_top[metric_a], front_top[metric_b], color=color2, marker=marker, label=name[0] + ': Recalculated Pareto Optimal')
-        plt.plot(x_steps, y_steps, color=color2, label='_' + name[0] + ': Pareto Frontier')
+        
+        # Only add to legend if this base name hasn't been added yet
+        if base_name not in added_to_legend:
+            plt.scatter(front[metric_a], front[metric_b], color=color1, marker=marker, label=base_name)
+            added_to_legend.add(base_name)
+        else:
+            plt.scatter(front[metric_a], front[metric_b], color=color1, marker=marker)
+        plt.scatter(front_top[metric_a], front_top[metric_b], color=color2, marker=marker)
+        plt.plot(x_steps, y_steps, color=color2)
     
     for benchmark in benchmarks:
         benchmark_df = benchmark['df']
@@ -150,12 +161,17 @@ def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds
         plt.xlabel(metric_c)
         plt.ylabel(metric_b)
         
+        # Track which base names have been added to legend for second plot
+        added_to_legend_2 = set()
+        
         for one_front in all_fronts:
             front = one_front['front']
             front_bottom = one_front['front_bottom']
             colors = one_front['colors']
             marker = one_front['marker']
             name = one_front['name']
+            # Extract base name (remove trailing digits)
+            base_name = ''.join([c for c in name if not c.isdigit()])
             x_steps, y_steps = stepify_pareto_points_2d(front_bottom[metric_c].to_numpy(), front_bottom[metric_b].to_numpy(), [directions[2], directions[1]])
             if one_front['reached_max']:
                 color1 = one_front['colors'][2]
@@ -163,9 +179,15 @@ def gen_plot(all_fronts, benchmarks, gen, objectives, directions, bounds, bounds
             else:
                 color1 = one_front['colors'][0]
                 color2 = one_front['colors'][1]
-            plt.scatter(front[metric_c], front[metric_b], color=color1, marker=marker, label=name[0] + ': Overall Pareto Optimal')
-            plt.scatter(front_bottom[metric_c], front_bottom[metric_b], color=color2, marker=marker, label=name[0] + ': Recalculated Pareto Optimal')
-            plt.plot(x_steps, y_steps, color=color2, label='_' + name[0] + ': Pareto Frontier')
+            
+            # Only add to legend if this base name hasn't been added yet
+            if base_name not in added_to_legend_2:
+                plt.scatter(front[metric_c], front[metric_b], color=color1, marker=marker, label=base_name)
+                added_to_legend_2.add(base_name)
+            else:
+                plt.scatter(front[metric_c], front[metric_b], color=color1, marker=marker)
+            plt.scatter(front_bottom[metric_c], front_bottom[metric_b], color=color2, marker=marker)
+            plt.plot(x_steps, y_steps, color=color2)
 
 
         for benchmark in benchmarks:
