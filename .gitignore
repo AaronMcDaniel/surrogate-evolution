@@ -48,3 +48,4 @@ test_evo*
 t_evo_*.job
 preanalyzer_*.job
 test.txt
+test.py
