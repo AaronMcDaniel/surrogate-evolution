@@ -65,7 +65,7 @@ def build_configuration(model_dict, device):
 # used to train and evaluate a classifier surrogate
 # calling this function will train and validate the model represented by the passed-in model dict
 # returns the genome scaler used (for getting inferences later) and saves best epoch weights by best accuracy
-def engine(cfg, model_dict, train_df, val_df, weights_dir, reg_lambda):
+def engine(cfg, model_dict, train_df, val_df, weights_dir, reg_lambda=0.0):
     best_acc = 0
     best_epoch = None
     best_epoch_num = None
@@ -80,11 +80,11 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir, reg_lambda):
     model, optimizer, scheduler, scaler = build_configuration(model_dict=model_dict, device=device)
     genome_scaler = train_dataset.genomes_scaler
 
-    reg_lambda_dict = {
-        'best_mlp_classifier': 10**(-2),
-        'best_kan_classifier': 10**(-3.5),
-    }
-    reg_lambda = reg_lambda_dict[model_dict['name']]
+    # reg_lambda_dict = {
+    #     'best_mlp_classifier': 10**(-2),
+    #     'best_kan_classifier': 10**(-3.5),
+    # }
+    # reg_lambda = reg_lambda_dict[model_dict['name']]
     
     for epoch in range(1, num_epochs + 1):
         # train and validate for one epoch
@@ -106,7 +106,7 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir, reg_lambda):
     return best_epoch_metrics, genome_scaler             
 
 
-def train_one_epoch(model, device, train_loader, optimizer, scaler, reg_lambda):
+def train_one_epoch(model, device, train_loader, optimizer, scaler, reg_lambda=0.0):
     model.train()
 
     # Initialize variables
