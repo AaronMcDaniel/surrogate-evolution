@@ -61,58 +61,58 @@ class Surrogate():
         codec_config = configs["codec"]
         model_config = configs["model"]
         self.models = [ # these are the regressor models but are simply called 'models' for compatibility reasons with the pipeline
-            {
-                'name': 'transformer_best_overall',
-                'optimizer': optim.Adam,
-                'lr': 0.00004,
-                'scheduler': None,
-                'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-                'validation_subset': [0, 4, 11],
-                'num_heads': 1,
-                'ff_dim': 256,
-                'num_encoder_layers': 9, 
-                'dropout': 0.1,
-                'model': transformer.SimpleNASTransformer
-            },
-            {
-                'name': 'transformer_best_uwvl',
-                'optimizer': optim.Adam,
-                'lr': 0.00004,
-                'scheduler': None,
-                'metrics_subset': [0],
-                'validation_subset': [0],
-                'num_heads': 1,
-                'ff_dim': 256,
-                'num_encoder_layers': 3, 
-                'dropout': 0.1,
-                'model': transformer.SimpleNASTransformer
-            },
-            {
-                'name': 'transformer_best_cioul',
-                'optimizer': optim.Adam,
-                'lr': 0.00004,
-                'scheduler': None,
-                'metrics_subset': [4],
-                'validation_subset': [4],
-                'num_heads': 2,
-                'ff_dim': 512,
-                'num_encoder_layers': 17, 
-                'dropout': 0.01,
-                'model': transformer.SimpleNASTransformer
-            },
-            {
-                'name': 'transformer_best_ap',
-                'optimizer': optim.Adam,
-                'lr': 0.00004,
-                'scheduler': None,
-                'metrics_subset': [11],
-                'validation_subset': [11],
-                'num_heads': 1,
-                'ff_dim': 256,
-                'num_encoder_layers': 11, 
-                'dropout': 0.001,
-                'model': transformer.SimpleNASTransformer
-            },
+            # {
+            #     'name': 'transformer_best_overall',
+            #     'optimizer': optim.Adam,
+            #     'lr': 0.00004,
+            #     'scheduler': None,
+            #     'metrics_subset': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            #     'validation_subset': [0, 4, 11],
+            #     'num_heads': 1,
+            #     'ff_dim': 256,
+            #     'num_encoder_layers': 9, 
+            #     'dropout': 0.1,
+            #     'model': transformer.SimpleNASTransformer
+            # },
+            # {
+            #     'name': 'transformer_best_uwvl',
+            #     'optimizer': optim.Adam,
+            #     'lr': 0.00004,
+            #     'scheduler': None,
+            #     'metrics_subset': [0],
+            #     'validation_subset': [0],
+            #     'num_heads': 1,
+            #     'ff_dim': 256,
+            #     'num_encoder_layers': 3, 
+            #     'dropout': 0.1,
+            #     'model': transformer.SimpleNASTransformer
+            # },
+            # {
+            #     'name': 'transformer_best_cioul',
+            #     'optimizer': optim.Adam,
+            #     'lr': 0.00004,
+            #     'scheduler': None,
+            #     'metrics_subset': [4],
+            #     'validation_subset': [4],
+            #     'num_heads': 2,
+            #     'ff_dim': 512,
+            #     'num_encoder_layers': 17, 
+            #     'dropout': 0.01,
+            #     'model': transformer.SimpleNASTransformer
+            # },
+            # {
+            #     'name': 'transformer_best_ap',
+            #     'optimizer': optim.Adam,
+            #     'lr': 0.00004,
+            #     'scheduler': None,
+            #     'metrics_subset': [11],
+            #     'validation_subset': [11],
+            #     'num_heads': 1,
+            #     'ff_dim': 256,
+            #     'num_encoder_layers': 11, 
+            #     'dropout': 0.001,
+            #     'model': transformer.SimpleNASTransformer
+            # },
             {
                 'name': 'mlp_best_overall',
                 'dropout': 0.4,
@@ -234,28 +234,29 @@ class Surrogate():
             # },
         ]
         self.classifier_models = [
-            # {
-            #     'name': 'best_mlp_classifier',
-            #     'dropout': 0.0,
-            #     'hidden_sizes': [2048, 1024, 512],
-            #     'optimizer': optim.Adam,
-            #     'lr': 0.0001,
-            #     'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
-            #     'model': sm.MLP,
-            #     'output_size': 1
-            # },
-            # {
-            #     'name': 'best_kan_classifier',
-            #     'output_size': 1,
-            #     'model': sm.KAN,
-            #     'hidden_sizes': [512, 256],
-            #     'optimizer': optim.Adagrad,
-            #     'scheduler': optim.lr_scheduler.CosineAnnealingWarmRestarts,
-            #     'lr': 0.1,
-            #     'spline_order': 2,
-            #     'grid_size': 1
-            # }
+            {
+                'name': 'best_mlp_classifier',
+                'dropout': 0.0,
+                'hidden_sizes': [2048, 1024, 512],
+                'optimizer': optim.Adam,
+                'lr': 0.0001,
+                'scheduler': optim.lr_scheduler.ReduceLROnPlateau,
+                'model': sm.MLP,
+                'output_size': 1
+            },
+            {
+                'name': 'best_kan_classifier',
+                'output_size': 1,
+                'model': sm.KAN,
+                'hidden_sizes': [512, 256],
+                'optimizer': optim.Adagrad,
+                'scheduler': optim.lr_scheduler.CosineAnnealingWarmRestarts,
+                'lr': 0.1,
+                'spline_order': 2,
+                'grid_size': 1
+            }
         ]
+        self.inference_models = None
         self.trust_calc_strategy = surrogate_config["trust_calc_strategy"]
         self.trust_calc_ratio = surrogate_config["trust_calc_ratio"]
         self.objectives = pipeline_config["objectives"]
@@ -345,10 +346,10 @@ class Surrogate():
         cls_genome_scaler = None
         reg_genome_scaler = None
         # loop through the classifier models
-        # for classifier_dict in self.classifier_models:
-        #     metrics, gs = cse.engine(self.surrogate_config, classifier_dict, classifier_train_df, classifier_val_df, self.weights_dir)
-        #     if cls_genome_scaler is None: cls_genome_scaler = gs
-        #     scores['classifiers'][classifier_dict['name']] = metrics
+        for classifier_dict in self.classifier_models:
+            metrics, gs = cse.engine(self.surrogate_config, classifier_dict, classifier_train_df, classifier_val_df, self.weights_dir)
+            if cls_genome_scaler is None: cls_genome_scaler = gs
+            scores['classifiers'][classifier_dict['name']] = metrics
         
         # loop through regressor models
         if train_reg:
@@ -518,6 +519,118 @@ class Surrogate():
         return max_trust
     
     
+    def predict(
+        self, 
+        z_latent: torch.Tensor,
+        genome_scaler = None
+    ) -> torch.Tensor:
+        """
+        Differentiable prediction method for inverse design optimization.
+        
+        This method takes latent architecture vectors and returns predicted fitness
+        values using the trained surrogate ensemble. It maintains the computation
+        graph for backpropagation through the generator.
+        
+        Args:
+            z_latent: Latent architecture vectors, shape [B, z_dim], torch.Tensor
+            genome_scaler: Scaler for genome features (if None, assumes z_latent is pre-scaled)
+            
+        Returns:
+            predicted_fitness: Tensor of shape [B, num_objectives]
+        """
+        import inspect
+        from functools import partial
+        
+        # Ensure input is on correct device
+        z_latent = z_latent.to(self.device)
+        batch_size = z_latent.shape[0]
+        
+        # Use default inference models if not provided
+        # This would be the last trained/selected sub-surrogates
+        if self.inference_models is None:
+            # Default: use first classifier and all regressors for all objectives
+            # You may want to set this based on your pipeline's sub_surrogates
+            self.inference_models = [0] + list(range(len(self.models)))
+        
+        cls_model_idx = self.inference_models[0]
+        reg_model_idxs = self.inference_models[1:]
+        
+        # Step 1: Scale features if scaler is provided
+        if genome_scaler is not None:
+            # Apply scaling - need to convert to numpy, scale, then back to torch
+            # This breaks differentiability, so we'll skip scaling if not provided
+            # For inverse design, we assume z_latent is already in the right scale
+            z_scaled = z_latent
+        else:
+            z_scaled = z_latent
+        
+        # Step 2: Classifier inference (optional - for now we'll skip and assume all valid)
+        # In the full pipeline, classifier predicts pass/fail
+        # For inverse design, we'll skip this and go straight to regression
+        # If you want to include it, you'd need a differentiable classifier forward pass
+        
+        # Step 3: Regressor inference - DIFFERENTIABLE
+        # We need to run inference for each unique regressor model
+        unique_reg_models = list(set(reg_model_idxs))
+        
+        # Create mapping from metric index to objective name
+        col_mapping = {}
+        for i, metric in enumerate(self.METRICS):
+            if metric == 'mse_uw_val_loss':
+                metric = 'mse_uw_val_epoch_loss'
+            name = metric.replace('mse_', '')
+            if name in list(self.objectives.keys()):
+                col_mapping[i] = name
+        
+        # Initialize output tensor
+        num_objectives = len(self.objectives)
+        predictions = torch.zeros(batch_size, num_objectives, device=self.device)
+        
+        # Run each unique regressor
+        for model_idx in unique_reg_models:
+            model_dict = self.models[model_idx]
+            
+            # Build model architecture
+            model_class = model_dict['model']
+            output_size = len(model_dict['metrics_subset'])
+            sig = inspect.signature(model_class.__init__)
+            filtered_params = {k: v for k, v in model_dict.items() if k in sig.parameters}
+            model = model_class(output_size=output_size, **filtered_params).to(self.device)
+            
+            # Load trained weights
+            weights_path = f'{self.weights_dir}/{model_dict["name"]}.pth'
+            model.load_state_dict(torch.load(weights_path, map_location=self.device))
+            model.eval()
+            
+            # Freeze model parameters - ensure no gradients accumulate in surrogate
+            for param in model.parameters():
+                param.requires_grad = False
+            
+            # Forward pass (differentiable w.r.t. inputs only, not model params)
+            with torch.set_grad_enabled(True):
+                model_output = model(z_scaled)  # [B, output_size]
+            
+            # Clamp predictions to prevent extreme values
+            model_output = torch.clamp(model_output, min=-300, max=300)
+            
+            # Map outputs to objective columns
+            metrics_subset = model_dict['metrics_subset']
+            val_subset = model_dict['validation_subset']
+            
+            # Get indices in model output that correspond to validation subset
+            val_col_indices = [i for i, idx in enumerate(metrics_subset) if idx in val_subset]
+            
+            # Map to objective positions
+            for i, col_idx in enumerate(val_col_indices):
+                metric_idx = val_subset[i]
+                if metric_idx in col_mapping:
+                    obj_name = col_mapping[metric_idx]
+                    obj_position = list(self.objectives.keys()).index(obj_name)
+                    predictions[:, obj_position] = model_output[:, col_idx]
+        
+        return predictions
+    
+    
 def main():
     # surrogate = Surrogate('conf.toml', os.path.join(repo_dir, 'psomu3/test/weights/surrogate_weights'))
     # # inference_models = [0, 5, 6, 7]
@@ -527,13 +640,19 @@ def main():
     # reg_genome_scaler = reg_train_dataset.genomes_scaler
     scores_record = {}
 
-    testing_dir = "psomu3/surrogate_training"
-    dataset_dir = "/storage/ice-shared/vip-vvk/data/AOT/surrogate_dataset"
-    scores_file = os.path.join("/storage/ice-shared/vip-vvk/data/AOT/", testing_dir, f"scores.txt")
-    cls_train_df = pd.read_pickle(os.path.join(repo_dir, dataset_dir, f'pretrain_cls_train.pkl'))
-    cls_val_df = pd.read_pickle(os.path.join(repo_dir, dataset_dir, f'surr_cls_val.pkl'))
-    reg_train_df = pd.read_pickle(os.path.join(repo_dir, dataset_dir, f'pretrain_reg_train.pkl'))
-    reg_val_df = pd.read_pickle(os.path.join(repo_dir, dataset_dir, f'surr_reg_val.pkl'))
+    USER_ENV_VAR = os.getenv('USER', 'psomu3')
+    testing_dir = f"{USER_ENV_VAR}/codestral/surrogate_training"
+    # dataset_dir = "/storage/ice-shared/vip-vvk/data/AOT/surrogate_dataset"
+    dataset_dir = "/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral"
+    scores_file = os.path.join("/storage/ice-shared/vip-vvk/data/AOT/", testing_dir, f"scores_base.txt")
+    cls_train_df = pd.read_pickle(os.path.join(dataset_dir, f'codestral_cls_train.pkl'))
+    cls_val_df = pd.read_pickle(os.path.join(dataset_dir, f'codestral_cls_val.pkl'))
+    reg_train_df = pd.read_pickle(os.path.join(dataset_dir, f'normal_reg_train.pkl'))
+    reg_val_df = pd.read_pickle(os.path.join(dataset_dir, f'normal_reg_val.pkl'))
+    # cls_train_df = pd.read_pickle("/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/temp_surrogate_datasets/surr_evolution_cls_train.pkl")
+    # cls_val_df = pd.read_pickle("/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/temp_surrogate_datasets/surr_evolution_cls_val.pkl")
+    # reg_train_df = pd.read_pickle("/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/temp_surrogate_datasets/surr_evolution_reg_train.pkl")
+    # reg_val_df = pd.read_pickle("/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/temp_surrogate_datasets/surr_evolution_reg_val.pkl")
     if not os.path.exists(os.path.join(repo_dir, testing_dir)):
         os.mkdir(os.path.join(repo_dir, testing_dir))
     if not os.path.exists(os.path.join(repo_dir, testing_dir, 'surrogate_weights')):
@@ -541,7 +660,7 @@ def main():
     for i in range(30):
         surrogate = Surrogate('conf.toml', os.path.join(repo_dir, os.path.join(testing_dir, 'surrogate_weights')))
         scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df, reg_lambda=0)
-
+        print("SAVING SCORES TO", scores_file)
         with open(scores_file, 'a') as f:
             json.dump(scores, f)
             f.write('\n')
