@@ -357,6 +357,251 @@ class ConditionalVAERepresentation(IGenerator):
         print(f"CVAE checkpoint loaded from {path}")
 
 
+class UnconditionalVAERepresentation(IGenerator):
+    """
+    Unconditional VAE generator for inverse design with fixed target fitness.
+    
+    Unlike the conditional VAE, this model is trained with a FIXED target fitness
+    value and learns to generate z_arch vectors that produce that specific fitness.
+    During sampling, no conditioning is provided - the model has internalized the
+    target fitness during training.
+    
+    This is useful when you want to train a dedicated generator for a specific
+    fitness target rather than a general conditional model.
+    
+    Architecture:
+    - Encoder: z_arch -> [mu, logvar] of z_latent2 (NO fitness input)
+    - Decoder: z_latent2 -> z_arch_reconstructed (NO fitness input)
+    - During training: Uses fixed target_fitness to compute surrogate loss
+    """
+    
+    def __init__(
+        self, 
+        z_dim: int,
+        num_objectives: int,
+        target_fitness: torch.Tensor,  # Fixed target fitness for this generator
+        latent2_dim: int = 128,
+        hidden_sizes: List[int] = [512, 256],
+        dropout: float = 0.1,
+        device: torch.device = None
+    ):
+        """
+        Args:
+            z_dim: Dimension of architecture latent space (from VAE encoder)
+            num_objectives: Number of fitness objectives
+            target_fitness: Fixed target fitness tensor of shape [num_objectives]
+            latent2_dim: Dimension of second-level latent space
+            hidden_sizes: Hidden layer sizes for encoder/decoder MLPs
+            dropout: Dropout probability
+            device: Device to run on
+        """
+        self.z_dim = z_dim
+        self.num_objectives = num_objectives
+        self.latent2_dim = latent2_dim
+        self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # Store fixed target fitness
+        if isinstance(target_fitness, np.ndarray):
+            target_fitness = torch.from_numpy(target_fitness).float()
+        self.target_fitness = target_fitness.to(self.device)
+        
+        # Encoder: z_arch -> [mu, logvar] (NO conditioning)
+        encoder_layers = []
+        input_dim = z_dim
+        for h_dim in hidden_sizes:
+            encoder_layers.extend([
+                nn.Linear(input_dim, h_dim),
+                nn.LayerNorm(h_dim),
+                nn.ReLU(),
+                nn.Dropout(dropout)
+            ])
+            input_dim = h_dim
+        
+        self.encoder_shared = nn.Sequential(*encoder_layers).to(self.device)
+        self.encoder_mu = nn.Linear(hidden_sizes[-1], latent2_dim).to(self.device)
+        self.encoder_logvar = nn.Linear(hidden_sizes[-1], latent2_dim).to(self.device)
+        
+        # Decoder: z_latent2 -> z_arch (NO conditioning)
+        decoder_layers = []
+        input_dim = latent2_dim
+        for h_dim in reversed(hidden_sizes):
+            decoder_layers.extend([
+                nn.Linear(input_dim, h_dim),
+                nn.LayerNorm(h_dim),
+                nn.ReLU(),
+                nn.Dropout(dropout)
+            ])
+            input_dim = h_dim
+        decoder_layers.append(nn.Linear(hidden_sizes[0], z_dim))
+        
+        self.decoder = nn.Sequential(*decoder_layers).to(self.device)
+        
+    def encode(self, z_arch: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Encode z_arch to get z_latent2 distribution (unconditional)."""
+        h = self.encoder_shared(z_arch)
+        mu = self.encoder_mu(h)
+        logvar = self.encoder_logvar(h)
+        return mu, logvar
+    
+    def reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+        """Reparameterization trick."""
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+    
+    def decode(self, z_latent2: torch.Tensor) -> torch.Tensor:
+        """Decode z_latent2 to reconstruct z_arch (unconditional)."""
+        return self.decoder(z_latent2)
+    
+    def forward(self, z_arch: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Full forward pass for training."""
+        mu, logvar = self.encode(z_arch)
+        z_latent2 = self.reparameterize(mu, logvar)
+        z_recon = self.decode(z_latent2)
+        return z_recon, mu, logvar
+    
+    def initial_train(
+        self, 
+        z_arch_vectors: torch.Tensor, 
+        fitness_values: torch.Tensor,
+        num_epochs: int = 50,
+        batch_size: int = 32,
+        lr: float = 1e-4,
+        beta: float = 1.0,
+        save_dir: Optional[str] = None
+    ) -> Dict[str, List[float]]:
+        """
+        Pre-train the unconditional VAE on archive data.
+        
+        Note: fitness_values are provided for compatibility but are not used
+        during the VAE training itself (only reconstruction loss + KL).
+        The fixed target_fitness is stored in self.target_fitness.
+        """
+        
+        # Ensure tensors are on correct device
+        z_arch_vectors = z_arch_vectors.to(self.device)
+        
+        # Create dataset and loader (fitness values not used in training)
+        dataset = ArchiveFitnessDataset(z_arch_vectors, fitness_values)
+        loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+        
+        # Optimizer
+        optimizer = optim.Adam(self.parameters, lr=lr)
+        
+        # Training loop
+        history = {'total_loss': [], 'recon_loss': [], 'kl_loss': []}
+        
+        print(f"Starting Unconditional VAE pre-training for {num_epochs} epochs...")
+        print(f"Target fitness: {self.target_fitness.cpu().numpy()}")
+        
+        for epoch in range(num_epochs):
+            epoch_total_loss = 0.0
+            epoch_recon_loss = 0.0
+            epoch_kl_loss = 0.0
+            
+            pbar = tqdm(loader, desc=f"Epoch {epoch+1}/{num_epochs}")
+            for z_batch, _ in pbar:  # Ignore fitness values
+                z_batch = z_batch.to(self.device)
+                
+                # Forward pass (no conditioning)
+                z_recon, mu, logvar = self.forward(z_batch)
+                
+                # Compute VAE loss
+                recon_loss = F.mse_loss(z_recon, z_batch, reduction='mean')
+                kl_loss = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
+                total_loss = recon_loss + beta * kl_loss
+                
+                # Backward pass
+                optimizer.zero_grad()
+                total_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.parameters, 1.0)
+                optimizer.step()
+                
+                # Track losses
+                epoch_total_loss += total_loss.item()
+                epoch_recon_loss += recon_loss.item()
+                epoch_kl_loss += kl_loss.item()
+                
+                pbar.set_postfix({
+                    'loss': f'{total_loss.item():.4f}',
+                    'recon': f'{recon_loss.item():.4f}',
+                    'kl': f'{kl_loss.item():.4f}'
+                })
+            
+            # Average losses
+            n_batches = len(loader)
+            history['total_loss'].append(epoch_total_loss / n_batches)
+            history['recon_loss'].append(epoch_recon_loss / n_batches)
+            history['kl_loss'].append(epoch_kl_loss / n_batches)
+            
+            print(f"Epoch {epoch+1}: Loss={history['total_loss'][-1]:.4f}, "
+                  f"Recon={history['recon_loss'][-1]:.4f}, KL={history['kl_loss'][-1]:.4f}")
+            
+            # Save checkpoint periodically
+            if save_dir and (epoch + 1) % 10 == 0:
+                os.makedirs(save_dir, exist_ok=True)
+                self.save_checkpoint(os.path.join(save_dir, f'uncond_vae_epoch_{epoch+1}.pt'))
+        
+        print("Unconditional VAE pre-training complete!")
+        return history
+    
+    def sample(
+        self, 
+        c: torch.Tensor,  # Ignored for unconditional VAE
+        batch_size: int,
+        **kwargs
+    ) -> torch.Tensor:
+        """
+        Generate z_arch vectors (unconditional sampling).
+        
+        Args:
+            c: Ignored (kept for interface compatibility)
+            batch_size: Number of samples
+            
+        Returns:
+            Generated z_arch of shape [batch_size, z_dim]
+        """
+        # Sample from prior N(0, I)
+        z_latent2 = torch.randn(batch_size, self.latent2_dim, device=self.device)
+        
+        # Decode (no conditioning)
+        z_arch_generated = self.decode(z_latent2)
+        
+        return z_arch_generated
+    
+    @property
+    def parameters(self):
+        """Return all trainable parameters."""
+        return list(self.encoder_shared.parameters()) + \
+               list(self.encoder_mu.parameters()) + \
+               list(self.encoder_logvar.parameters()) + \
+               list(self.decoder.parameters())
+    
+    def save_checkpoint(self, path: str):
+        """Save model state."""
+        torch.save({
+            'encoder_shared': self.encoder_shared.state_dict(),
+            'encoder_mu': self.encoder_mu.state_dict(),
+            'encoder_logvar': self.encoder_logvar.state_dict(),
+            'decoder': self.decoder.state_dict(),
+            'target_fitness': self.target_fitness.cpu(),
+            'z_dim': self.z_dim,
+            'num_objectives': self.num_objectives,
+            'latent2_dim': self.latent2_dim
+        }, path)
+        print(f"Unconditional VAE checkpoint saved to {path}")
+    
+    def load_checkpoint(self, path: str):
+        """Load model state."""
+        checkpoint = torch.load(path, map_location=self.device)
+        self.encoder_shared.load_state_dict(checkpoint['encoder_shared'])
+        self.encoder_mu.load_state_dict(checkpoint['encoder_mu'])
+        self.encoder_logvar.load_state_dict(checkpoint['encoder_logvar'])
+        self.decoder.load_state_dict(checkpoint['decoder'])
+        self.target_fitness = checkpoint['target_fitness'].to(self.device)
+        print(f"Unconditional VAE checkpoint loaded from {path}")
+
+
 class ConditionalDiffusionRepresentation(IGenerator):
     """
     Conditional Diffusion Model for inverse design.
@@ -783,6 +1028,16 @@ class InverseDesigner:
                 device=self.device,
                 **generator_kwargs
             )
+        elif generator_type.lower() == 'uncond_vae' or generator_type.lower() == 'unconditional_vae':
+            # For unconditional VAE, target_fitness must be in generator_kwargs
+            if 'target_fitness' not in generator_kwargs:
+                raise ValueError("UnconditionalVAE requires 'target_fitness' in generator_kwargs")
+            self.generator = UnconditionalVAERepresentation(
+                z_dim=z_dim,
+                num_objectives=num_objectives,
+                device=self.device,
+                **generator_kwargs
+            )
         elif generator_type.lower() == 'diffusion':
             self.generator = ConditionalDiffusionRepresentation(
                 z_dim=z_dim,
@@ -791,7 +1046,7 @@ class InverseDesigner:
                 **generator_kwargs
             )
         else:
-            raise ValueError(f"Unknown generator_type: {generator_type}. Choose 'cvae' or 'diffusion'.")
+            raise ValueError(f"Unknown generator_type: {generator_type}. Choose 'cvae', 'uncond_vae', or 'diffusion'.")
         
         self.generator_type = generator_type.lower()
         
@@ -948,3 +1203,498 @@ class InverseDesigner:
     def load_generator(self, path: str):
         """Load generator checkpoint."""
         self.generator.load_checkpoint(path)
+
+
+class ODEFuncWrapper(nn.Module):
+    """
+    Wrapper class for ODE function to make it compatible with torchdiffeq.
+    
+    This wrapper is required because torchdiffeq's odeint_adjoint expects
+    the ODE function to be an nn.Module instance for proper gradient tracking.
+    """
+    
+    def __init__(self, ode_net, z_dim, num_objectives, time_net=False):
+        super().__init__()
+        self.ode_net = ode_net
+        self.z_dim = z_dim
+        self.num_objectives = num_objectives
+        self.time_net = time_net
+        self.current_conditioning = None
+    
+    def forward(self, t, state):
+        """
+        ODE function: dz/dt = f(z, c) or f(z, t, c)
+        
+        Args:
+            t: Current time (scalar)
+            state: Tuple of (z, logp_diff_t) where:
+                   z: latent vector [batch_size, z_dim]
+                   logp_diff_t: log probability difference
+        
+        Returns:
+            Tuple of (dz_dt, dlogp_dt)
+        """
+        z = state[0]
+        batch_size = z.shape[0]
+        
+        # Concatenate z with conditioning
+        if self.time_net:
+            t_vec = torch.ones(batch_size, 1, device=z.device) * t
+            ode_input = torch.cat([z, self.current_conditioning, t_vec], dim=1)
+        else:
+            ode_input = torch.cat([z, self.current_conditioning], dim=1)
+        
+        # Compute dz/dt
+        with torch.set_grad_enabled(True):
+            z.requires_grad_(True)
+            dz_dt = self.ode_net(ode_input)
+            
+            # Compute divergence for probability tracking: tr(df/dz)
+            # Using Hutchinson's trace estimator for efficiency
+            if len(state) > 1:  # If we're tracking log probability
+                # Sample random vector for trace estimation
+                epsilon = torch.randn_like(z)
+                
+                # Compute vjp: epsilon^T * (df/dz)
+                dz_dt_eps = torch.sum(dz_dt * epsilon)
+                grad_outputs = torch.ones_like(dz_dt_eps)
+                vjp = torch.autograd.grad(dz_dt_eps, z, grad_outputs, create_graph=True)[0]
+                
+                # Trace estimate: epsilon^T * (df/dz) * epsilon
+                dlogp_dt = -torch.sum(vjp * epsilon, dim=1, keepdim=True)
+            else:
+                dlogp_dt = torch.zeros(batch_size, 1, device=z.device)
+        
+        return (dz_dt, dlogp_dt)
+
+
+class ConditionalNormalizingFlow(IGenerator):
+    """
+    Conditional Continuous Normalizing Flow (CNF) for inverse design.
+    
+    This implementation follows the approach from the paper where:
+    - An autoencoder (not VAE) provides dimensionality reduction
+    - A regressor (surrogate) predicts properties from latent codes
+    - CNF models the conditional distribution p(z|properties) using Neural ODEs
+    
+    The CNF learns to transform samples from a simple prior (Gaussian) to the 
+    complex latent distribution conditioned on desired properties.
+    
+    Architecture:
+    - Uses Neural ODE with adjoint method for memory-efficient training
+    - Conditioning is done by concatenating properties to the latent vector
+    - Supports both ground truth and predicted properties for conditioning
+    """
+    
+    def __init__(
+        self,
+        z_dim: int,
+        num_objectives: int,
+        hidden_dims: List[int] = [256, 256, 256],
+        time_net: bool = False,
+        nonlinearity: str = 'tanh',
+        device: torch.device = None
+    ):
+        """
+        Args:
+            z_dim: Dimension of latent space (from autoencoder)
+            num_objectives: Number of physical properties to condition on
+            hidden_dims: Hidden layer dimensions for the ODE function network
+            time_net: If True, use time-dependent network f(z, t, c)
+            nonlinearity: Activation function ('tanh', 'relu', 'elu', 'softplus')
+            device: Device to run on
+        """
+        self.z_dim = z_dim
+        self.num_objectives = num_objectives
+        self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.time_net = time_net
+        
+        # Build ODE function network: f(z, c) or f(z, t, c)
+        # The network computes dz/dt conditioned on properties c
+        layers = []
+        
+        if time_net:
+            input_dim = z_dim + num_objectives + 1  # z + c + t
+        else:
+            input_dim = z_dim + num_objectives  # z + c
+        
+        prev_dim = input_dim
+        for h_dim in hidden_dims:
+            layers.append(nn.Linear(prev_dim, h_dim))
+            
+            if nonlinearity == 'tanh':
+                layers.append(nn.Tanh())
+            elif nonlinearity == 'relu':
+                layers.append(nn.ReLU())
+            elif nonlinearity == 'elu':
+                layers.append(nn.ELU())
+            elif nonlinearity == 'softplus':
+                layers.append(nn.Softplus())
+            else:
+                raise ValueError(f"Unknown nonlinearity: {nonlinearity}")
+            
+            prev_dim = h_dim
+        
+        # Final layer outputs dz/dt (same dimension as z)
+        layers.append(nn.Linear(prev_dim, z_dim))
+        
+        self.ode_func_net = nn.Sequential(*layers).to(self.device)
+        
+        # Create ODE function wrapper as nn.Module for torchdiffeq compatibility
+        self.ode_func_module = ODEFuncWrapper(
+            self.ode_func_net, 
+            self.z_dim, 
+            self.num_objectives,
+            self.time_net
+        )
+        
+        # Try to import torchdiffeq for Neural ODE
+        try:
+            from torchdiffeq import odeint_adjoint as odeint
+            self.odeint = odeint
+            self.has_torchdiffeq = True
+        except ImportError:
+            print("Warning: torchdiffeq not found. Install with: pip install torchdiffeq")
+            print("Falling back to simple Euler integration (less accurate)")
+            self.has_torchdiffeq = False
+            self.odeint = None
+    
+    def ode_func(self, t, state):
+        """
+        ODE function: dz/dt = f(z, c) or f(z, t, c)
+        
+        Args:
+            t: Current time (scalar)
+            state: Tuple of (z, logp_diff_t) where:
+                   z: latent vector [batch_size, z_dim]
+                   logp_diff_t: log probability difference (unused in forward, needed for adjoint)
+        
+        Returns:
+            Tuple of (dz_dt, dlogp_dt)
+        """
+        z = state[0]
+        batch_size = z.shape[0]
+        
+        # Concatenate z with conditioning
+        if self.time_net:
+            t_vec = torch.ones(batch_size, 1, device=z.device) * t
+            ode_input = torch.cat([z, self.current_conditioning, t_vec], dim=1)
+        else:
+            ode_input = torch.cat([z, self.current_conditioning], dim=1)
+        
+        # Compute dz/dt
+        with torch.set_grad_enabled(True):
+            z.requires_grad_(True)
+            dz_dt = self.ode_func_net(ode_input)
+            
+            # Compute divergence for probability tracking: tr(df/dz)
+            # Using Hutchinson's trace estimator for efficiency
+            if len(state) > 1:  # If we're tracking log probability
+                # Sample random vector for trace estimation
+                epsilon = torch.randn_like(z)
+                
+                # Compute vjp: epsilon^T * (df/dz)
+                dz_dt_eps = torch.sum(dz_dt * epsilon)
+                grad_outputs = torch.ones_like(dz_dt_eps)
+                vjp = torch.autograd.grad(dz_dt_eps, z, grad_outputs, create_graph=True)[0]
+                
+                # Trace estimate: epsilon^T * (df/dz) * epsilon
+                dlogp_dt = -torch.sum(vjp * epsilon, dim=1, keepdim=True)
+            else:
+                dlogp_dt = torch.zeros(batch_size, 1, device=z.device)
+        
+        return (dz_dt, dlogp_dt)
+    
+    def forward_transform(
+        self, 
+        z_0: torch.Tensor, 
+        conditioning: torch.Tensor,
+        integration_times: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """
+        Forward transformation: z_0 ~ N(0, I) -> z_1 ~ p(z|c)
+        
+        Integrates the ODE forward in time to transform prior samples to data space.
+        
+        Args:
+            z_0: Initial latent samples from N(0, I), shape [batch_size, z_dim]
+            conditioning: Property values to condition on, shape [batch_size, num_objectives]
+            integration_times: Time points for ODE integration, defaults to [0, 1]
+        
+        Returns:
+            z_1: Transformed latent samples, shape [batch_size, z_dim]
+        """
+        if integration_times is None:
+            integration_times = torch.tensor([0.0, 1.0], device=self.device)
+        
+        # Store conditioning for ODE function
+        self.current_conditioning = conditioning
+        self.ode_func_module.current_conditioning = conditioning
+        
+        if self.has_torchdiffeq:
+            # Use torchdiffeq for accurate ODE integration
+            z_traj = self.odeint(
+                self.ode_func_module,
+                (z_0,),
+                integration_times,
+                method='dopri5',
+                atol=1e-5,
+                rtol=1e-5
+            )
+            z_1 = z_traj[0][-1]  # Get final time point
+        else:
+            # Fallback: Simple Euler integration
+            z_t = z_0
+            dt = 0.01
+            num_steps = int((integration_times[-1] - integration_times[0]) / dt)
+            
+            for step in range(num_steps):
+                t = integration_times[0] + step * dt
+                dz_dt, _ = self.ode_func(t, (z_t,))
+                z_t = z_t + dz_dt * dt
+            
+            z_1 = z_t
+        
+        return z_1
+    
+    def inverse_transform(
+        self,
+        z_1: torch.Tensor,
+        conditioning: torch.Tensor,
+        integration_times: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Inverse transformation: z_1 ~ p(z|c) -> z_0 ~ N(0, I)
+        
+        Integrates the ODE backward in time to transform data samples to prior space.
+        Also computes the change in log probability for maximum likelihood training.
+        
+        Args:
+            z_1: Data latent samples, shape [batch_size, z_dim]
+            conditioning: Property values, shape [batch_size, num_objectives]
+            integration_times: Time points for ODE integration, defaults to [1, 0]
+        
+        Returns:
+            z_0: Transformed samples in prior space, shape [batch_size, z_dim]
+            delta_logp: Change in log probability, shape [batch_size]
+        """
+        if integration_times is None:
+            integration_times = torch.tensor([1.0, 0.0], device=self.device)
+        
+        # Store conditioning for ODE function
+        self.current_conditioning = conditioning
+        self.ode_func_module.current_conditioning = conditioning
+        
+        batch_size = z_1.shape[0]
+        
+        if self.has_torchdiffeq:
+            # Initialize log probability tracking
+            logp_diff_t1 = torch.zeros(batch_size, 1, device=self.device)
+            
+            # Integrate backward with probability tracking
+            state_traj = self.odeint(
+                self.ode_func_module,
+                (z_1, logp_diff_t1),
+                integration_times,
+                method='dopri5',
+                atol=1e-5,
+                rtol=1e-5
+            )
+            
+            z_0 = state_traj[0][-1]
+            logp_diff_t0 = state_traj[1][-1]
+            
+            # Compute log probability under prior N(0, I)
+            logp_z0 = -0.5 * (z_0 ** 2).sum(dim=1, keepdim=True) - 0.5 * self.z_dim * np.log(2 * np.pi)
+            
+            # Compute log probability in data space
+            logp_z1 = logp_z0 - logp_diff_t0
+            
+            delta_logp = logp_diff_t0.squeeze()
+        else:
+            # Fallback: Simple Euler integration (no probability tracking)
+            z_t = z_1
+            dt = 0.01
+            num_steps = int(abs(integration_times[-1] - integration_times[0]) / dt)
+            
+            for step in range(num_steps):
+                t = integration_times[0] - step * dt
+                dz_dt, _ = self.ode_func(t, (z_t,))
+                z_t = z_t - dz_dt * dt  # Negative because going backward
+            
+            z_0 = z_t
+            delta_logp = torch.zeros(batch_size, device=self.device)
+        
+        return z_0, delta_logp
+    
+    def compute_loss(
+        self,
+        z_data: torch.Tensor,
+        conditioning: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Compute negative log-likelihood loss for training.
+        
+        The CNF is trained to maximize the likelihood of observed latent codes
+        given their corresponding properties.
+        
+        Args:
+            z_data: Observed latent codes, shape [batch_size, z_dim]
+            conditioning: Corresponding properties, shape [batch_size, num_objectives]
+        
+        Returns:
+            Negative log-likelihood loss (scalar)
+        """
+        # Transform data to prior space and compute probability change
+        z_0, delta_logp = self.inverse_transform(z_data, conditioning)
+        
+        # Log probability under prior N(0, I)
+        logp_z0 = -0.5 * (z_0 ** 2).sum(dim=1) - 0.5 * self.z_dim * np.log(2 * np.pi)
+        
+        # Log probability in data space
+        logp_z1 = logp_z0 - delta_logp
+        
+        # Negative log-likelihood
+        nll = -logp_z1.mean()
+        
+        return nll
+    
+    def initial_train(
+        self,
+        z_arch_vectors: torch.Tensor,
+        fitness_values: torch.Tensor,
+        num_epochs: int = 50,
+        batch_size: int = 32,
+        lr: float = 1e-3,
+        weight_decay: float = 1e-5,
+        save_dir: Optional[str] = None
+    ) -> Dict[str, List[float]]:
+        """
+        Pre-train the CNF on archive data.
+        
+        Args:
+            z_arch_vectors: Latent codes from autoencoder, shape [N, z_dim]
+            fitness_values: Corresponding properties, shape [N, num_objectives]
+            num_epochs: Number of training epochs
+            batch_size: Batch size
+            lr: Learning rate
+            weight_decay: L2 regularization strength
+            save_dir: Directory to save checkpoints
+        
+        Returns:
+            Training history dictionary
+        """
+        # Ensure tensors are on correct device
+        z_arch_vectors = z_arch_vectors.to(self.device)
+        fitness_values = fitness_values.to(self.device)
+        
+        # Create dataset and loader
+        dataset = ArchiveFitnessDataset(z_arch_vectors, fitness_values)
+        loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+        
+        # Optimizer
+        optimizer = optim.Adam(self.parameters, lr=lr, weight_decay=weight_decay)
+        
+        # Training loop
+        history = {'nll_loss': []}
+        
+        print(f"Starting CNF pre-training for {num_epochs} epochs...")
+        print(f"Using {'torchdiffeq' if self.has_torchdiffeq else 'Euler'} integration")
+        
+        for epoch in range(num_epochs):
+            epoch_loss = 0.0
+            num_batches = 0
+            
+            pbar = tqdm(loader, desc=f'Epoch {epoch+1}/{num_epochs}')
+            for z_batch, c_batch in pbar:
+                z_batch = z_batch.to(self.device)
+                c_batch = c_batch.to(self.device)
+                
+                # Compute loss
+                optimizer.zero_grad()
+                loss = self.compute_loss(z_batch, c_batch)
+                loss.backward()
+                
+                # Gradient clipping for stability
+                torch.nn.utils.clip_grad_norm_(self.parameters, 1.0)
+                
+                optimizer.step()
+                
+                epoch_loss += loss.item()
+                num_batches += 1
+                
+                pbar.set_postfix({'loss': f'{loss.item():.4f}'})
+            
+            avg_loss = epoch_loss / num_batches
+            history['nll_loss'].append(avg_loss)
+            
+            if (epoch + 1) % 10 == 0:
+                print(f"Epoch {epoch+1}/{num_epochs}: NLL Loss = {avg_loss:.4f}")
+                
+                if save_dir is not None:
+                    os.makedirs(save_dir, exist_ok=True)
+                    ckpt_path = os.path.join(save_dir, f'cnf_epoch_{epoch+1}.pt')
+                    self.save_checkpoint(ckpt_path)
+        
+        print("CNF pre-training complete!")
+        
+        if save_dir is not None:
+            final_path = os.path.join(save_dir, 'cnf_final.pt')
+            self.save_checkpoint(final_path)
+            print(f"Final checkpoint saved to {final_path}")
+        
+        return history
+    
+    def sample(
+        self,
+        c: torch.Tensor,
+        batch_size: int,
+        **kwargs
+    ) -> torch.Tensor:
+        """
+        Generate latent codes conditioned on desired properties.
+        
+        This is the generative step: sample from N(0, I) and transform through
+        the CNF conditioned on target properties.
+        
+        Args:
+            c: Desired properties, shape [batch_size, num_objectives] or [num_objectives]
+            batch_size: Number of samples to generate
+        
+        Returns:
+            Generated latent codes, shape [batch_size, z_dim]
+        """
+        # Handle scalar or single-vector conditioning
+        if c.dim() == 1:
+            c = c.unsqueeze(0).expand(batch_size, -1)
+        c = c.to(self.device)
+        
+        # Sample from prior N(0, I)
+        z_0 = torch.randn(batch_size, self.z_dim, device=self.device)
+        
+        # Transform through CNF
+        with torch.no_grad():
+            z_1 = self.forward_transform(z_0, c)
+        
+        return z_1
+    
+    @property
+    def parameters(self):
+        """Return all trainable parameters."""
+        return self.ode_func_net.parameters()
+    
+    def save_checkpoint(self, path: str):
+        """Save model state."""
+        torch.save({
+            'ode_func_net': self.ode_func_net.state_dict(),
+            'z_dim': self.z_dim,
+            'num_objectives': self.num_objectives,
+            'time_net': self.time_net
+        }, path)
+        print(f"CNF checkpoint saved to {path}")
+    
+    def load_checkpoint(self, path: str):
+        """Load model state."""
+        checkpoint = torch.load(path, map_location=self.device)
+        self.ode_func_net.load_state_dict(checkpoint['ode_func_net'])
+        print(f"CNF checkpoint loaded from {path}")
