@@ -1,0 +1,251 @@
+################################################################################
+# Inverse Designer Validation Tests
+################################################################################
+
+================================================================================
+Test 1: CVAE Generator Gradient Flow
+================================================================================
+✓ Generated z_arch shape: torch.Size([16, 128])
+✓ Gradients flow through CVAE generator
+
+Testing CVAE pre-training (5 epochs)...
+Starting CVAE pre-training for 5 epochs...
+Epoch 1/5: 100%|████████████████████████████████████████████████████████████████████████████████| 6/6 [00:07<00:00,  1.22s/it, loss=1.22, recon=1.16, kl=0.0647]
+Epoch 1: Loss=1.2285, Recon=1.1331, KL=0.0954
+Epoch 2/5: 100%|████████████████████████████████████████████████████████████████████████████████| 6/6 [00:07<00:00,  1.21s/it, loss=1.12, recon=1.07, kl=0.0436]
+Epoch 2: Loss=1.1356, Recon=1.0832, KL=0.0524
+Epoch 3/5: 100%|█████████████████████████████████████████████████████████████████████████████████| 6/6 [00:07<00:00,  1.21s/it, loss=1.09, recon=1.06, kl=0.034]
+Epoch 3: Loss=1.1010, Recon=1.0635, KL=0.0375
+Epoch 4/5: 100%|████████████████████████████████████████████████████████████████████████████████| 6/6 [00:07<00:00,  1.21s/it, loss=1.03, recon=1.01, kl=0.0253]
+Epoch 4: Loss=1.0684, Recon=1.0401, KL=0.0283
+Epoch 5/5: 100%|████████████████████████████████████████████████████████████████████████████████| 6/6 [00:07<00:00,  1.21s/it, loss=1.05, recon=1.03, kl=0.0212]
+Epoch 5: Loss=1.0502, Recon=1.0274, KL=0.0227
+CVAE pre-training complete!
+✓ Training complete. Final loss: 1.0502
+
+================================================================================
+Test 2: Diffusion Generator Gradient Flow
+================================================================================
+✓ Noise prediction shape: torch.Size([16, 128])
+✓ Gradients flow through Diffusion model
+
+Testing Diffusion pre-training (3 epochs)...
+Starting Diffusion pre-training for 3 epochs...
+Epoch 1/3: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████| 6/6 [00:20<00:00,  3.42s/it, loss=1.35]
+Epoch 1: Loss=1.3379
+Epoch 2/3: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████| 6/6 [00:20<00:00,  3.38s/it, loss=1.34]
+Epoch 2: Loss=1.3092
+Epoch 3/3: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████| 6/6 [00:20<00:00,  3.38s/it, loss=1.24]
+Epoch 3: Loss=1.2978
+Diffusion pre-training complete!
+✓ Training complete. Final loss: 1.2978
+
+================================================================================
+Test 3: Surrogate Predict Gradient Flow
+================================================================================
+✓ Surrogate prediction shape: torch.Size([16, 3])
+✓ Gradients flow through surrogate.predict()
+
+================================================================================
+Test 4: End-to-End Optimization (CVAE)
+================================================================================
+Pre-training generator (3 epochs)...
+Starting CVAE pre-training for 3 epochs...
+Epoch 1/3: 100%|████████████████████████████████████████████████████████████████████████████████| 6/6 [00:07<00:00,  1.22s/it, loss=1.11, recon=1.04, kl=0.0671]
+Epoch 1: Loss=1.2356, Recon=1.1402, KL=0.0954
+Epoch 2/3: 100%|████████████████████████████████████████████████████████████████████████████████| 6/6 [00:07<00:00,  1.21s/it, loss=1.13, recon=1.09, kl=0.0387]
+Epoch 2: Loss=1.1304, Recon=1.0788, KL=0.0516
+Epoch 3/3: 100%|████████████████████████████████████████████████████████████████████████████████| 6/6 [00:07<00:00,  1.22s/it, loss=1.09, recon=1.06, kl=0.0322]
+Epoch 3: Loss=1.0986, Recon=1.0631, KL=0.0355
+CVAE pre-training complete!
+✓ Pre-training complete. Final loss: 1.0986
+
+Running 10 optimization steps...
+  Step 0: Loss=0.2851, Mean Pred=[0.01985566 0.04570819 0.05228608]
+  Step 3: Loss=0.1359, Mean Pred=[0.13157938 0.12245145 0.31176442]
+  Step 6: Loss=0.0343, Mean Pred=[0.26467937 0.24364963 0.59503543]
+  Step 9: Loss=0.0066, Mean Pred=[0.416814   0.35966045 0.87168384]
+
+✓ Optimization steps complete
+  Initial loss: 0.2851
+  Final loss: 0.0066
+✓ Loss is reasonable (not exploding)
+
+================================================================================
+Test 5: Unconditional VAE Gradient Flow
+================================================================================
+Target fitness: [0.7 0.5 0.9]
+✓ Generated z_arch shape: torch.Size([16, 128])
+✓ Gradients flow through Unconditional VAE generator
+
+Testing Unconditional VAE pre-training (5 epochs)...
+Starting Unconditional VAE pre-training for 5 epochs...
+Target fitness: [0.7 0.5 0.9]
+Epoch 1/5: 100%|████████████████████████████████████████████████████████████████████████████| 6/6 [00:05<00:00,  1.16it/s, loss=1.2019, recon=1.1347, kl=0.0673]
+Epoch 1: Loss=1.2135, Recon=1.1201, KL=0.0934
+Epoch 2/5: 100%|████████████████████████████████████████████████████████████████████████████| 6/6 [00:05<00:00,  1.16it/s, loss=1.1498, recon=1.1072, kl=0.0425]
+Epoch 2: Loss=1.1266, Recon=1.0751, KL=0.0516
+Epoch 3/5: 100%|████████████████████████████████████████████████████████████████████████████| 6/6 [00:05<00:00,  1.16it/s, loss=1.0702, recon=1.0366, kl=0.0337]
+Epoch 3: Loss=1.1020, Recon=1.0650, KL=0.0370
+Epoch 4/5: 100%|████████████████████████████████████████████████████████████████████████████| 6/6 [00:05<00:00,  1.16it/s, loss=1.0688, recon=1.0427, kl=0.0261]
+Epoch 4: Loss=1.0637, Recon=1.0349, KL=0.0288
+Epoch 5/5: 100%|████████████████████████████████████████████████████████████████████████████| 6/6 [00:05<00:00,  1.16it/s, loss=1.0008, recon=0.9800, kl=0.0207]
+Epoch 5: Loss=1.0538, Recon=1.0304, KL=0.0234
+Unconditional VAE pre-training complete!
+✓ Training complete. Final loss: 1.0538
+
+Testing unconditional sampling...
+✓ Sampled 32 architectures without conditioning
+
+Testing optimization with frozen surrogate (10 steps)...
+  Step 0: Loss=0.5125, Mean Pred=[ 0.03690281 -0.08693653  0.03254402], Target=[0.7 0.5 0.9]
+  Step 3: Loss=0.3666, Mean Pred=[ 0.12341207 -0.01193337  0.18992239], Target=[0.7 0.5 0.9]
+  Step 6: Loss=0.2247, Mean Pred=[0.23030314 0.0863823  0.36965084], Target=[0.7 0.5 0.9]
+  Step 9: Loss=0.1013, Mean Pred=[0.35872078 0.2237899  0.569427  ], Target=[0.7 0.5 0.9]
+
+✓ Optimization complete
+  Initial loss: 0.5125
+  Final loss: 0.1013
+✓ Loss is reasonable (not exploding)
+
+================================================================================
+Test 6: Diffusion Sampling (DDIM)
+================================================================================
+Pre-training diffusion (2 epochs)...
+Starting Diffusion pre-training for 2 epochs...
+Epoch 1/2: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████| 6/6 [00:20<00:00,  3.42s/it, loss=1.26]
+Epoch 1: Loss=1.3406
+Epoch 2/2: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████| 6/6 [00:20<00:00,  3.38s/it, loss=1.35]
+Epoch 2: Loss=1.2848
+Diffusion pre-training complete!
+
+Testing DDIM sampling (10 steps)...
+DDIM Sampling: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████| 10/10 [00:05<00:00,  1.86it/s]
+✓ Sampled z_arch shape: torch.Size([4, 128])
+✓ Diffusion sampling complete
+
+================================================================================
+✅ ALL TESTS PASSED!
+================================================================================
+
+The inverse designer implementation is working correctly.
+You can now proceed to run the full pipeline with real data.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+STEP 4: Selecting Best Surrogate Models
+================================================================================
+✓ Classifier: best_kan_classifier
+
+Selecting regressors for target objectives (ciou_loss, average_precision)...
+  Model 0 (mlp_best_overall): validation_subset=[0, 4, 11]
+  Model 2 (mlp_best_cioul): validation_subset=[4]
+✓ Regressor indices: [0, 2]
+✓ Surrogate ready with models: [1, 0, 2]
+
+================================================================================
+STEP 5: Training Inverse Design Generator
+================================================================================
+Target: ciou_loss=1.670, AP=0.500
+
+Training on 6401 latent vectors (dim=256)
+Pre-training generator for 20 epochs...
+
+Starting Unconditional VAE pre-training for 20 epochs...
+Target fitness: [1.67 0.5 ]
+Epoch 1/20: 100%|█████████████████████████████████████████████████████| 200/200 [00:00<00:00, 345.34it/s, loss=0.0532, recon=0.0451, kl=0.0082]
+Epoch 1: Loss=0.0945, Recon=0.0749, KL=0.0196
+Epoch 2/20: 100%|█████████████████████████████████████████████████████| 200/200 [00:00<00:00, 421.48it/s, loss=0.0335, recon=0.0288, kl=0.0047]
+Epoch 2: Loss=0.0468, Recon=0.0403, KL=0.0064
+Epoch 3/20: 100%|█████████████████████████████████████████████████████| 200/200 [00:00<00:00, 421.47it/s, loss=0.0355, recon=0.0322, kl=0.0033]
+Epoch 3: Loss=0.0368, Recon=0.0329, KL=0.0040
+Epoch 4/20: 100%|█████████████████████████████████████████████████████| 200/200 [00:00<00:00, 419.44it/s, loss=0.0249, recon=0.0227, kl=0.0023]
+Epoch 4: Loss=0.0320, Recon=0.0292, KL=0.0028
+Epoch 5/20: 100%|█████████████████████████████████████████████████████| 200/200 [00:00<00:00, 417.18it/s, loss=0.0785, recon=0.0764, kl=0.0021]
+Epoch 5: Loss=0.0291, Recon=0.0270, KL=0.0021
+Epoch 6/20: 100%|█████████████████████████████████████████████████████| 200/200 [00:00<00:00, 417.04it/s, loss=0.0276, recon=0.0261, kl=0.0015]
+Epoch 6: Loss=0.0272, Recon=0.0256, KL=0.0016
+Epoch 7/20: 100%|█████████████████████████████████████████████████████| 200/200 [00:00<00:00, 417.42it/s, loss=0.0147, recon=0.0137, kl=0.0010]
+Epoch 7: Loss=0.0258, Recon=0.0246, KL=0.0012
+Epoch 8/20: 100%|█████████████████████████████████████████████████████| 200/200 [00:00<00:00, 416.79it/s, loss=0.0170, recon=0.0162, kl=0.0008]
+Epoch 8: Loss=0.0248, Recon=0.0238, KL=0.0010
+Epoch 9/20: 100%|█████████████████████████████████████████████████████| 200/200 [00:00<00:00, 417.22it/s, loss=0.0218, recon=0.0212, kl=0.0007]
+Epoch 9: Loss=0.0240, Recon=0.0232, KL=0.0008
+Epoch 10/20: 100%|████████████████████████████████████████████████████| 200/200 [00:00<00:00, 417.34it/s, loss=0.0251, recon=0.0245, kl=0.0005]
+Epoch 10: Loss=0.0234, Recon=0.0227, KL=0.0006
+Unconditional VAE checkpoint saved to /storage/ice-shared/vip-vvk/data/AOT/psomu3/inverse_design/training_results/generator_checkpoints/uncond_vae_epoch_10.pt
+Epoch 11/20: 100%|████████████████████████████████████████████████████| 200/200 [00:00<00:00, 417.46it/s, loss=0.0337, recon=0.0333, kl=0.0005]
+Epoch 11: Loss=0.0229, Recon=0.0224, KL=0.0005
+Epoch 12/20: 100%|████████████████████████████████████████████████████| 200/200 [00:00<00:00, 418.04it/s, loss=0.0160, recon=0.0157, kl=0.0003]
+Epoch 12: Loss=0.0224, Recon=0.0221, KL=0.0004
+Epoch 13/20: 100%|████████████████████████████████████████████████████| 200/200 [00:00<00:00, 416.23it/s, loss=0.0232, recon=0.0229, kl=0.0003]
+Epoch 13: Loss=0.0222, Recon=0.0218, KL=0.0003
+Epoch 14/20: 100%|████████████████████████████████████████████████████| 200/200 [00:00<00:00, 416.27it/s, loss=0.0189, recon=0.0186, kl=0.0003]
+Epoch 14: Loss=0.0219, Recon=0.0216, KL=0.0003
+Epoch 15/20: 100%|████████████████████████████████████████████████████| 200/200 [00:00<00:00, 416.54it/s, loss=0.0348, recon=0.0346, kl=0.0002]
+Epoch 15: Loss=0.0217, Recon=0.0214, KL=0.0003
+Epoch 16/20: 100%|████████████████████████████████████████████████████| 200/200 [00:00<00:00, 415.87it/s, loss=0.0160, recon=0.0158, kl=0.0003]
+Epoch 16: Loss=0.0215, Recon=0.0212, KL=0.0003
+Epoch 17/20: 100%|████████████████████████████████████████████████████| 200/200 [00:00<00:00, 416.55it/s, loss=0.0197, recon=0.0194, kl=0.0003]
+Epoch 17: Loss=0.0214, Recon=0.0211, KL=0.0003
+Epoch 18/20: 100%|████████████████████████████████████████████████████| 200/200 [00:00<00:00, 415.89it/s, loss=0.0199, recon=0.0196, kl=0.0003]
+Epoch 18: Loss=0.0212, Recon=0.0209, KL=0.0003
+Epoch 19/20: 100%|████████████████████████████████████████████████████| 200/200 [00:00<00:00, 416.27it/s, loss=0.0160, recon=0.0157, kl=0.0003]
+Epoch 19: Loss=0.0212, Recon=0.0208, KL=0.0003
+Epoch 20/20: 100%|████████████████████████████████████████████████████| 200/200 [00:00<00:00, 415.95it/s, loss=0.0127, recon=0.0123, kl=0.0003]
+Epoch 20: Loss=0.0210, Recon=0.0207, KL=0.0003
+Unconditional VAE checkpoint saved to /storage/ice-shared/vip-vvk/data/AOT/psomu3/inverse_design/training_results/generator_checkpoints/uncond_vae_epoch_20.pt
+Unconditional VAE pre-training complete!
+✓ Generator trained!
+  Final loss: 0.0210
+  Recon: 0.0207, KL: 0.0003
+
+================================================================================
+STEP 6: Optimizing Generator (Frozen Surrogate)
+================================================================================
+Optimization steps: 100
+
+Step   0: Loss=0.0906 | Recon=0.0019 | Pred=[1.693±0.005, 0.075±0.004]
+Step  10: Loss=0.0347 | Recon=0.0020 | Pred=[1.595±0.004, 0.248±0.006]
+Step  20: Loss=0.0106 | Recon=0.0023 | Pred=[1.550±0.004, 0.417±0.008]
+Step  30: Loss=0.0045 | Recon=0.0025 | Pred=[1.576±0.003, 0.508±0.012]
+Step  40: Loss=0.0013 | Recon=0.0021 | Pred=[1.622±0.003, 0.516±0.009]
+Step  50: Loss=0.0001 | Recon=0.0021 | Pred=[1.660±0.003, 0.491±0.010]
+Step  60: Loss=0.0001 | Recon=0.0023 | Pred=[1.676±0.003, 0.487±0.008]
+Step  70: Loss=0.0001 | Recon=0.0022 | Pred=[1.676±0.003, 0.502±0.009]
+Step  80: Loss=0.0001 | Recon=0.0025 | Pred=[1.674±0.003, 0.504±0.011]
+Step  90: Loss=0.0001 | Recon=0.0022 | Pred=[1.673±0.002, 0.502±0.010]
+Step  99: Loss=0.0001 | Recon=0.0021 | Pred=[1.672±0.004, 0.499±0.010]
+
+✓ Optimization complete!
+  Fitness Loss: Initial=0.0906 → Final=0.0001 → Best=0.0000
+  Reconstruction Loss: Initial=0.0019 → Final=0.0021
+  Improvement: 99.9%
+
+Unconditional VAE checkpoint saved to /storage/ice-shared/vip-vvk/data/AOT/psomu3/inverse_design/training_results/generator_checkpoints/optimized_generator.pt
+✓ Saved to /storage/ice-shared/vip-vvk/data/AOT/psomu3/inverse_design/training_results/generator_checkpoints/optimized_generator.pt
+
+================================================================================
+STEP 5: Final Evaluation
+================================================================================
+Target:   ciou=1.670, AP=0.500
+Achieved: ciou=1.670±0.003, AP=0.498±0.008
+Error:    ciou=0.000, AP=0.002
+
+================================================================================
+✅ INVERSE DESIGN TEST COMPLETE
+================================================================================
