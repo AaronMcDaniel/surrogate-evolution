@@ -309,9 +309,104 @@ def classify_tsne(tsne_embedding, output_dir, output_prefix, inputhash):
     plt.savefig(cluster_viz_file, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"Saved: {cluster_viz_file}")
-    
+    createHistogram(hash_mapping_file, output_dir, output_prefix)
     return cluster_to_hashes
+def createHistogram(infile, output_dir, output_prefix):
+    "Read the genomes.csv file and create a histogram of the primitive counts"
+    heads = {"RetinaNet_Head":0, "FPN_Head":0, "SSD_Head":0, "YOLOv3_Head":0, "FasterRCNN_Head":0}
+    layers={}
+    optimizers={}
+    learning_rate_adapters={}
+    clusters={}
+    clusterNow = -100
+    with open(infile, 'r') as f:
+        next(f)  # skip header
+        for line in f:
+            #if line in cluster header add heads, layers, optimizers, learning_rate_adapters to an item in clusters, and setclusternow to that cluster number
+            if len(line.strip().split(',')) < 10 and len(line.strip()) > 0 and ':' in line:
+                print(clusters[clusterNow] if clusterNow != -100 else "")
+                clusterNow = int(line.strip().replace(':', ''))
+                clusters[clusterNow] = {"heads":{}, "layers":{}, "optimizers":{}, "learning_rate_adapters":{}}
+                continue
+            
 
+            elif len(line.strip().split(',')) ==0:
+                continue
+            #else parse the genome line by splitting top level genome information i.e. (a,b,c),d,(e,(f,g)) => ['(a,b,c)', 'd', '(e,(f,g))']
+            genome_str = []
+            current_item = ''
+            paren_count = 0
+            for char in line.strip():
+                if char == '(':
+                    paren_count += 1
+                    current_item += char
+                elif char == ')':
+                    paren_count -= 1
+                    current_item += char
+                elif char == ',' and paren_count == 1:
+                    genome_str.append(current_item)
+                    current_item = ''
+                else:
+                    current_item += char
+            if current_item:
+                genome_str.append(current_item)
+
+            #tokenize each item in genome string a list of strings
+            for item in genome_str[0:3]:
+                #ANY set of contigous alphabetic, "2D" and _ charcters should be a token
+                tokens = []
+                current_token = ''
+                for char in item:
+                    if char.isalpha() or char == '_' or (char.isdigit() and current_token):
+                        current_token += char
+                    else:
+                        if current_token:
+                            tokens.append(current_token)
+                            current_token = ''
+                if current_token:
+                    tokens.append(current_token)
+                #if item in genome_str[0] if contains head add to heads, else add to layers if in str[1] add to optimizerds, else add to learning rate adapters
+                for token in tokens:
+                    if 'Head' in token and genome_str.index(item) == 0:
+                        heads[token] = heads.get(token, 0) + 1
+                        if clusterNow != -100:
+                            clusters[clusterNow]["heads"][token] = clusters[clusterNow]["heads"].get(token, 0) + 1
+                    elif(genome_str.index(item) == 0 and token != "IN0"):
+                        layers[token] = layers.get(token, 0) + 1
+                        if clusterNow != -100:
+                            clusters[clusterNow]["layers"][token] = clusters[clusterNow]["layers"].get(token, 0) + 1
+                    elif(genome_str.index(item) == 1 and token != "True" and token != "False"):
+                        optimizers[token] = optimizers.get(token, 0) + 1
+                        if clusterNow != -100:
+                            clusters[clusterNow]["optimizers"][token] = clusters[clusterNow]["optimizers"].get(token, 0) + 1
+                    elif(genome_str.index(item) == 2):
+                        learning_rate_adapters[token] = learning_rate_adapters.get(token, 0) + 1
+                        if clusterNow != -100:
+                            clusters[clusterNow]["learning_rate_adapters"][token] = clusters[clusterNow]["learning_rate_adapters"].get(token, 0) + 1
+    #create histograms for heads, layers, optimizers, learning_rate_adapters
+    def plot_histogram(data_dict, title, filename):
+        plt.figure(figsize=(10, 6))
+        items = list(data_dict.items())
+        items.sort(key=lambda x: x[1], reverse=True)
+        keys, values = zip(*items)
+        plt.bar(keys, values, color='skyblue')
+        plt.xticks(rotation=45, ha='right')
+        plt.xlabel('Primitive', fontsize=14)
+        plt.ylabel('Count', fontsize=14)
+        plt.title(title, fontsize=16)
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, filename), dpi=300)
+        plt.close()
+        return plt
+    #create a directory fo plots for each cluster
+    cluster_plot_dir = os.path.join(output_dir, f'{output_prefix}_cluster_plots')
+    os.makedirs(cluster_plot_dir, exist_ok=True)
+    #create a subdirectory for each cluster
+    for cluster_label, primitives in clusters.items():
+        heads_plot = plot_histogram(primitives["heads"], f'Cluster {cluster_label} - Heads Distribution', f'cluster_{cluster_label}_heads_histogram.png')
+        layers_plot = plot_histogram(primitives["layers"], f'Cluster {cluster_label} - Layers Distribution', f'cluster_{cluster_label}_layers_histogram.png')
+        optimizers_plot = plot_histogram(primitives["optimizers"], f'Cluster {cluster_label} - Optimizers Distribution', f'cluster_{cluster_label}_optimizers_histogram.png')
+        lra_plot = plot_histogram(primitives["learning_rate_adapters"], f'Cluster {cluster_label} - Learning Rate Adapters Distribution', f'cluster_{cluster_label}_lra_histogram.png')
 def main():
     USER_ENV_VAR = os.getenv('USER', 'psomu3')
     parser = argparse.ArgumentParser(description='t-SNE Visualization of Genome Embeddings')
