@@ -10,15 +10,17 @@
 module load anaconda3/2023.03
 
 # Create output directory
-mkdir -p "/storage/ice-shared/vip-vvk/data/AOT/$USER/codestral/tsne_visualizations"
+mkdir -p /storage/ice-shared/vip-vvk/data/AOT/%u/codestral/tsne_visualizations
 
 # Run the visualization script
-conda run -n nas --no-capture-output python -u surrogates/visualize_tsne.py \
-    --input /storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/large_dataset/mix_dataset_reg_train.pkl \
-    --output_dir "/storage/ice-shared/vip-vvk/data/AOT/$USER/codestral/tsne_visualizations" \
+conda run -n nas --no-capture-output python -u /home/hice1/%u/scratch/surrogate-evolution/surrogates/visualize_tsne.py \
+    --input /storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/codestral_reg_val_reduced.pkl \
+    --output_dir /storage/ice-shared/vip-vvk/data/AOT/%u/codestral/tsne_visualizations \
     --perplexity 30 \
     --n_iter 1000 \
-    --output_prefix s2v
+    --classification True
 
 echo "t-SNE visualization completed!"
-    # --input /storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/codestral_reg_val.pkl \
+    # --input /storage/ice-shared/vip-vvk/data/AOT/%u/codestral/codestral_reg_val.pkl \
+
+#to run sbatch #path to file
