@@ -920,4 +920,178 @@ class Codec:
                 anchor_generator=anchor_generator
             )   
         return model   
+    
+    def _build_hybrid_vocab(self):
+        """
+        Dynamically builds vocabulary from primitives and enums.
+        Follows the structure of pset_info for discovery but creates token indices.
+        """
+        if hasattr(self, 'vocab'):
+            return
+
+        self.vocab = {"<PAD>": 0, "<SOS>": 1, "<EOS>": 2, "VAL_NUM": 3}
+        idx = 4
+
+        # Add all Primitives (Function Names)
+        for prim in primitives.pset.mapping:
+            name = str(prim)
+            if name not in self.vocab:
+                self.vocab[name] = idx
+                idx += 1
+
+        # Add Boolean Literals
+        self.vocab["True"] = idx
+        self.vocab["False"] = idx + 1
+        idx += 2
+
+        # Add Enum Values found in primitives module
+        # We inspect the module to find Enum classes (like PaddingMode, etc.)
+        for name, obj in inspect.getmembers(primitives):
+            if isinstance(obj, type) and issubclass(obj, enum.Enum):
+                for e in obj:
+                    # Token format: EnumClass.EnumName (e.g. PaddingMode.zeros)
+                    token = f"{name}.{e.name}"
+                    if token not in self.vocab:
+                        self.vocab[token] = idx
+                        idx += 1
+
+    def encode_hybrid(self, genome):
+        """
+        Tokenizes architecture into Discrete Tokens and Continuous Values.
+        Reuses parsing logic from encode_surrogate to ensure consistency.
+        """
+        self._build_hybrid_vocab()
+
+        # --- 1. Parse Genome String (Exact logic from encode_surrogate) ---
+        expr = re.split(r'([(),])', genome)
+        remove = [',', '']
+        expr = [x for x in expr if x not in remove]
+        stack = []
+        all_layers = []
         
+        for element in expr:
+            if element != ')':
+                stack.append(element)
+            else:
+                arguments = []
+                while stack[-1] != '(':
+                    arguments.insert(0, stack.pop())
+                
+                stack.pop()
+                function = stack.pop()
+                try:
+                    # Existing check for primitives validity
+                    stack.append(str(eval(f'primitives.{function}({",".join(arguments)})')))
+                except: 
+                    # Construct layer info: [Name, Arg1, Arg2...]
+                    layer_info = [function] + [self._Codec__parse_arg(x) for x in arguments]
+                    all_layers.insert(0, layer_info)
+
+        # --- 2. Pre-process Layers (Logic from encode_surrogate) ---
+        # Remove IN0 from the last layer (which is the input layer)
+        if len(all_layers) > 0 and len(all_layers[-1]) > 1 and all_layers[-1][1] == 'IN0':
+            del all_layers[-1][1]
+
+        # Extract Head, Optimizer, and Scheduler
+        # all_layers[0] is the Head (e.g., RetinaNet_Head)
+        head_info = all_layers[0]
+        
+        # Parse Optimizer and Scheduler dictionaries using eval (same as construct_head)
+        optimizer_dict = eval(head_info[1]) 
+        scheduler_dict = eval(head_info[2])
+
+        # --- 3. Build Sequence ---
+        tokens = [self.vocab["<SOS>"]]
+        values = [0.0]
+
+        def add_token_val(t_idx, val):
+            tokens.append(t_idx)
+            values.append(val)
+
+        # Helper to map dictionary back to ordered list based on primitive signature
+        def dict_to_ordered_list(d, type_key):
+            name = d.get(type_key)
+            func = getattr(primitives, name)
+            sig = inspect.signature(func)
+            # Start with name
+            res = [name]
+            # Append args in signature order
+            for param in sig.parameters:
+                if param in d:
+                    res.append(d[param])
+            return res
+
+        # Helper to tokenize a standard list [Name, Arg1, Arg2...]
+        def tokenize_list(info):
+            name = info[0]
+            args = info[1:]
+            
+            # Tokenize Name
+            add_token_val(self.vocab.get(name, self.vocab["<PAD>"]), 0.0)
+
+            # Identify Enums for this primitive
+            # Use self.enum_dict from pset_info to map index -> EnumClass
+            enum_map = {}
+            if name in self.enum_dict:
+                # enum_dict[name] is {EnumClass: Index}
+                # We invert to {Index: EnumClass}
+                for e_class, e_idx in self.enum_dict[name].items():
+                    enum_map[e_idx] = e_class
+
+            for i, arg in enumerate(args):
+                # Case A: Enums
+                if i in enum_map:
+                    enum_class_name = enum_map[i]
+                    e_cls = getattr(primitives, enum_class_name)
+                    try:
+                        # Handle string names ('zeros') or integer values (0)
+                        if isinstance(arg, str) and arg in e_cls.__members__:
+                            e_val = e_cls[arg]
+                        else:
+                            e_val = e_cls(int(arg))
+                        
+                        token_str = f"{enum_class_name}.{e_val.name}"
+                        add_token_val(self.vocab.get(token_str, self.vocab["VAL_NUM"]), 0.0)
+                    except:
+                        # Fallback
+                        add_token_val(self.vocab["VAL_NUM"], float(arg))
+                
+                # Case B: Booleans
+                elif str(arg) in ['True', 'False']:
+                    t_str = "True" if str(arg) == 'True' else "False"
+                    add_token_val(self.vocab[t_str], 0.0)
+
+                # Case C: Numeric
+                else:
+                    try:
+                        val = float(arg)
+                        add_token_val(self.vocab["VAL_NUM"], val)
+                    except:
+                        # Unknown string arg
+                        pass
+
+        # Sequence Order: [Optimizer] -> [Scheduler] -> [Layers (Input->Output)] -> [Head Params]
+        
+        # 1. Optimizer
+        opt_list = dict_to_ordered_list(optimizer_dict, 'optimizer')
+        tokenize_list(opt_list)
+
+        # 2. Scheduler
+        sched_list = dict_to_ordered_list(scheduler_dict, 'lr_scheduler')
+        tokenize_list(sched_list)
+
+        # 3. Layers (Reversed all_layers to get Input -> Output order)
+        # Exclude index 0 (Head) from this loop
+        layers_seq = all_layers[1:][::-1]
+        for layer in layers_seq:
+            tokenize_list(layer)
+
+        # 4. Head (Name + non-opt/sched args)
+        # head_info is [Name, OptStr, SchedStr, Arg3, Arg4...]
+        # We skip indices 1 and 2
+        head_params = [head_info[0]] + head_info[3:]
+        tokenize_list(head_params)
+
+        add_token_val(self.vocab["<EOS>"], 0.0)
+
+        return np.array(tokens, dtype=int), np.array(values, dtype=float)
