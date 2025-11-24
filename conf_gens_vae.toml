@@ -70,6 +70,8 @@ iou_thresh = 0.0
 conf_thresh = 0.2
 # priority type of iou calculation
 iou_type = "ciou"
+# min bounding box area in pixels for eiou (=0 if eiou not used)
+min_object_area = 0
 # number of components weighted together to make the loss for the individual
 num_loss_components = 7
 # seed for loading train data

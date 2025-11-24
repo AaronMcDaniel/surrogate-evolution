@@ -20,7 +20,7 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 
 # used to match predictions and truths based on thresholds and compute the confusion matrix
 # note: could also be implemented with a balanced BST (from sortedcontainers) instead of heap
-def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="val", iou_type="ciou"):
+def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="val", iou_type="ciou", min_object_area=0):
     if pred_boxes.dim() != 2 or pred_boxes.size(1) < 5:
         raise ValueError("pred_boxes should be a 2D tensor with at least 5 columns")
     
@@ -52,7 +52,7 @@ def match_boxes(pred_boxes, true_boxes, iou_thresh=0.3, conf_thresh=0.5, mode="v
             return {}, [], true_boxes.tolist()
 
         # matrix = iou_matrix(pred_boxes, true_boxes)
-        matrix = iou_matrix(pred_boxes[:, :4], true_boxes, iou_type)
+        matrix = iou_matrix(pred_boxes[:, :4], true_boxes, iou_type, min_object_area)
         # print(f"CIoU matrix: {matrix}")
 
         if matrix.numel() == 0:
@@ -472,6 +472,34 @@ def ciou(pred_boxes, true_boxes):
     ciou = iou - u - alpha * v
     return ciou
 
+def eiou(pred_boxes, true_boxes, min_object_area=0):
+    extend_box_pair_min_area(pred_boxes, true_boxes, min_area=min_object_area)
+    return iou(pred_boxes, true_boxes)
+
+
+def extend_box_min_area(box, min_area):
+    w = box[2]
+    h = box[3]
+    aspect = w / h
+    new_w = torch.sqrt(min_area * aspect)
+    new_h = min_area / new_w
+    return new_w, new_h
+
+def extend_box_pair_min_area(pred_box, true_box, min_area):
+    if min_area > 0:
+        w_true = true_box[2]
+        h_true = true_box[3]
+        area_true = w_true * h_true
+
+        w_pred = pred_box[2]
+        h_pred = pred_box[3]
+        area_pred = w_pred * h_pred
+
+        if area_true < min_area:
+            true_box[2], true_box[3] = extend_box_min_area(true_box, min_area)
+            if area_pred < min_area:
+                pred_box[2], pred_box[3] = extend_box_min_area(pred_box, min_area)
+
 
 # takes in boxes in format [x, y, w, h] and converts to [x1, y1, x2, y2]
 def convert_boxes_to_x1y1x2y2(boxes):
@@ -574,7 +602,7 @@ def calc_euclidean_squared(pts1, pts2):
     return ((y2 - y1)**2 + (x2 - x1)**2)   
 
 
-def iou_matrix(pred_boxes, true_boxes, iou_type="iou"):
+def iou_matrix(pred_boxes, true_boxes, iou_type="iou", min_object_area=0):
     # note: torchvision calculates predictions as rows (ie for true in true_boxes] for pred in pred_boxes]))
     if iou_type == "diou":
         return torch.tensor([[diou(pred[:4], true) for pred in pred_boxes] for true in true_boxes], device=device)
@@ -582,6 +610,8 @@ def iou_matrix(pred_boxes, true_boxes, iou_type="iou"):
         return torch.tensor([[giou(pred[:4], true) for pred in pred_boxes] for true in true_boxes], device=device)
     elif iou_type == "ciou":
         return torch.tensor([[ciou(pred[:4], true) for pred in pred_boxes] for true in true_boxes], device=device)
+    elif iou_type == "eiou":
+        return torch.tensor([[eiou(pred[:4], true, min_object_area) for pred in pred_boxes] for true in true_boxes], device=device)
     elif iou_type == "iou":
         pred_boxes = convert_boxes_to_x1y1x2y2(pred_boxes[:, :4])
         true_boxes = convert_boxes_to_x1y1x2y2(true_boxes)
