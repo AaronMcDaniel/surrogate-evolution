@@ -3,288 +3,265 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # ------------------------------------------------------------------------------
-# Model 1: Discrete Structure Flow
-# Responsible for: Generating the sequence of tokens (Layers, Enums, Markers)
+# Component 1: The Core Flow Logic
 # ------------------------------------------------------------------------------
-class DiscreteStructureFlow(nn.Module):
-    def __init__(self, vocab_size, embed_dim, hidden_dim, num_layers):
+class AutoregressiveFlow(nn.Module):
+    """
+    Base Autoregressive Flow (Affine Coupling).
+    Modified to return LSTM hidden states for conditioning downstream models.
+    """
+    def __init__(self, features, hidden_features, num_layers):
         super().__init__()
-        self.vocab_size = vocab_size
-        self.embedding = nn.Embedding(vocab_size, embed_dim)
-        # L2-normalize embeddings as per NFBO paper recommendation
-        self.embedding.weight.data = F.normalize(self.embedding.weight.data, p=2, dim=1)
+        self.lstm = nn.LSTM(features, hidden_features, num_layers, batch_first=True)
+        self.t_net = nn.Linear(hidden_features, features)
+        self.s_net = nn.Linear(hidden_features, features)
+
+    def forward(self, v):
+        # v shape: [B, L, F]
+        # Shift input: input at time t is v_{t-1}
+        v_shifted = F.pad(v[:, :-1, :], (0, 0, 1, 0), "constant", 0.)
         
-        self.lstm = nn.LSTM(embed_dim, hidden_dim, num_layers, batch_first=True)
-        self.head = nn.Linear(hidden_dim, vocab_size)
+        lstm_out, _ = self.lstm(v_shifted)
+
+        t = self.t_net(lstm_out)
+        s = torch.tanh(self.s_net(lstm_out)) 
+        
+        z = v * torch.exp(s) + t
+        log_det_g = s.sum(dim=[1, 2]) 
+        
+        # RETURN LSTM_OUT: This is the "Structure Context" for the 2nd flow
+        return z, log_det_g, lstm_out 
+
+    def inverse(self, z):
+        v = torch.zeros_like(z)
+        h = None
+        lstm_outs = []
+        
+        for i in range(z.shape[1]): 
+            # Input to LSTM is the PREVIOUS generated value v_{i-1}
+            if i == 0:
+                lstm_in = torch.zeros(z.shape[0], 1, z.shape[2], device=z.device)
+            else:
+                lstm_in = v[:, i-1, :].unsqueeze(1)
+                
+            lstm_out, h = self.lstm(lstm_in, h) 
+            lstm_outs.append(lstm_out)
+            
+            t = self.t_net(lstm_out.squeeze(1)) 
+            s = torch.tanh(self.s_net(lstm_out.squeeze(1))) 
+            
+            v[:, i, :] = (z[:, i, :] - t) / torch.exp(s)
+            
+        # Return hidden states to condition the value flow during decoding
+        return v, torch.cat(lstm_outs, dim=1)
+
+
+# ------------------------------------------------------------------------------
+# Component 2: Discrete Structure Model
+# ------------------------------------------------------------------------------
+class DiscreteSeqFlow(nn.Module):
+    """
+    Sole responsibility: P(Structure).
+    """
+    def __init__(self, vocab_size, embed_dim, seq_len, flow_hidden_dim, flow_num_layers, sigma=0.1):
+        super().__init__()
+        self.L = seq_len
+        self.F_embed = embed_dim
+        self.sigma = sigma
+        
+        # 1. Discrete Embedding
+        self.h_map_token = nn.Embedding(vocab_size, embed_dim)
+        self.h_map_token.weight.data = F.normalize(self.h_map_token.weight.data, p=2, dim=1)
+        
+        # 2. Autoregressive Flow (g_map)
+        self.g_map = AutoregressiveFlow(features=embed_dim, 
+                                        hidden_features=flow_hidden_dim, 
+                                        num_layers=flow_num_layers)
+        
+        self.prior = torch.distributions.Normal(torch.tensor(0.0), torch.tensor(1.0))
+
+    def h(self, tokens):
+        """Encodes tokens into embedding space."""
+        v_emb = self.h_map_token(tokens) # [B, L, F_embed]
+        return v_emb
+
+    def sample_v(self, tokens):
+        """Dequantization: Adds noise for flow compatibility."""
+        v = self.h(tokens)
+        v_samples = v + self.sigma * torch.randn_like(v)
+        return v_samples
+
+    def loss_sim(self, v_samples, tokens):
+        """Contrastive anchor loss."""
+        B, L, _ = v_samples.shape
+        v_emb = v_samples 
+        e_x = self.h_map_token(tokens)
+        
+        pos_sim = F.cosine_similarity(v_emb, e_x, dim=2).mean()
+        
+        neg_ids = torch.randint(0, self.h_map_token.num_embeddings, (B, L), device=v_samples.device)
+        e_j = self.h_map_token(neg_ids) 
+        
+        neg_sim = F.cosine_similarity(v_emb, e_j, dim=2).mean()
+        
+        return -pos_sim + neg_sim
 
     def forward(self, tokens):
-        """
-        Forward pass for training (Teacher Forcing).
-        Input: tokens [B, L]
-        Output: logits [B, L, V], hidden_states [B, L, H]
-        """
-        # Shift tokens for autoregression: input at t is token_{t-1}
-        # Pad start with <SOS> or 0. Assuming codec handles SOS, we usually just 
-        # need to ensure the input to LSTM is the sequence up to t-1 to predict t.
-        # Here we assume input 'tokens' includes SOS.
+        """Returns NLL, Sim Loss, AND Structure Context."""
+        v_samples = self.sample_v(tokens)
         
-        embeddings = self.embedding(tokens) # [B, L, E]
+        # g_map now returns lstm_out (Context)
+        z, log_det_g, context = self.g_map(v_samples) 
         
-        # Run LSTM
-        # hidden_states contains the context for each step
-        hidden_states, _ = self.lstm(embeddings) # [B, L, H]
+        log_p_z = self.prior.log_prob(z).sum(dim=[1, 2])
+        L_NLL = -(log_p_z + log_det_g).mean()
         
-        # Predict logits for next token
-        logits = self.head(hidden_states) # [B, L, V]
+        L_sim = self.loss_sim(v_samples, tokens)
         
-        return logits, hidden_states
+        return L_NLL, L_sim, context
 
-    def sample(self, max_len, sos_token, eos_token, device):
-        """
-        Autoregressive generation of structure.
-        Returns: generated_tokens [B, L], hidden_states [B, L, H]
-        """
-        batch_size = 1 # Optimization usually happens one at a time or modify for B
-        current_token = torch.tensor([[sos_token]], device=device)
-        hidden = None
-        
-        generated_tokens = [current_token]
-        hidden_states_list = []
-        
-        for _ in range(max_len):
-            emb = self.embedding(current_token)
-            out, hidden = self.lstm(emb, hidden)
-            
-            logits = self.head(out)
-            # Greedy decoding or sampling could be used here
-            next_token = torch.argmax(logits, dim=-1)
-            
-            generated_tokens.append(next_token)
-            hidden_states_list.append(out)
-            
-            if next_token.item() == eos_token:
-                break
-            current_token = next_token
+    def encode(self, tokens):
+        v = self.h(tokens)
+        z, _, context = self.g_map(v) # Use mean embedding (no noise) for deterministic encoding
+        return z, context
 
-        return torch.cat(generated_tokens, dim=1), torch.cat(hidden_states_list, dim=1)
+    def decode(self, z):
+        # v: [B, L, F_embed], context: [B, L, H_flow]
+        v, context = self.g_map.inverse(z) 
+        
+        e_all = self.h_map_token.weight.data
+        logits = F.cosine_similarity(v.unsqueeze(2), e_all.unsqueeze(0).unsqueeze(0), dim=3)
+        tokens = torch.argmax(logits, dim=2)
+        
+        return tokens, context
 
 
 # ------------------------------------------------------------------------------
-# Model 2: Conditional Value Flow
-# Responsible for: Generating continuous values given Structure + Previous Values
+# Component 3: Continuous Value Model (Approach 2)
 # ------------------------------------------------------------------------------
 class ConditionalValueFlow(nn.Module):
-    def __init__(self, context_dim, value_dim=1, hidden_dim=64, num_layers=2):
+    """
+    Conditioned on the Context (Hidden States) from DiscreteSeqFlow.
+    """
+    def __init__(self, value_dim, context_dim, hidden_dim, num_layers):
         super().__init__()
+        self.value_dim = value_dim
+        self.context_dim = context_dim
         
-        # Projects the scalar value v_{t-1} to a vector
-        self.val_proj = nn.Linear(value_dim, hidden_dim // 2)
+        # LSTM Input: Previous Value + Current Structure Context
+        self.lstm = nn.LSTM(value_dim + context_dim, hidden_dim, num_layers, batch_first=True)
         
-        # Projects the structural context h_t to a vector
-        self.ctx_proj = nn.Linear(context_dim, hidden_dim // 2)
+        # Outputs parameters for Affine Transform
+        self.t_net = nn.Linear(hidden_dim, value_dim)
+        self.s_net = nn.Linear(hidden_dim, value_dim)
         
-        # Autoregressive Core
-        # Input size is sum of projected value and projected context
-        self.lstm = nn.LSTM(hidden_dim, hidden_dim, num_layers, batch_first=True)
-        
-        # Gaussian Heads: Predict Mean and Log-Scale
-        self.mu_net = nn.Linear(hidden_dim, value_dim)
-        self.log_sigma_net = nn.Linear(hidden_dim, value_dim)
+        self.prior = torch.distributions.Normal(torch.tensor(0.0), torch.tensor(1.0))
 
     def forward(self, values, context):
         """
-        Input: 
-            values: [B, L] (Real continuous values)
-            context: [B, L, H_struct] (Hidden states from Structure Model)
-        Output: 
-            mu, log_sigma for q(v_t | v_{<t}, structure)
+        values: [B, L, 1]
+        context: [B, L, H_struct] (Hidden states from Discrete Flow)
         """
-        B, L = values.shape
-        values = values.unsqueeze(-1) # [B, L, 1]
+        # Shift values: input at t is v_{t-1}
+        v_shifted = F.pad(values[:, :-1, :], (0, 0, 1, 0), "constant", 0.)
         
-        # Shift values for autoregression: Input at t is v_{t-1}
-        # We pad the beginning with 0.0 (initial value condition)
-        # Slice off the last value since we don't need to predict *after* the sequence ends
-        # effectively aligned so that input[t] is used to predict target[t]
-        prev_values = F.pad(values[:, :-1, :], (0, 0, 1, 0), "constant", 0.0)
+        # Condition on structure context
+        rnn_input = torch.cat([v_shifted, context], dim=-1)
         
-        # 1. Project Inputs
-        v_emb = F.relu(self.val_proj(prev_values)) # [B, L, H/2]
-        c_emb = F.relu(self.ctx_proj(context))     # [B, L, H/2]
+        lstm_out, _ = self.lstm(rnn_input)
         
-        # 2. Combine (Conditioning)
-        lstm_input = torch.cat([v_emb, c_emb], dim=-1) # [B, L, H]
+        t = self.t_net(lstm_out)
+        s = torch.tanh(self.s_net(lstm_out))
         
-        # 3. Run LSTM
-        out, _ = self.lstm(lstm_input)
+        z = values * torch.exp(s) + t
+        log_det = s.sum(dim=[1, 2])
         
-        # 4. Predict Parameters
-        mu = self.mu_net(out)             # [B, L, 1]
-        log_sigma = self.log_sigma_net(out) # [B, L, 1]
+        log_p_z = self.prior.log_prob(z).sum(dim=[1, 2])
+        L_NLL = -(log_p_z + log_det).mean()
         
-        return mu.squeeze(-1), log_sigma.squeeze(-1)
+        return L_NLL, z
 
+    def encode(self, values, context):
+        # Re-run forward logic to get Z
+        _, z = self.forward(values, context)
+        return z
+
+    def decode(self, z, context):
+        """
+        Inverse flow. Conditioned on the structure context.
+        """
+        v = torch.zeros_like(z)
+        h = None
+        
+        for i in range(z.shape[1]):
+            # 1. Get inputs
+            # Previous generated value
+            if i == 0:
+                v_prev = torch.zeros(z.shape[0], 1, self.value_dim, device=z.device)
+            else:
+                v_prev = v[:, i-1, :].unsqueeze(1)
+            
+            # Context for current step
+            ctx_curr = context[:, i, :].unsqueeze(1)
+            
+            # 2. Run LSTM
+            rnn_in = torch.cat([v_prev, ctx_curr], dim=-1)
+            lstm_out, h = self.lstm(rnn_in, h)
+            
+            # 3. Invert Affine
+            t = self.t_net(lstm_out.squeeze(1))
+            s = torch.tanh(self.s_net(lstm_out.squeeze(1)))
+            
+            v[:, i, :] = (z[:, i, :] - t) / torch.exp(s)
+            
+        return v
 
 # ------------------------------------------------------------------------------
-# Wrapper: Hybrid SeqFlow
-# Combines both models into the Latent Optimization framework
+# Component 4: Hybrid Wrapper
 # ------------------------------------------------------------------------------
 class HybridSeqFlow(nn.Module):
     def __init__(self, vocab_size, embed_dim, struct_hidden_dim, val_hidden_dim, 
-                 struct_layers=2, val_layers=2, sigma_min=1e-3):
+                 struct_layers=2, val_layers=4, max_seq_len=350, sigma=0.1):
         super().__init__()
         
-        self.struct_flow = DiscreteStructureFlow(vocab_size, embed_dim, struct_hidden_dim, struct_layers)
-        self.val_flow = ConditionalValueFlow(context_dim=struct_hidden_dim, hidden_dim=val_hidden_dim, num_layers=val_layers)
+        self.struct_flow = DiscreteSeqFlow(
+            vocab_size=vocab_size,
+            embed_dim=embed_dim,
+            seq_len=max_seq_len,
+            flow_hidden_dim=struct_hidden_dim,
+            flow_num_layers=struct_layers,
+            sigma=sigma
+        )
         
-        self.sigma_min = sigma_min
-        self.prior = torch.distributions.Normal(0, 1)
-        # Token index for 'VAL_NUM' which indicates a continuous value follows
-        self.val_token_id = 3 
+        self.val_flow = ConditionalValueFlow(
+            value_dim=1, # Scalar values
+            context_dim=struct_hidden_dim, # Must match AutoregressiveFlow hidden_dim
+            hidden_dim=val_hidden_dim,
+            num_layers=val_layers
+        )
+        
+        self.val_token_id = 3 # Default ID for VAL_NUM
 
     def forward(self, tokens, values):
         """
-        Training Pass.
-        Returns composite loss.
+        Pass-through that runs both. 
+        NOTE: In the 2-stage training script, you will likely call 
+        self.struct_flow() and self.val_flow() directly.
         """
-        # 1. Structure Forward
-        # We pass full tokens. LSTM shifts internally or via input slicing implies 
-        # we predict token[t] given token[0...t-1].
-        # For simplicity in this snippet, we assume standard causal masking or input shifting is handled by the loop or data loader.
-        # If using standard LSTM, we typically feed tokens[:, :-1] to predict tokens[:, 1:]
+        loss_nll, loss_sim, context = self.struct_flow(tokens)
         
-        input_tokens = tokens[:, :-1]
-        target_tokens = tokens[:, 1:]
-        input_values = values[:, 1:] # Align values with targets
+        # We detach context if we don't want gradients flowing back to structure model 
+        # from value model (usually preferred in 2-stage training)
+        loss_val, _ = self.val_flow(values.unsqueeze(-1), context)
         
-        # Run Structure Model
-        logits, hidden_states = self.struct_flow(input_tokens)
-        
-        # Run Value Model
-        # Context is the hidden state associated with predicting the *current* token
-        mu, log_sigma = self.val_flow(input_values, hidden_states)
-        sigma = torch.exp(log_sigma) + self.sigma_min
-        
-        # --- Losses ---
-        
-        # A. Discrete Loss (Cross Entropy)
-        # Reshape for CE: [B*L, V] vs [B*L]
-        loss_struct = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target_tokens.reshape(-1))
-        
-        # B. Continuous Loss (Gaussian NLL)
-        # We only care about loss where the *target* token was VAL_NUM
-        mask = (target_tokens == self.val_token_id).float()
-        
-        # Calculate Latent Z_val for flow correctness checks
-        z_val = (input_values - mu) / sigma
-        log_det = -torch.log(sigma)
-        
-        # NLL = 0.5 * (log(2pi) + z^2) - log_det
-        # We can just use the probability density directly or reconstruction MSE
-        # Using Gaussian Log Prob:
-        nll_val = -torch.distributions.Normal(mu, sigma).log_prob(input_values)
-        
-        # Masked Mean
-        if mask.sum() > 0:
-            loss_val = (nll_val * mask).sum() / mask.sum()
-        else:
-            loss_val = torch.tensor(0.0, device=tokens.device)
-            
-        return loss_struct, loss_val
+        return loss_nll, loss_sim, loss_val
+    
+    def encode_to_z(self, tokens, values):
+        z_struct, context = self.struct_flow.encode(tokens)
+        z_val = self.val_flow.encode(values.unsqueeze(-1), context)
+        return z_struct, z_val
 
-    def encode_to_latent(self, tokens, values):
-        """
-        Maps X -> Z for optimization.
-        Returns z_struct (not explicit in standard seqflow, usually handled by acquisition) 
-        and z_val (explicit flow).
-        """
-        # In standard SeqFlow, z_struct isn't a single vector but the generative process.
-        # However, we definitely need z_val for the continuous optimization.
-        
-        input_tokens = tokens[:, :-1]
-        target_values = values[:, 1:]
-        target_tokens = tokens[:, 1:]
-        
-        with torch.no_grad():
-            _, hidden_states = self.struct_flow(input_tokens)
-            mu, log_sigma = self.val_flow(target_values, hidden_states)
-            sigma = torch.exp(log_sigma) + self.sigma_min
-            
-            # Get Z for values
-            z_val = (target_values - mu) / sigma
-            
-            # Mask out non-value latents (replace with 0 or noise)
-            mask = (target_tokens == self.val_token_id)
-            z_val[~mask] = 0.0
-            
-        return z_val
-
-    def decode_from_latent(self, z_val, max_len=20, sos=1, eos=2):
-        """
-        Full generation given a latent vector z_val (modifying the continuous parameters).
-        Structure is generated greedily (or sampled), Values are generated using z_val.
-        """
-        device = z_val.device
-        batch_size = z_val.shape[0]
-        
-        curr_token = torch.full((batch_size, 1), sos, dtype=torch.long, device=device)
-        curr_value = torch.full((batch_size, 1), 0.0, dtype=torch.float, device=device)
-        
-        # LSTM states
-        h_struct = None
-        h_val = None
-        
-        tokens_out = []
-        values_out = []
-        
-        for t in range(max_len):
-            # 1. Structure Step
-            emb = self.struct_flow.embedding(curr_token)
-            out_struct, h_struct = self.struct_flow.lstm(emb, h_struct)
-            
-            logits = self.struct_flow.head(out_struct)
-            next_token = torch.argmax(logits, dim=-1)
-            
-            # 2. Value Step
-            # We need to project values and context (out_struct)
-            # Value LSTM input: [v_{t-1}, h_struct_t]
-            v_emb = F.relu(self.val_flow.val_proj(curr_value))
-            c_emb = F.relu(self.val_flow.ctx_proj(out_struct))
-            val_in = torch.cat([v_emb, c_emb], dim=-1)
-            
-            out_val, h_val = self.val_flow.lstm(val_in, h_val)
-            
-            mu = self.val_flow.mu_net(out_val)
-            log_sigma = self.val_flow.log_sigma_net(out_val)
-            sigma = torch.exp(log_sigma) + self.sigma_min
-            
-            # 3. Determine Value
-            # If token is VAL_NUM, use the z_val latent to guide the value
-            # If t < z_val length, use z_val[t], else sample 0
-            if t < z_val.shape[1]:
-                z = z_val[:, t:t+1].unsqueeze(-1) # Align dims
-            else:
-                z = torch.zeros_like(mu)
-                
-            # v = mu + z * sigma
-            # We calculate this for every step, but only keep it if token is VAL_NUM
-            pred_value = mu + z * sigma
-            
-            # Masking logic for output
-            is_val_token = (next_token == self.val_token_id)
-            
-            # For next step input:
-            # If discrete, value input is 0.0. If continuous, value is pred_value.
-            # However, for autoregression, we feed the predicted value.
-            final_value = torch.where(is_val_token, pred_value.squeeze(-1), torch.zeros_like(pred_value.squeeze(-1)))
-            
-            tokens_out.append(next_token)
-            values_out.append(final_value)
-            
-            curr_token = next_token
-            curr_value = final_value.unsqueeze(1)
-            
-            if (next_token == eos).all():
-                break
-                
-        return torch.cat(tokens_out, dim=1), torch.cat(values_out, dim=1)
+    def decode_from_z(self, z_struct, z_val):
+        tokens, context = self.struct_flow.decode(z_struct)
+        values = self.val_flow.decode(z_val, context)
+        return tokens, values.squeeze(-1)
