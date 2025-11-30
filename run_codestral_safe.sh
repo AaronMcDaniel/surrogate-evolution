@@ -2,7 +2,7 @@
 #SBATCH --job-name=codestral
 #SBATCH -G 1
 #SBATCH -c 16
-#SBATCH --mem=64g
+#SBATCH --mem=80g
 #SBATCH --time=16:00:00
 #SBATCH --output=/storage/ice-shared/vip-vvk/data/AOT/%u/codestral/codestral.%A.%a.log
 #SBATCH --error=/storage/ice-shared/vip-vvk/data/AOT/%u/codestral/codestral_error.%A.%a.log
@@ -22,4 +22,4 @@ module load cuda/12.6.1
 nvidia-smi
 
 # Run the Codestral dataset creation with unbuffered output
-conda run -n nas --no-capture-output python -u -m surrogates.codestral --mode dataset --only_cls_dataset
+conda run -n nas --no-capture-output python -u -m surrogates.codestral --mode dataset
