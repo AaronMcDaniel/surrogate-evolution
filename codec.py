@@ -964,7 +964,7 @@ class Codec:
         idx = len(self.vocab)
 
         # Add integer values
-        for i in range(1001):
+        for i in range(3001):
             token = f"INT_{i}"
             if token not in self.vocab:
                 self.vocab[token] = idx
