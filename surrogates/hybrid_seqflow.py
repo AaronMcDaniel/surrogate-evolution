@@ -47,45 +47,35 @@ class AutoregressiveFlow(nn.Module):
             v[:, i, :] = (z[:, i, :] - t) / torch.exp(s)
         return v
 
-class HybridSeqFlow(nn.Module):
-    def __init__(self, vocab_size, embed_dim, value_dim, seq_len, flow_hidden_dim, flow_num_layers, sigma=0.1):
+class DiscreteSeqFlow(nn.Module):
+    def __init__(self, vocab_size, embed_dim, seq_len, flow_hidden_dim, flow_num_layers, sigma=0.1):
         super().__init__()
         self.L = seq_len
         self.F_embed = embed_dim
-        self.F_value = value_dim
-        self.F_total = embed_dim + value_dim
         self.sigma = sigma
         
-        # --- Mapping h: (Token, Value) -> v ---
-        # 1. For discrete tokens
+        # --- Mapping h: Token -> v ---
+        # For discrete tokens only
         self.h_map_token = nn.Embedding(vocab_size, embed_dim)
-        # L2-normalize embeddings as suggested [cite: 165]
+        # L2-normalize embeddings as suggested
         self.h_map_token.weight.data = F.normalize(self.h_map_token.weight.data, p=2, dim=1)
         
-        # 2. For continuous values
-        self.h_map_value = nn.Linear(1, value_dim)
-        
         # --- Mapping g: v <-> z ---
-        self.g_map = AutoregressiveFlow(features=self.F_total, 
+        self.g_map = AutoregressiveFlow(features=embed_dim, 
                                         hidden_features=flow_hidden_dim, 
                                         num_layers=flow_num_layers)
-        
-        # --- Inverse Mapping h_inverse: v -> (Token, Value) ---
-        self.h_inv_value = nn.Linear(value_dim, 1)
 
         # Prior distribution p(z)
         self.prior = torch.distributions.Normal(torch.tensor(0.0), torch.tensor(1.0))
 
-    def h(self, tokens, values):
-        """Encodes (tokens, values) into the continuous vector v."""
+    def h(self, tokens):
+        """Encodes tokens into the continuous vector v."""
         v_emb = self.h_map_token(tokens) # [B, L, F_embed]
-        v_val = self.h_map_value(values.unsqueeze(-1)) # [B, L, F_value]
-        v = torch.cat([v_emb, v_val], dim=-1) # [B, L, F_total]
-        return v
+        return v_emb
 
-    def sample_v(self, tokens, values):
+    def sample_v(self, tokens):
         """Implements q'(v|x) from Eq. 11, simplified."""
-        v = self.h(tokens, values)
+        v = self.h(tokens)
         # Sample from N(v, sigma^2 * I)
         v_samples = v + self.sigma * torch.randn_like(v)
         return v_samples
@@ -93,7 +83,7 @@ class HybridSeqFlow(nn.Module):
     def loss_sim(self, v_samples, tokens):
         """Implements the contrastive similarity loss L_sim from Eq. 13."""
         B, L, _ = v_samples.shape
-        v_emb = v_samples[:, :, :self.F_embed] # Get embedding part of v
+        v_emb = v_samples # All is embedding now
         e_x = self.h_map_token(tokens) # [B, L, F_embed]
         
         pos_sim = F.cosine_similarity(v_emb, e_x, dim=2).mean()
@@ -106,47 +96,40 @@ class HybridSeqFlow(nn.Module):
         
         return -pos_sim + neg_sim
 
-    def forward(self, tokens, values):
+    def forward(self, tokens):
         """Encodes x -> z and computes loss for training SeqFlow."""
         
         # 1. Sample v from q'(v|x)
-        v_samples = self.sample_v(tokens, values) # [B, L, F_total]
+        v_samples = self.sample_v(tokens) # [B, L, F_embed]
         
         # 2. Get z = g(v)
-        z, log_det_g = self.g_map(v_samples) # [B, L, F_total], [B]
+        z, log_det_g = self.g_map(v_samples) # [B, L, F_embed], [B]
         
         # 3. Calculate L_NLL (Eq. 12)
         log_p_z = self.prior.log_prob(z).sum(dim=[1, 2]) # sum over L and F
         L_NLL = -(log_p_z + log_det_g).mean() # mean over B
         
-        # 4. Calculate L_sim (Eq. 13) [cite: 187-191]
+        # 4. Calculate L_sim (Eq. 13)
         L_sim = self.loss_sim(v_samples, tokens)
         
         return L_NLL, L_sim
 
-    def encode(self, tokens, values):
-        """Encodes (tokens, values) -> z for surrogate training."""
-        v = self.h(tokens, values) # Use mean, not sample
+    def encode(self, tokens):
+        """Encodes tokens -> z for surrogate training."""
+        v = self.h(tokens) # Use mean, not sample
         z, _ = self.g_map(v)
         return z
 
     def decode(self, z):
-        """Decodes z -> (tokens, values) for generation."""
-        # z shape: [B, L, F_total]
+        """Decodes z -> tokens for generation."""
+        # z shape: [B, L, F_embed]
         
         # 1. v = g^{-1}(z)
-        v = self.g_map.inverse(z) # [B, L, F_total]
+        v = self.g_map.inverse(z) # [B, L, F_embed]
         
-        # 2. Split v -> v_emb, v_val
-        v_emb = v[:, :, :self.F_embed]
-        v_val = v[:, :, self.F_embed:]
-        
-        # 3. x_tokens = h_inv_token(v_emb)
+        # 2. x_tokens = h_inv_token(v)
         e_all = self.h_map_token.weight.data # [V, F_embed]
-        logits = F.cosine_similarity(v_emb.unsqueeze(2), e_all.unsqueeze(0).unsqueeze(0), dim=3)
+        logits = F.cosine_similarity(v.unsqueeze(2), e_all.unsqueeze(0).unsqueeze(0), dim=3)
         tokens = torch.argmax(logits, dim=2) # [B, L]
         
-        # 4. x_values = h_inv_value(v_val)
-        values = self.h_inv_value(v_val).squeeze(-1) # [B, L]
-        
-        return tokens, values
+        return tokens
