@@ -29,7 +29,7 @@ import time
 import re
 
 USER = os.getenv("USER", "psomu3")
-cwd = os.path.dirname(os.getcwd())
+cwd = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 cfg = toml.load(os.path.join(cwd, "conf.toml"))
 
 genome_encoding_strat = cfg["codec"]['genome_encoding_strat']
@@ -41,9 +41,9 @@ PREANALYZER_JOB_NAME = 'preanalyzer_codestral'
 PREANALYZER_NODES = 1
 PREANALYZER_CORES = 8
 PREANALYZER_MEM = '32GB'
-PREANALYZER_TIME = '02:00:00'
+PREANALYZER_TIME = '06:00:00'
 PREANALYZER_ENV = 'nas'
-PREANALYZER_GPUS = ["V100-16GB", "V100-32GB", "L40S", "A100-40GB", "H100", "H200"]
+PREANALYZER_GPUS = ["H100", "H200"]
 
 def create_preanalyzer_job_file(dataset_file, dataset_name, status_dir, start_idx=0):
     """Create an SBATCH job file for running the pre-analyzer"""
@@ -98,9 +98,7 @@ def load_failure_list(failure_file):
     
     return failed_hashes
 
-def get_genome_hash(genome_str):
-    """Generate a simple hash for the genome string"""
-    return hashlib.md5(str(genome_str).encode()).hexdigest()[:10]
+
 
 def submit_preanalyzer_job(dataset_file, dataset_name, status_dir, start_idx=0):
     """Submit a pre-analyzer job and return the job ID"""
@@ -826,14 +824,40 @@ def build_codestral_dataset(use_build_dataset=True, dataset_prefix="mix_dataset"
                 elif not isinstance(genome_str, str):
                     genome_str = str(genome_str)
                 
-                # Skip empty or invalid genomes
+                # Get genome hash from dataframe
+                genome_hash = row.get('hash', None)
+                if not genome_hash:
+                    failed_count += 1
+                    print(f"No hash found for sample {idx}")
+                    continue
+                
+                # If genome_str is empty or invalid, look it up in holy grail by hash
+                if not genome_str or genome_str.strip() == '' or genome_str == 'nan':
+                    # Look up in holy grail CSV using the hash column
+                    matching_row = holy_grail_df[holy_grail_df['hash'] == genome_hash]
+                    if not matching_row.empty:
+                        genome_str = matching_row.iloc[0]['genome']
+                        lookup_count += 1
+                        if lookup_count % 10 == 1:  # Print occasionally
+                            print(f"Looked up genome from holy grail for hash {genome_hash}")
+                        
+                        # Ensure the looked-up genome is valid
+                        if isinstance(genome_str, bytes):
+                            genome_str = genome_str.decode('utf-8')
+                        elif not isinstance(genome_str, str):
+                            genome_str = str(genome_str)
+                    else:
+                        failed_count += 1
+                        print(f"Could not find genome in holy grail for hash {genome_hash}")
+                        continue
+                
+                # Final validation - if still invalid after lookup, skip
                 if not genome_str or genome_str.strip() == '' or genome_str == 'nan':
                     failed_count += 1
-                    print(f"Skipping invalid genome at sample {idx}: {genome_str}")
+                    print(f"Genome still invalid after lookup at sample {idx}: {genome_str}")
                     continue
                 
                 # Check if this genome was identified as problematic during pre-analysis
-                genome_hash = get_genome_hash(genome_str)
                 if genome_hash in dataset_failures:
                     skipped_count += 1
                     if skipped_count % 100 == 1:  # Print occasionally to show progress

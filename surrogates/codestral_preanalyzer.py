@@ -18,7 +18,7 @@ import toml
 from codec import Codec
 
 # Load configuration
-cwd = os.path.dirname(os.getcwd())
+cwd = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 cfg = toml.load(os.path.join(cwd, "conf.toml"))
 genome_encoding_strat = cfg["codec"]['genome_encoding_strat']
 num_classes = cfg["model"]['num_classes']
@@ -72,10 +72,7 @@ def update_failure_file(failure_file, genome_hash, error_msg):
         import json
         f.write(json.dumps(failure_entry) + '\n')
 
-def get_genome_hash(genome_str):
-    """Generate a simple hash for the genome string"""
-    import hashlib
-    return hashlib.md5(genome_str.encode()).hexdigest()[:10]
+
 
 def test_genome_decode(genome_str, codec):
     """
@@ -186,13 +183,18 @@ def main():
             elif not isinstance(genome_str, str):
                 genome_str = str(genome_str)
             
+            # Get genome hash from dataframe
+            genome_hash = row.get('hash', None)
+            if not genome_hash:
+                print(f"No hash found for genome at index {idx}")
+                update_status_file(status_file, idx + 1, 'failed', 'unknown', 'No hash in dataframe')
+                continue
+            
             # Skip empty or invalid genomes
             if not genome_str or genome_str.strip() == '' or genome_str == 'nan':
                 print(f"Skipping invalid genome at index {idx}")
-                update_status_file(status_file, idx + 1, 'success')
+                update_status_file(status_file, idx + 1, 'success', genome_hash)
                 continue
-            
-            genome_hash = get_genome_hash(genome_str)
             print(f"Testing genome {idx}/{len(df)} (hash: {genome_hash})")
             print(f"  Genome type: {type(genome_str)}")
             print(f"  Genome length: {len(genome_str)}")
@@ -222,7 +224,7 @@ def main():
             
             genome_hash = "unknown"
             try:
-                genome_hash = get_genome_hash(str(df.iloc[idx]['str_genome']))
+                genome_hash = df.iloc[idx].get('hash', 'unknown')
             except:
                 pass
             
