@@ -522,6 +522,7 @@ class Surrogate():
     def predict(
         self, 
         z_latent: torch.Tensor,
+        cls_mode=False,
         genome_scaler = None
     ) -> torch.Tensor:
         """
@@ -533,10 +534,13 @@ class Surrogate():
         
         Args:
             z_latent: Latent architecture vectors, shape [B, z_dim], torch.Tensor
+            cls_mode: If True, only apply classifier and return binary predictions (0=valid, 1=failed).
+                     If False, apply regression models and return fitness values.
             genome_scaler: Scaler for genome features (if None, assumes z_latent is pre-scaled)
             
         Returns:
-            predicted_fitness: Tensor of shape [B, num_objectives]
+            If cls_mode=True: Binary predictions tensor of shape [B] (0=valid, 1=failed)
+            If cls_mode=False: Predicted fitness tensor of shape [B, num_objectives]
         """
         import inspect
         from functools import partial
@@ -552,9 +556,6 @@ class Surrogate():
             # You may want to set this based on your pipeline's sub_surrogates
             self.inference_models = [0] + list(range(len(self.models)))
         
-        cls_model_idx = self.inference_models[0]
-        reg_model_idxs = self.inference_models[1:]
-        
         # Step 1: Scale features if scaler is provided
         if genome_scaler is not None:
             # Apply scaling - need to convert to numpy, scale, then back to torch
@@ -564,12 +565,43 @@ class Surrogate():
         else:
             z_scaled = z_latent
         
-        # Step 2: Classifier inference (optional - for now we'll skip and assume all valid)
-        # In the full pipeline, classifier predicts pass/fail
-        # For inverse design, we'll skip this and go straight to regression
-        # If you want to include it, you'd need a differentiable classifier forward pass
+        cls_model_idx = self.inference_models[0]
         
-        # Step 3: Regressor inference - DIFFERENTIABLE
+        if cls_mode:
+            # Classifier-only mode: return binary predictions (0 = valid, 1 = failed)
+            cls_dict = self.classifier_models[cls_model_idx]
+            
+            # Build classifier model architecture
+            model_class = cls_dict['model']
+            output_size = cls_dict['output_size']  # Should be 1 for binary classification
+            sig = inspect.signature(model_class.__init__)
+            filtered_params = {k: v for k, v in cls_dict.items() if k in sig.parameters}
+            cls_model = model_class(output_size=output_size, **filtered_params).to(self.device)
+            
+            # Load trained weights
+            weights_path = f'{self.weights_dir}/{cls_dict["name"]}.pth'
+            cls_model.load_state_dict(torch.load(weights_path, map_location=self.device))
+            cls_model.eval()
+            
+            # Freeze model parameters
+            for param in cls_model.parameters():
+                param.requires_grad = False
+            
+            # Forward pass (differentiable w.r.t. inputs only)
+            with torch.set_grad_enabled(True):
+                cls_output = cls_model(z_scaled)  # [B, 1]
+            
+            # Apply sigmoid and threshold to get binary predictions
+            # Output: 0 = valid/success, 1 = failed
+            cls_probs = torch.sigmoid(cls_output)
+            cls_predictions = (cls_probs > 0.5).float()  # [B, 1]
+            
+            return cls_predictions.squeeze(-1)  # Return shape [B]
+        
+        # Regression mode
+        reg_model_idxs = self.inference_models[1:]
+        
+        # Step 2: Regressor inference - DIFFERENTIABLE
         # We need to run inference for each unique regressor model
         unique_reg_models = list(set(reg_model_idxs))
         
