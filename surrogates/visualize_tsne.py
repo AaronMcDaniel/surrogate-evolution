@@ -21,7 +21,8 @@ import argparse
 import os
 from tqdm import tqdm
 from tree_simplifier import simplify_tree
-
+from  surrogates.surrogate import Surrogate
+import torch
 def load_dataset(file_path):
     """Load the dataset from pickle file"""
     print(f"Loading dataset from {file_path}...")
@@ -70,6 +71,7 @@ def extract_genome_vectors(df):
     
     return genome_matrix, valid_df
 
+    
 def compute_tsne(genome_matrix, perplexity=30, n_iter=1000, random_state=42, n_components=2):
     """Compute t-SNE embedding"""
     print(f"Computing t-SNE with perplexity={perplexity}, n_iter={n_iter}...")
@@ -136,6 +138,12 @@ def create_visualizations(tsne_embedding, df, output_dir, output_prefix):
     if 'ciou_loss' in df.columns:
         metric_columns.remove('ciou_loss')
         metric_columns.insert(0, 'ciou_loss')
+    if 'surrogate_ciou_loss_error' in df.columns:
+        metric_columns.remove('surrogate_ciou_loss_error')
+        metric_columns.insert(0, 'surrogate_ciou_loss_error')
+    if 'surrogate_average_precision_error' in df.columns:
+        metric_columns.remove('surrogate_average_precision_error')
+        metric_columns.insert(0, 'surrogate_average_precision_error')
     
     #add reverse mapping from tsne vectors to hash values
     tsne_to_hash = {tuple(tsne_embedding[i]): df.loc[i, 'hash'] for i in range(len(df))}
@@ -151,7 +159,7 @@ def create_visualizations(tsne_embedding, df, output_dir, output_prefix):
     if metric_columns:
         print(f"Creating visualizations colored by metrics: {metric_columns}")
         
-        for metric in metric_columns[:5]:  # Limit to first 5 metrics to avoid too many plots
+        for metric in metric_columns[:7]:  # Limit to first 7 metrics to avoid too many plots
             try:
                 values = df[metric].values
                 
@@ -310,7 +318,8 @@ def classify_tsne(tsne_embedding, output_dir, output_prefix, inputhash):
     plt.close()
     print(f"Saved: {cluster_viz_file}")
     createHistogram(hash_mapping_file, output_dir, output_prefix)
-    return cluster_to_hashes
+    return cluster_to_hashes    
+#ctreates histograms for every cluster
 def createHistogram(infile, output_dir, output_prefix):
     "Read the genomes.csv file and create a histogram of the primitive counts"
     heads = {"RetinaNet_Head":0, "FPN_Head":0, "SSD_Head":0, "YOLOv3_Head":0, "FasterRCNN_Head":0}
@@ -431,6 +440,10 @@ def main():
     parser.add_argument('--inputHash', type=str, 
                        default='/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/large_dataset/full_out.csv',
                        help='Path to strings of genomes')
+    parser.add_argument('--surrogate_weights', type=str, 
+                       default='/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/surrogate_weights_codestral/surrogate_weights',
+                       help='Path to surrogate model weights')
+
     args = parser.parse_args()
     
     print("="*60)
@@ -439,12 +452,32 @@ def main():
     
     # Load dataset
     df = load_dataset(args.input)
-    
     # Subsample if requested
     if args.max_samples and len(df) > args.max_samples:
         print(f"Subsampling to {args.max_samples} samples...")
         df = df.sample(n=args.max_samples, random_state=args.random_state)
-    
+
+    """Test surrogate model on genome matrix and save predictions"""
+    os.makedirs(args.output_dir, exist_ok=True)
+    testing_dir = f"psomu3/codestral/surrogate_training"
+    repo_dir = "/storage/ice-shared/vip-vvk/data/AOT/"
+    surrogate = Surrogate('conf.toml', '/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/surrogate_weights_codestral/surrogate_weights')
+    #predict surrogate values from df["genome"] and append that to df
+    genomes = df['genome'].tolist()
+    #convert genomes to torch tensors
+    genome_tensors = []
+    for genome in genomes:
+        genome_tensors.append(torch.tensor(genome, dtype=torch.float32))
+    genome_batch = torch.stack(genome_tensors)
+    with torch.no_grad():
+        predictions = surrogate.predict(genome_batch).cpu().numpy()
+    #add predictions to df
+    df['surrogate_prediction_ciou_loss'] = predictions[:, 0]
+    df['surrogate_prediction_average_precision'] = predictions[:, 1]
+    df['surrogate_ciou_loss_error'] = abs(df['ciou_loss'] - df['surrogate_prediction_ciou_loss'])
+    df['surrogate_average_precision_error'] = abs(df['average_precision'] - df['surrogate_prediction_average_precision'])
+    print(df.head())
+
     # Extract genome vectors
     genome_matrix, valid_df = extract_genome_vectors(df)
     
