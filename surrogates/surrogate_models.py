@@ -43,7 +43,7 @@ class UnitNormConstraint(nn.Module):
 
 class RegressionVAE(nn.Module):
     def __init__(self,
-                input_size=6144,
+                input_size=1021,
                 step_dim=128,
                 intermediate_dim=32,
                 latent_dim=8,
@@ -173,7 +173,7 @@ class RegressionVAE(nn.Module):
 class MLP(nn.Module):
     def __init__(
             self, 
-            input_size=6144, 
+            input_size=1021, 
             output_size=12,
             hidden_sizes=[512, 256], 
             activation_layer=nn.ReLU, 
@@ -483,7 +483,7 @@ class KANLinear(torch.nn.Module):
 class KAN(torch.nn.Module):
     def __init__(
         self,
-        input_size=6144,
+        input_size=1021,
         output_size=12,
         hidden_sizes=[512, 256],
         grid_size=5,
