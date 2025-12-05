@@ -18,6 +18,7 @@ conda run -n nas --no-capture-output python -u -m surrogates.visualize_tsne \
     --input /storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/large_dataset/mix_dataset \
     --output_dir /storage/ice-shared/vip-vvk/data/AOT/ckeener7/codestral/tsne_visualizations \
     --perplexity 30 \
+    --output_prefix mixed_dataset_3.5eps \
     --n_iter 1000 \
     --classification True
 

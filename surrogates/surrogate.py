@@ -576,7 +576,7 @@ class Surrogate():
             output_size = cls_dict['output_size']  # Should be 1 for binary classification
             sig = inspect.signature(model_class.__init__)
             filtered_params = {k: v for k, v in cls_dict.items() if k in sig.parameters}
-            cls_model = model_class(output_size=output_size, **filtered_params).to(self.device)
+            cls_model = model_class(**filtered_params).to(self.device)
             
             # Load trained weights
             weights_path = f'{self.weights_dir}/{cls_dict["name"]}.pth'

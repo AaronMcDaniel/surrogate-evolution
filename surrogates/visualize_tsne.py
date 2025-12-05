@@ -89,7 +89,7 @@ def compute_tsne(genome_matrix, perplexity=30, n_iter=1000, random_state=42, n_c
     tsne = TSNE(
         n_components=n_components,
         perplexity=perplexity,
-        n_iter=n_iter,
+        max_iter=n_iter,
         random_state=random_state,
         verbose=1
     )
@@ -169,6 +169,14 @@ def create_visualizations(tsne_embedding, df, output_dir, output_prefix):
         for metric in metric_columns[:7]:  # Limit to first 7 metrics to avoid too many plots
             try:
                 values = df[metric].values
+                if (metric == "ciou_loss" or metric == "surrogate_ciou_loss_error"):
+                    Q1 = np.percentile(values, 25)
+                    Q3 = np.percentile(values, 75)
+                    IQR = Q3 - Q1
+                    lower_bound = Q1 - 1.5 * IQR
+                    upper_bound = Q3 + 1.5 * IQR
+                    values = np.clip(values, lower_bound, upper_bound)
+
                 
                 # Skip if not numeric
                 if not np.issubdtype(values.dtype, np.number):
@@ -254,7 +262,7 @@ def classify_tsne(tsne_embedding, output_dir, output_prefix, inputhash):
             tsne_tuple = tuple([tsne_comp1, tsne_comp2])
             tsne_to_hash[tsne_tuple] = hash_value
     # Final clustering with optimal number of clusters
-    clusterer = DBSCAN(eps=1.5, min_samples=5)
+    clusterer = DBSCAN(eps=3.5, min_samples=5)
     cluster_labels = clusterer.fit_predict(tsne_embedding)
     #print(tsne_to_hash)
     # Create a mapping of cluster labels to hash values
@@ -404,8 +412,14 @@ def createHistogram(infile, output_dir, output_prefix):
     def plot_histogram(data_dict, title, filename, cnt):
         plt.figure(figsize=(10, 6))
         items = list(data_dict.items())
+
+        if not items:
+            print(f"[WARN] Skipping empty histogram: {title}")
+            return None
+
         items.sort(key=lambda x: x[1], reverse=True)
         keys, values = zip(*items)
+        
         plt.bar(keys, values, color='skyblue')
         plt.xticks(rotation=45, ha='right')
         plt.xlabel('Primitive', fontsize=14)
