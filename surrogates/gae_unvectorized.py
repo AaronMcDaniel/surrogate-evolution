@@ -11,54 +11,6 @@ from sklearn.preprocessing import StandardScaler, RobustScaler
 from torch.utils.data import ConcatDataset
 from grammar_utils import PRIM_SCHEMA
 
-class VectorizedExpertFFN(nn.Module):
-    """
-    True Mixture-of-Experts layer using Einsum for vectorization.
-    Maintains completely independent weights for each expert, ensuring
-    gradients from Expert A do not touch weights of Expert B.
-    """
-    def __init__(self, input_dim, hidden_dim, output_dim, num_experts):
-        super(VectorizedExpertFFN, self).__init__()
-        self.num_experts = num_experts
-        
-        # Expert Layer 1: Projects Shared Input -> Independent Expert Hidden States
-        # Shape: [54, 256, 64]
-        self.w1 = nn.Parameter(torch.empty(num_experts, input_dim, hidden_dim))
-        self.b1 = nn.Parameter(torch.zeros(num_experts, hidden_dim))
-        
-        # Expert Layer 2: Projects Independent Hidden -> Independent Output
-        # Shape: [54, 64, 14]
-        self.w2 = nn.Parameter(torch.empty(num_experts, hidden_dim, output_dim))
-        self.b2 = nn.Parameter(torch.zeros(num_experts, output_dim))
-        
-        self.ln = nn.LayerNorm(hidden_dim) # We will apply this per-expert
-        self.activation = nn.GELU()
-        
-        # Custom Initialization
-        nn.init.xavier_uniform_(self.w1)
-        nn.init.xavier_uniform_(self.w2)
-
-    def forward(self, x):
-        # x: [Batch, Input_Dim] (Shared global context)
-        
-        # --- Layer 1: Shared Input -> Expert Independent Hidden ---
-        # Equation: Output[b, e, h] = Sum_i (x[b, i] * w1[e, i, h]) + b1[e, h]
-        # 'bi, eih -> beh'
-        hidden = torch.einsum('bi, eih -> beh', x, self.w1) + self.b1
-        
-        # Apply activations and Norm
-        # LayerNorm expects [..., hidden_dim]. It works fine on [B, 54, 64]
-        hidden = self.ln(hidden)
-        hidden = self.activation(hidden)
-        
-        # --- Layer 2: Expert Hidden -> Expert Output ---
-        # Equation: Output[b, e, o] = Sum_h (hidden[b, e, h] * w2[e, h, o]) + b2[e, o]
-        # 'beh, eho -> beo'
-        out = torch.einsum('beh, eho -> beo', hidden, self.w2) + self.b2
-        
-        return out # [Batch, Num_Experts, Output_Dim]
-
-
 class MoEGrammarAE(nn.Module):
     def __init__(self, input_dim=68, latent_dim=16, num_experts=54, param_dim=14):
         super(MoEGrammarAE, self).__init__()
@@ -72,7 +24,6 @@ class MoEGrammarAE(nn.Module):
             nn.LayerNorm(256),
             nn.GELU(),
             nn.Linear(256, 128),
-            nn.LayerNorm(128),
             nn.GELU(),
             nn.Linear(128, 64),
             nn.GELU(),
@@ -80,7 +31,6 @@ class MoEGrammarAE(nn.Module):
         )
         
         # --- Decoder Trunk (Shared) ---
-        # Maps latent space back to a high-dim shared feature space
         self.dec_trunk = nn.Sequential(
             nn.Linear(latent_dim, 64),
             nn.GELU(),
@@ -92,24 +42,23 @@ class MoEGrammarAE(nn.Module):
             nn.GELU()
         )
         
-        # --- Head 1: Type Classifier (Shared Logic) ---
-        # It's okay for this to be a standard FFN because "Choosing the type"
-        # is a global decision based on shared features.
+        # --- Head 1: Type Classifier ---
         self.type_head = nn.Sequential(
             nn.Linear(256, 64),
             nn.GELU(),
             nn.Linear(64, num_experts)
         )
         
-        # --- Head 2: True Mixture of Experts (Partitioned Logic) ---
-        # Replaced the standard Linear layer with the Einsum-based Expert FFN.
-        # Hidden dim 64 gives each expert distinct capacity.
-        self.expert_net = VectorizedExpertFFN(
-            input_dim=256, 
-            hidden_dim=64, 
-            output_dim=param_dim, 
-            num_experts=num_experts
-        )
+        # --- Head 2: Separate Parameter Experts (ModuleList) ---
+        # 54 distinct FFNs. No parameter sharing between experts.
+        # This guarantees that gradients for Expert A do not touch Expert B.
+        self.experts = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(256, 128),
+                nn.GELU(),
+                nn.Linear(128, param_dim)
+            ) for _ in range(num_experts)
+        ])
         
         # --- Pre-compute Grammar Constraints ---
         self._init_bounds_buffers()
@@ -144,6 +93,10 @@ class MoEGrammarAE(nn.Module):
         return z
 
     def decode(self, z):
+        """
+        MoE Decode with Loop.
+        Iterates through all 54 experts. Slower, but mathematically cleaner.
+        """
         is_seq = z.dim() == 3
         if is_seq:
             B, L, D = z.shape
@@ -155,24 +108,40 @@ class MoEGrammarAE(nn.Module):
         # 2. Type Prediction
         type_logits = self.type_head(h) # [N, 54]
         
-        # 3. Expert Execution (True Independence)
-        # Input: [N, 256] -> Output: [N, 54, 14]
-        # Each expert uses strictly its own weights.
-        raw_logits = self.expert_net(h)
+        # 3. Expert Execution
+        # We must run every expert on every input to support:
+        # a) Batching (different samples need different experts)
+        # b) Inverse Design (gradients must exist for potential alternate choices)
+        expert_outputs = []
         
-        # 4. Apply Global Bounds (Sigmoid Scaling)
-        processed_params = torch.sigmoid(raw_logits) * self.bounds_tensor
-        
-        # 5. Apply Enum Patches (Softmax)
-        for (idx, start, end) in self.enum_patches:
-            subset_logits = raw_logits[:, idx, start:end]
-            processed_params[:, idx, start:end] = F.softmax(subset_logits, dim=1)
+        for i, expert in enumerate(self.experts):
+            # Raw output: [N, 14]
+            raw_out = expert(h)
+            
+            # Apply specific bounds for THIS expert
+            # We slice the global bounds tensor for just this row
+            bounds = self.bounds_tensor[i] # [14]
+            
+            # Sigmoid * Bounds
+            processed = torch.sigmoid(raw_out) * bounds
+            
+            # Apply Enum Softmax Patches
+            # Filter patches relevant only to this expert
+            for (e_idx, start, end) in self.enum_patches:
+                if e_idx == i:
+                    subset = raw_out[:, start:end]
+                    processed[:, start:end] = F.softmax(subset, dim=1)
+            
+            expert_outputs.append(processed)
+            
+        # Stack: [N, 54, 14]
+        stacked_params = torch.stack(expert_outputs, dim=1)
         
         if is_seq:
             type_logits = type_logits.view(B, L, -1)
-            processed_params = processed_params.view(B, L, 54, 14)
+            stacked_params = stacked_params.view(B, L, 54, 14)
             
-        return type_logits, processed_params
+        return type_logits, stacked_params
 
     def forward(self, x):
         z = self.encode(x)
