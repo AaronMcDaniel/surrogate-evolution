@@ -955,41 +955,6 @@ class Codec:
                         self.vocab[token] = idx
                         idx += 1
 
-    def _build_discrete_vocab(self):
-        """
-        Extends hybrid vocab to include discrete numeric tokens.
-        This includes integer tokens and float tokens with specific granularity.
-        """
-        self._build_hybrid_vocab()
-        idx = len(self.vocab)
-
-        # Add integer values
-        for i in range(3001):
-            token = f"INT_{i}"
-            if token not in self.vocab:
-                self.vocab[token] = idx
-                idx += 1
-
-        # Add 0 to 1 float values, with 10^(i) where i in [0, 10] with 0.01 granularity
-        for i in range(1, 1001):
-            val = -i / 100
-            token = f"FLOAT_e{val:.2f}"
-            if token not in self.vocab:
-                self.vocab[token] = idx
-                idx += 1
-
-        # Add 0 to 100 float values, with 0.01 granularity
-        for i in range(10001):
-            # skip if integer or is a power of 10
-            if i % 100 == 0 or i in [10, 100]:
-                continue
-            val = i / 100
-            token = f"FLOAT_{val:.2f}"
-            if token not in self.vocab:
-                self.vocab[token] = idx
-                idx += 1
-            
-
     def encode_hybrid(self, genome):
         """
         Tokenizes architecture into Discrete Tokens and Continuous Values.
@@ -1131,6 +1096,40 @@ class Codec:
 
         return np.array(tokens, dtype=int), np.array(values, dtype=float)
 
+    def _build_discrete_vocab(self):
+        """
+        Extends hybrid vocab to include discrete numeric tokens.
+        This includes integer tokens and float tokens with specific granularity.
+        """
+        self._build_hybrid_vocab()
+        idx = len(self.vocab)
+
+        # Add integer values
+        for i in range(3001):
+            token = f"INT_{i}"
+            if token not in self.vocab:
+                self.vocab[token] = idx
+                idx += 1
+
+        # Add 0 to 1 float values, with 10^(i) where i in [0, 10] with 0.01 granularity
+        for i in range(1, 1001):
+            val = -i / 100
+            token = f"FLOAT_e{val:.2f}"
+            if token not in self.vocab:
+                self.vocab[token] = idx
+                idx += 1
+
+        # Add 0 to 100 float values, with 0.01 granularity
+        for i in range(10001):
+            # skip if integer or is a power of 10
+            if i % 100 == 0 or i in [10, 100]:
+                continue
+            val = i / 100
+            token = f"FLOAT_{val:.2f}"
+            if token not in self.vocab:
+                self.vocab[token] = idx
+                idx += 1
+
     def encode_discrete(self, genome):
         """
         Tokenizes architecture into fully Discrete Tokens (no continuous values).
@@ -1266,6 +1265,224 @@ class Codec:
                     try:
                         val = float(arg)
                         add_token(discretize_number(val))
+                    except:
+                        # Unknown string arg - use PAD
+                        add_token(self.vocab["<PAD>"])
+
+        # Sequence Order: [Optimizer] -> [Scheduler] -> [Layers (Input->Output)] -> [Head Params]
+        
+        # 1. Optimizer
+        opt_list = dict_to_ordered_list(optimizer_dict, 'optimizer')
+        tokenize_list(opt_list)
+
+        # 2. Scheduler
+        sched_list = dict_to_ordered_list(scheduler_dict, 'lr_scheduler')
+        tokenize_list(sched_list)
+
+        # 3. Layers (Reversed all_layers to get Input -> Output order)
+        layers_seq = all_layers[1:][::-1]
+        for layer in layers_seq:
+            tokenize_list(layer)
+
+        # 4. Head (Name + non-opt/sched args)
+        head_params = [head_info[0]] + head_info[3:]
+        tokenize_list(head_params)
+
+        add_token(self.vocab["<EOS>"])
+
+        return np.array(tokens, dtype=int)
+
+    def _build_discrete_float_split_vocab(self):
+        """
+        Extends hybrid vocab to include discrete numeric tokens.
+        New logic: Floats 0-1 with 0.0001 granularity.
+        """
+        self._build_hybrid_vocab()
+        idx = len(self.vocab)
+
+        # Add integer values (Keep existing range)
+        for i in range(3001):
+            token = f"INT_{i}"
+            if token not in self.vocab:
+                self.vocab[token] = idx
+                idx += 1
+
+        # Add 0 to 1 float values, with 10^(i) where i in [0, 10] with 0.01 granularity (Keep existing)
+        for i in range(1, 1001):
+            val = -i / 100
+            token = f"FLOAT_e{val:.2f}"
+            if token not in self.vocab:
+                self.vocab[token] = idx
+                idx += 1
+
+        # MODIFIED: Add 0 to 1 float values (Decimal parts), with 0.0001 granularity
+        # This replaces the old 0-100 loop
+        for i in range(10001):
+            val = i / 10000
+            token = f"FLOAT_{val:.4f}"
+            if token not in self.vocab:
+                self.vocab[token] = idx
+                idx += 1
+
+    def encode_discrete_float_split(self, genome):
+        """
+        Tokenizes architecture into fully Discrete Tokens.
+        MODIFIED: Float values are split into [INT_PART, DECIMAL_PART].
+        """
+        self._build_discrete_float_split_vocab()
+
+        # --- 1. Parse Genome String (Same logic as encode_hybrid) ---
+        expr = re.split(r'([(),])', genome)
+        remove = [',', '']
+        expr = [x for x in expr if x not in remove]
+        stack = []
+        all_layers = []
+        
+        for element in expr:
+            if element != ')':
+                stack.append(element)
+            else:
+                arguments = []
+                while stack[-1] != '(':
+                    arguments.insert(0, stack.pop())
+                
+                stack.pop()
+                function = stack.pop()
+                try:
+                    stack.append(str(eval(f'primitives.{function}({",".join(arguments)})')))
+                except: 
+                    layer_info = [function] + [self._Codec__parse_arg(x) for x in arguments]
+                    all_layers.insert(0, layer_info)
+
+        # --- 2. Pre-process Layers ---
+        if len(all_layers) > 0 and len(all_layers[-1]) > 1 and all_layers[-1][1] == 'IN0':
+            del all_layers[-1][1]
+
+        head_info = all_layers[0]
+        optimizer_dict = eval(head_info[1]) 
+        scheduler_dict = eval(head_info[2])
+
+        # --- 3. Build Sequence ---
+        tokens = [self.vocab["<SOS>"]]
+
+        def add_token(t_idx):
+            tokens.append(t_idx)
+
+        def discretize_float_split_number(val):
+            """
+            Converts a numeric value to discrete tokens.
+            MODIFIED: Returns a LIST of tokens.
+            If float: returns [INT_token, FLOAT_decimal_token]
+            """
+            # Check if it's strictly an integer (or effectively one)
+            if isinstance(val, int) or (isinstance(val, float) and val.is_integer()):
+                int_val = int(val)
+                if 0 <= int_val <= 3000:
+                    token_name = f"INT_{int_val}"
+                elif int_val < 0:
+                    token_name = "INT_0"
+                else:
+                    token_name = "INT_3000"
+                return [self.vocab[token_name]]
+            
+            # Handle as float -> Split into Int + Decimal
+            else:
+                val = float(val)
+                int_part = int(val)
+                dec_part = abs(val - int_part)
+
+                # 1. Get Int Token
+                if 0 <= int_part <= 3000:
+                    int_token_name = f"INT_{int_part}"
+                elif int_part < 0:
+                    int_token_name = "INT_0"
+                else:
+                    int_token_name = "INT_3000"
+                
+                # 2. Get Decimal Token (Compare Linear vs Log)
+                
+                # A. Linear Candidate (0.0001 granularity)
+                linear_val = round(dec_part * 10000) / 10000
+                linear_token_str = f"FLOAT_{linear_val:.4f}"
+                diff_linear = abs(dec_part - linear_val)
+
+                # B. Logarithmic Candidate (10^-x)
+                # Avoid log(0)
+                if dec_part > 1e-12: 
+                    log10_val = np.log10(dec_part)
+                    exponent = round(log10_val * 100) / 100
+                    # Clamp to vocab range (-0.01 to -10.00)
+                    if exponent > -0.01: exponent = -0.01
+                    if exponent < -10.00: exponent = -10.00
+                    
+                    log_val = 10 ** exponent
+                    log_token_str = f"FLOAT_e{exponent:.2f}"
+                    diff_log = abs(dec_part - log_val)
+                else:
+                    diff_log = float('inf')
+                    log_token_str = "FLOAT_e-10.00"
+
+                # Choose closest
+                if diff_linear <= diff_log:
+                    final_dec_token = self.vocab.get(linear_token_str, self.vocab["FLOAT_0.0000"])
+                else:
+                    final_dec_token = self.vocab.get(log_token_str, self.vocab["FLOAT_e-10.00"])
+
+                return [self.vocab[int_token_name], final_dec_token]
+
+        def dict_to_ordered_list(d, type_key):
+            name = d.get(type_key)
+            func = getattr(primitives, name)
+            sig = inspect.signature(func)
+            res = [name]
+            for param in sig.parameters:
+                if param in d:
+                    res.append(d[param])
+            return res
+
+        def tokenize_list(info):
+            name = info[0]
+            args = info[1:]
+            
+            # Tokenize Name
+            add_token(self.vocab.get(name, self.vocab["<PAD>"]))
+
+            # Identify Enums for this primitive
+            enum_map = {}
+            if name in self.enum_dict:
+                for e_class, e_idx in self.enum_dict[name].items():
+                    enum_map[e_idx] = e_class
+
+            for i, arg in enumerate(args):
+                # Case A: Enums
+                if i in enum_map:
+                    enum_class_name = enum_map[i]
+                    e_cls = getattr(primitives, enum_class_name)
+                    try:
+                        if isinstance(arg, str) and arg in e_cls.__members__:
+                            e_val = e_cls[arg]
+                        else:
+                            e_val = e_cls(int(arg))
+                        
+                        token_str = f"{enum_class_name}.{e_val.name}"
+                        add_token(self.vocab.get(token_str, self.vocab["<PAD>"]))
+                    except:
+                        # Fallback to discretized number
+                        for t in discretize_float_split_number(arg):
+                            add_token(t)
+                
+                # Case B: Booleans
+                elif str(arg) in ['True', 'False']:
+                    t_str = "True" if str(arg) == 'True' else "False"
+                    add_token(self.vocab[t_str])
+
+                # Case C: Numeric - Discretize
+                else:
+                    try:
+                        val = float(arg)
+                        # MODIFIED: Iterate over list of tokens (1 or 2)
+                        for t in discretize_float_split_number(val):
+                            add_token(t)
                     except:
                         # Unknown string arg - use PAD
                         add_token(self.vocab["<PAD>"])
