@@ -14,18 +14,6 @@ from pyro.distributions.transforms import AffineAutoregressive
 import pyro.distributions as dist
 from torch.utils.data import ConcatDataset
 
-mode = 'old'
-print("Mode", mode)
-# Load Data
-with open(f'/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/codestral_reg_train.pkl', 'rb') as f:
-    train_df = pickle.load(f)
-with open(f'/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/codestral_reg_val.pkl', 'rb') as f:
-    val_df = pickle.load(f)
-
-all_df = pd.concat([train_df, val_df])
-# DataLoader Preparation
-batch_size = 16
-train_loader, val_loader, _, _ = prepare_data({'metrics_subset': [0,1,2,3]}, batch_size, all_df, val_df)
 LATENT_DIM = 512
 
 # Base VAE Class
@@ -36,32 +24,47 @@ class BaseVAE(nn.Module):
 
         # Encoder
         self.fc1 = nn.Linear(input_dim, 512)
+        self.ln1 = nn.LayerNorm(512)
         self.fc2_mu = nn.Linear(512, latent_dim)
         self.fc2_logvar = nn.Linear(512, latent_dim)
 
         # Decoder
         self.fc3 = nn.Linear(latent_dim, 512)
+        self.ln3 = nn.LayerNorm(512)
         self.fc4 = nn.Linear(512, input_dim)
 
     def encode(self, x):
-        h = F.relu(self.fc1(x))
+        h = F.relu(self.ln1(self.fc1(x)))
+        # h = F.relu(self.fc1(x))
         mu = self.fc2_mu(h)
         logvar = self.fc2_logvar(h)
         return mu, logvar
 
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5 * logvar)
+        std = torch.clamp(std, min=1e-8)  # Prevent zero std
         eps = torch.randn_like(std)
         return mu + eps * std
 
     def decode(self, z):
-        h = F.relu(self.fc3(z))
+        h = F.relu(self.ln3(self.fc3(z)))
+        # h = F.relu(self.fc3(z))
         return self.fc4(h)
 
     def forward(self, x):
+        if torch.isnan(x).any().item():
+            raise ValueError("Input contains NaN values.")
         mu, logvar = self.encode(x)
+        logvar = torch.clamp(logvar, min=-10, max=10)
         z = self.reparameterize(mu, logvar)
         return self.decode(z), mu, logvar
+    
+def weights_init(m):
+    if isinstance(m, nn.Linear):
+        # Xavier initialization keeps variance consistent across layers
+        torch.nn.init.xavier_uniform_(m.weight)
+        if m.bias is not None:
+            torch.nn.init.zeros_(m.bias)
 
 def loss_function(recon_x, x, mu, logvar):
     recon_loss = F.mse_loss(recon_x, x, reduction='mean')
@@ -96,6 +99,7 @@ class LargeVAE(BaseVAE):
 
     def encode(self, x):
         h = self.dropout(F.gelu(self.ln1(self.fc1(x))))
+        # h = self.dropout(F.gelu(self.fc1(x)))
         # h = F.gelu(self.ln2(self.fc2(h)))
         h = self.dropout(F.gelu(self.ln3(self.fc3(h))))
         
@@ -106,7 +110,7 @@ class LargeVAE(BaseVAE):
     def decode(self, z):
         h = self.dropout(F.gelu(self.ln4(self.fc4(z))))
         h = self.dropout(F.gelu(self.ln5(self.fc5(h))))
-        # h = F.gelu(self.ln6(self.fc6(h)))
+        # h = self.dropout(F.gelu(self.fc5(h)))
         
         # No activation/dropout on the final reconstruction layer
         return self.fc6(h)
@@ -173,90 +177,96 @@ class MoGVAE(BaseVAE):
         weights, mu, logvar = self.encode(x)
         z = self.reparameterize(weights, mu, logvar)
         return self.decode(z), mu, logvar
-# Training Setup
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-vae = LargeVAE().to(device)
-optimizer = optim.Adam(vae.parameters(), lr=5e-4)
 
-epochs = 200
-vae.train()
-for epoch in range(epochs):
-    data_iter = tqdm(train_loader, desc=f'Training Epoch {epoch+1}')
-    total_loss = 0
-    total_recon_loss = 0
-    total_kl_div = 0
-    ctrt = 0
-    for vector, _ in data_iter:
-        vector = vector.to(device)
-        optimizer.zero_grad()
-        recon, mu, logvar = vae(vector)
-        loss = loss_function(recon, vector, mu, logvar)
-        recon_loss = F.mse_loss(recon, vector, reduction='mean').item()
-        kl_div = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp()).item()
-        
-        loss.backward()
-        optimizer.step()
-        
-        total_loss += loss.item()
-        total_recon_loss += recon_loss
-        total_kl_div += kl_div
-        
-        data_iter.set_postfix(loss=loss.item())
-        ctrt += 1
-
-    # Validation Loss Calculation
-    vae.eval()
-    val_loss = 0
-    val_recon_loss = 0
-    val_kl_div = 0
-    ctrv = 0
-    with torch.no_grad():
-        for vector, _ in val_loader:
+def train_vae(vae, train_loader, val_loader, epochs=200, lr=5e-4, device=None):
+    """Train a VAE model with validation."""
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    vae = vae.to(device)
+    optimizer = optim.Adam(vae.parameters(), lr=lr)
+    
+    vae.train()
+    for epoch in range(epochs):
+        data_iter = tqdm(train_loader, desc=f'Training Epoch {epoch+1}')
+        total_loss = 0
+        total_recon_loss = 0
+        total_kl_div = 0
+        ctrt = 0
+        for vector, _ in data_iter:
             vector = vector.to(device)
+            optimizer.zero_grad()
             recon, mu, logvar = vae(vector)
             loss = loss_function(recon, vector, mu, logvar)
             recon_loss = F.mse_loss(recon, vector, reduction='mean').item()
             kl_div = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp()).item()
-            val_loss += loss.item()
-            val_recon_loss += recon_loss
-            val_kl_div += kl_div
-            ctrv += 1
-    vae.train()
-    
-    print(f"Epoch {epoch+1}: Train Loss = {total_loss/ctrt:.6f}, Recon Loss = {total_recon_loss/ctrt:.6f}, KL Divergence = {total_kl_div/ctrt:.6f}")
-    print(f"Epoch {epoch+1}: Validation Loss = {val_loss/ctrv:.6f}, Val Recon Loss = {val_recon_loss/ctrv:.6f}, Val KL Divergence = {val_kl_div/ctrv:.6f}")
+            
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(vae.parameters(), max_norm=1.0)
+            optimizer.step()
+            
+            total_loss += loss.item()
+            total_recon_loss += recon_loss
+            total_kl_div += kl_div
+            
+            data_iter.set_postfix(loss=loss.item())
+            ctrt += 1
 
-# Extract Latent Representations
-vae.eval()
-def get_latent_representation(data_df, loader):
+        # Validation Loss Calculation
+        vae.eval()
+        val_loss = 0
+        val_recon_loss = 0
+        val_kl_div = 0
+        ctrv = 0
+        with torch.no_grad():
+            for vector, _ in val_loader:
+                vector = vector.to(device)
+                recon, mu, logvar = vae(vector)
+                loss = loss_function(recon, vector, mu, logvar)
+                recon_loss = F.mse_loss(recon, vector, reduction='mean').item()
+                kl_div = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp()).item()
+                val_loss += loss.item()
+                val_recon_loss += recon_loss
+                val_kl_div += kl_div
+                ctrv += 1
+        vae.train()
+        
+        print(f"Epoch {epoch+1}: Train Loss = {total_loss/ctrt:.6f}, Recon Loss = {total_recon_loss/ctrt:.6f}, KL Divergence = {total_kl_div/ctrt:.6f}")
+        print(f"Epoch {epoch+1}: Validation Loss = {val_loss/ctrv:.6f}, Val Recon Loss = {val_recon_loss/ctrv:.6f}, Val KL Divergence = {val_kl_div/ctrv:.6f}")
+    
+    return vae
+
+def get_latent_representation(vae, data_df, genomes_scaler, device=None, use_provided_scaler=True):
+    """Extract latent representations from a trained VAE using a pre-fitted scaler."""
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    vae.eval()
     total_recon_loss = 0
-    # ctr = 1
-    genomes_scaler = StandardScaler()
     genomes = np.stack(data_df['genome'].values)
-    genomes = genomes_scaler.fit_transform(genomes)
+    if use_provided_scaler:
+        genomes = genomes_scaler.transform(genomes)
+    else:
+        genomes_scaler_local = StandardScaler()
+        genomes = genomes_scaler_local.fit_transform(genomes)
+    
+    # Check for NaN/Inf after scaling
+    if np.isnan(genomes).any() or np.isinf(genomes).any():
+        print("WARNING: NaN or Inf in genomes after scaling in get_latent_representation!")
+        genomes = np.nan_to_num(genomes, nan=0.0, posinf=0.0, neginf=0.0)
+    
     latent_vectors = []
     with torch.no_grad():
         for i in range(genomes.shape[0]):
-            vector = torch.from_numpy(genomes[i,:]).float()
+            vector = torch.from_numpy(genomes[i,:]).float().unsqueeze(0)  # Add batch dimension
             vector = vector.to(device)
             recon, mu, _ = vae(vector)
             recon_loss = F.mse_loss(recon, vector, reduction='mean').item()
             total_recon_loss += recon_loss
-            latent_vectors.append(mu.cpu().numpy())
-            # ctr += 1
+            latent_vectors.append(mu.squeeze(0).cpu().numpy())  # Remove batch dimension
     
     print(f"Reconstruction Loss on Dataset: {total_recon_loss:.2f}")
-    data_df['genome'] = latent_vectors
-    return data_df
+    data_df_copy = data_df.copy()
+    data_df_copy['genome'] = latent_vectors
+    return data_df_copy
 
-train_df = get_latent_representation(train_df, train_loader)
-val_df = get_latent_representation(val_df, val_loader)
-
-# Save Updated DataFrames
-with open(f'/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/reg_train_latent_last_token_{LATENT_DIM}.pkl', 'wb') as f:
-    pickle.dump(train_df, f)
-with open(f'/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/reg_val_latent_last_token_{LATENT_DIM}.pkl', 'wb') as f:
-    pickle.dump(val_df, f)
-
-print("Mode", mode)
-print("Latent representations saved successfully.")

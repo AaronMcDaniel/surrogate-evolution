@@ -12,6 +12,11 @@ The key difference from run_inverse_design.py:
 - Uses Conditional Normalizing Flow (CNF) instead of conditional VAE
 - CNF models exact posterior p(z|c) rather than approximation
 - More stable training without adversarial or variational objectives
+
+PERFORMANCE NOTE:
+- The CNF uses track_divergence=False for FAST training (reconstruction-based loss)
+- Setting track_divergence=True enables exact likelihood computation but is ~100x slower
+- The fast mode uses cycle-consistency (z -> prior -> z_recon) which works well in practice
 """
 
 import torch
@@ -143,8 +148,8 @@ latent_dim = 256
 ae_epochs = 60
 ae_batch_size = 32
 ae_lr = 1e-3
-FORCE_AE_TRAIN = True
-FORCE_SURR_TRAIN = True
+FORCE_AE_TRAIN = False
+FORCE_SURR_TRAIN = False
 
 
 # Check for existing checkpoint
@@ -436,8 +441,10 @@ cnf = ConditionalNormalizingFlow(
     hidden_dims=[256, 256, 256],
     time_net=False,
     nonlinearity='tanh',
+    track_divergence=False,  # Set to False for FAST training (uses reconstruction loss)
     device=device
 )
+print(f"Training mode: {'Exact likelihood (SLOW)' if cnf.track_divergence else 'Reconstruction loss (FAST)'}")
 
 if cnf_exists:
     print(f"✓ Loading existing CNF from {cnf_checkpoint_path}")
@@ -457,7 +464,7 @@ else:
     print(f"Training on {len(z_latents)} latent vectors (dim={latent_dim})")
     
     # Train CNF
-    cnf_epochs = 30
+    cnf_epochs = 10
     cnf_batch_size = 32
     cnf_lr = 1e-3
     
@@ -471,7 +478,8 @@ else:
     )
     
     print(f"\n✓ CNF trained!")
-    print(f"  Final NLL: {history['nll_loss'][-1]:.4f}\n")
+    loss_key = 'nll_loss' if cnf.track_divergence else 'recon_loss'
+    print(f"  Final {loss_key}: {history[loss_key][-1]:.4f}\n")
 
 # ============================================================================
 # STEP 6: Generate Samples using CNF

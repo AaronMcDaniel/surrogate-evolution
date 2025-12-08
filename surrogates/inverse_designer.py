@@ -24,7 +24,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 import copy
-
+from torchdiffeq import odeint_adjoint as odeint
 
 class IGenerator(ABC):
     """
@@ -1204,497 +1204,316 @@ class InverseDesigner:
         """Load generator checkpoint."""
         self.generator.load_checkpoint(path)
 
-
-class ODEFuncWrapper(nn.Module):
+class ConditionedODENet(nn.Module):
     """
-    Wrapper class for ODE function to make it compatible with torchdiffeq.
-    
-    This wrapper is required because torchdiffeq's odeint_adjoint expects
-    the ODE function to be an nn.Module instance for proper gradient tracking.
+    Neural network parametrizing the dynamics dz/dt = f(t, z, c).
+    Conditioned on fitness c.
     """
-    
-    def __init__(self, ode_net, z_dim, num_objectives, time_net=False):
+    def __init__(self, z_dim, cond_dim, hidden_dims=[64, 64], nonlinearity='tanh'):
         super().__init__()
-        self.ode_net = ode_net
         self.z_dim = z_dim
-        self.num_objectives = num_objectives
-        self.time_net = time_net
-        self.current_conditioning = None
-    
-    def forward(self, t, state):
-        """
-        ODE function: dz/dt = f(z, c) or f(z, t, c)
+        self.cond_dim = cond_dim
         
-        Args:
-            t: Current time (scalar)
-            state: Tuple of (z, logp_diff_t) where:
-                   z: latent vector [batch_size, z_dim]
-                   logp_diff_t: log probability difference
-        
-        Returns:
-            Tuple of (dz_dt, dlogp_dt)
-        """
-        z = state[0]
-        batch_size = z.shape[0]
-        
-        # Concatenate z with conditioning
-        if self.time_net:
-            t_vec = torch.ones(batch_size, 1, device=z.device) * t
-            ode_input = torch.cat([z, self.current_conditioning, t_vec], dim=1)
+        # Activation function
+        if nonlinearity == 'tanh':
+            self.act = nn.Tanh()
+        elif nonlinearity == 'relu':
+            self.act = nn.ReLU()
+        elif nonlinearity == 'softplus':
+            self.act = nn.Softplus()
         else:
-            ode_input = torch.cat([z, self.current_conditioning], dim=1)
-        
-        # Compute dz/dt
-        with torch.set_grad_enabled(True):
-            z.requires_grad_(True)
-            dz_dt = self.ode_net(ode_input)
-            
-            # Compute divergence for probability tracking: tr(df/dz)
-            # Using Hutchinson's trace estimator for efficiency
-            if len(state) > 1:  # If we're tracking log probability
-                # Sample random vector for trace estimation
-                epsilon = torch.randn_like(z)
-                
-                # Compute vjp: epsilon^T * (df/dz)
-                dz_dt_eps = torch.sum(dz_dt * epsilon)
-                grad_outputs = torch.ones_like(dz_dt_eps)
-                vjp = torch.autograd.grad(dz_dt_eps, z, grad_outputs, create_graph=True)[0]
-                
-                # Trace estimate: epsilon^T * (df/dz) * epsilon
-                dlogp_dt = -torch.sum(vjp * epsilon, dim=1, keepdim=True)
-            else:
-                dlogp_dt = torch.zeros(batch_size, 1, device=z.device)
-        
-        return (dz_dt, dlogp_dt)
+            self.act = nn.Tanh()
 
+        # Time embedding
+        self.time_embed_dim = 16
+        self.time_net = nn.Sequential(
+            nn.Linear(1, self.time_embed_dim),
+            self.act,
+            nn.Linear(self.time_embed_dim, self.time_embed_dim)
+        )
+
+        # Main network
+        # Input: z_dim (state) + time_embed + cond_dim (fitness)
+        layers = []
+        input_dim = z_dim + self.time_embed_dim + cond_dim
+        
+        for h_dim in hidden_dims:
+            layers.append(nn.Linear(input_dim, h_dim))
+            layers.append(self.act)
+            input_dim = h_dim
+            
+        # Output: dz/dt (same dim as z)
+        layers.append(nn.Linear(input_dim, z_dim))
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, t, z, c):
+        # Handle time tensor broadcasting
+        if t.dim() == 0:
+            t = t.unsqueeze(0)
+        t = t.expand(z.shape[0], 1)
+        
+        # Embed time
+        t_emb = self.time_net(t)
+        
+        # Concatenate state, time, and condition
+        # z: [B, z_dim], t_emb: [B, t_dim], c: [B, c_dim]
+        x = torch.cat([z, t_emb, c], dim=1)
+        
+        return self.net(x)
 
 class ConditionalNormalizingFlow(IGenerator):
     """
-    Conditional Continuous Normalizing Flow (CNF) for inverse design.
+    Conditional Continuous Normalizing Flow (CNF) for Inverse Design.
     
-    This implementation follows the approach from the paper where:
-    - An autoencoder (not VAE) provides dimensionality reduction
-    - A regressor (surrogate) predicts properties from latent codes
-    - CNF models the conditional distribution p(z|properties) using Neural ODEs
+    Models the conditional distribution p(z_arch | fitness) using a Neural ODE.
     
-    The CNF learns to transform samples from a simple prior (Gaussian) to the 
-    complex latent distribution conditioned on desired properties.
-    
-    Architecture:
-    - Uses Neural ODE with adjoint method for memory-efficient training
-    - Conditioning is done by concatenating properties to the latent vector
-    - Supports both ground truth and predicted properties for conditioning
+    Training Modes:
+    1. track_divergence=True (Default/Paper): Maximizes exact log-likelihood. 
+       Uses Hutchinson's trace estimator for O(1) memory cost via adjoint method.
+    2. track_divergence=False (Fast): Minimizes reconstruction/cycle-consistency loss.
+       Maps z -> latent (Gaussian) -> z_recon. 
+       Loss = ||z - z_recon|| + ||latent|| (prior regularization).
     """
     
     def __init__(
-        self,
-        z_dim: int,
+        self, 
+        z_dim: int, 
         num_objectives: int,
-        hidden_dims: List[int] = [256, 256, 256],
-        time_net: bool = False,
+        hidden_dims: List[int] = [128, 128],
         nonlinearity: str = 'tanh',
-        device: torch.device = None
+        time_net: bool = False, 
+        track_divergence: bool = True,
+        device: torch.device = None,
+        **kwargs
     ):
-        """
-        Args:
-            z_dim: Dimension of latent space (from autoencoder)
-            num_objectives: Number of physical properties to condition on
-            hidden_dims: Hidden layer dimensions for the ODE function network
-            time_net: If True, use time-dependent network f(z, t, c)
-            nonlinearity: Activation function ('tanh', 'relu', 'elu', 'softplus')
-            device: Device to run on
-        """
         self.z_dim = z_dim
         self.num_objectives = num_objectives
+        self.track_divergence = track_divergence
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.time_net = time_net
         
-        # Build ODE function network: f(z, c) or f(z, t, c)
-        # The network computes dz/dt conditioned on properties c
-        layers = []
+        # Fitness embedding
+        self.fitness_embed_dim = 32
+        self.fitness_embedder = nn.Sequential(
+            nn.Linear(num_objectives, self.fitness_embed_dim),
+            nn.Tanh(),
+            nn.Linear(self.fitness_embed_dim, self.fitness_embed_dim)
+        ).to(self.device)
         
-        if time_net:
-            input_dim = z_dim + num_objectives + 1  # z + c + t
-        else:
-            input_dim = z_dim + num_objectives  # z + c
+        # ODE Dynamics Network
+        self.ode_net = ConditionedODENet(
+            z_dim=z_dim, 
+            cond_dim=self.fitness_embed_dim,
+            hidden_dims=hidden_dims,
+            nonlinearity=nonlinearity
+        ).to(self.device)
         
-        prev_dim = input_dim
-        for h_dim in hidden_dims:
-            layers.append(nn.Linear(prev_dim, h_dim))
-            
-            if nonlinearity == 'tanh':
-                layers.append(nn.Tanh())
-            elif nonlinearity == 'relu':
-                layers.append(nn.ReLU())
-            elif nonlinearity == 'elu':
-                layers.append(nn.ELU())
-            elif nonlinearity == 'softplus':
-                layers.append(nn.Softplus())
-            else:
-                raise ValueError(f"Unknown nonlinearity: {nonlinearity}")
-            
-            prev_dim = h_dim
+        # Integration times
+        self.t0 = 0.0
+        self.t1 = 1.0
         
-        # Final layer outputs dz/dt (same dimension as z)
-        layers.append(nn.Linear(prev_dim, z_dim))
-        
-        self.ode_func_net = nn.Sequential(*layers).to(self.device)
-        
-        # Create ODE function wrapper as nn.Module for torchdiffeq compatibility
-        self.ode_func_module = ODEFuncWrapper(
-            self.ode_func_net, 
-            self.z_dim, 
-            self.num_objectives,
-            self.time_net
-        )
-        
-        # Try to import torchdiffeq for Neural ODE
-        try:
-            from torchdiffeq import odeint_adjoint as odeint
-            self.odeint = odeint
-            self.has_torchdiffeq = True
-        except ImportError:
-            print("Warning: torchdiffeq not found. Install with: pip install torchdiffeq")
-            print("Falling back to simple Euler integration (less accurate)")
-            self.has_torchdiffeq = False
-            self.odeint = None
-    
-    def ode_func(self, t, state):
+        # Trace estimator noise distribution
+        self.trace_noise_dist = torch.distributions.Bernoulli(torch.tensor(0.5).to(self.device))
+
+    @property
+    def parameters(self):
+        return list(self.fitness_embedder.parameters()) + list(self.ode_net.parameters())
+
+    # --- HELPER CLASSES FOR ODEINT ---
+    class LikelihoodWrapper(nn.Module):
         """
-        ODE function: dz/dt = f(z, c) or f(z, t, c)
-        
-        Args:
-            t: Current time (scalar)
-            state: Tuple of (z, logp_diff_t) where:
-                   z: latent vector [batch_size, z_dim]
-                   logp_diff_t: log probability difference (unused in forward, needed for adjoint)
-        
-        Returns:
-            Tuple of (dz_dt, dlogp_dt)
+        Wrapper for exact likelihood training.
+        State: (z, log_det, c_emb)
         """
-        z = state[0]
-        batch_size = z.shape[0]
-        
-        # Concatenate z with conditioning
-        if self.time_net:
-            t_vec = torch.ones(batch_size, 1, device=z.device) * t
-            ode_input = torch.cat([z, self.current_conditioning, t_vec], dim=1)
-        else:
-            ode_input = torch.cat([z, self.current_conditioning], dim=1)
-        
-        # Compute dz/dt
-        with torch.set_grad_enabled(True):
-            z.requires_grad_(True)
-            dz_dt = self.ode_func_net(ode_input)
+        def __init__(self, cnf):
+            super().__init__()
+            self.cnf = cnf
             
-            # Compute divergence for probability tracking: tr(df/dz)
-            # Using Hutchinson's trace estimator for efficiency
-            if len(state) > 1:  # If we're tracking log probability
-                # Sample random vector for trace estimation
-                epsilon = torch.randn_like(z)
+        def forward(self, t, states):
+            z = states[0]
+            c_emb = states[2] # Use c_emb from state to ensure adjoint gradients flow
+            
+            # CRITICAL FIX: Enable grad for z locally to compute divergence
+            with torch.set_grad_enabled(True):
+                z.requires_grad_(True)
                 
-                # Compute vjp: epsilon^T * (df/dz)
-                dz_dt_eps = torch.sum(dz_dt * epsilon)
-                grad_outputs = torch.ones_like(dz_dt_eps)
-                vjp = torch.autograd.grad(dz_dt_eps, z, grad_outputs, create_graph=True)[0]
+                # Compute dz/dt
+                dz_dt = self.cnf.ode_net(t, z, c_emb)
                 
-                # Trace estimate: epsilon^T * (df/dz) * epsilon
-                dlogp_dt = -torch.sum(vjp * epsilon, dim=1, keepdim=True)
-            else:
-                dlogp_dt = torch.zeros(batch_size, 1, device=z.device)
-        
-        return (dz_dt, dlogp_dt)
-    
-    def forward_transform(
-        self, 
-        z_0: torch.Tensor, 
-        conditioning: torch.Tensor,
-        integration_times: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+                # Compute divergence via Hutchinson's estimator
+                # Sample random vector v
+                epsilon = (self.cnf.trace_noise_dist.sample(z.shape) * 2 - 1).detach()
+                
+                # Compute vector-Jacobian product: v^T * (df/dz)
+                dz_dt_epsilon = torch.autograd.grad(
+                    dz_dt, z, epsilon, create_graph=True, retain_graph=True
+                )[0]
+                
+                # Estimate trace: v^T * (df/dz) * v
+                divergence = torch.sum(dz_dt_epsilon * epsilon, dim=1, keepdim=True)
+            
+            # Return derivatives: (dz/dt, -divergence, dc/dt=0)
+            return dz_dt, -divergence, torch.zeros_like(c_emb)
+
+    class CycleWrapper(nn.Module):
         """
-        Forward transformation: z_0 ~ N(0, I) -> z_1 ~ p(z|c)
-        
-        Integrates the ODE forward in time to transform prior samples to data space.
-        
-        Args:
-            z_0: Initial latent samples from N(0, I), shape [batch_size, z_dim]
-            conditioning: Property values to condition on, shape [batch_size, num_objectives]
-            integration_times: Time points for ODE integration, defaults to [0, 1]
-        
-        Returns:
-            z_1: Transformed latent samples, shape [batch_size, z_dim]
+        Wrapper for cycle consistency training.
+        State: (z, c_emb)
         """
-        if integration_times is None:
-            integration_times = torch.tensor([0.0, 1.0], device=self.device)
-        
-        # Store conditioning for ODE function
-        self.current_conditioning = conditioning
-        self.ode_func_module.current_conditioning = conditioning
-        
-        if self.has_torchdiffeq:
-            # Use torchdiffeq for accurate ODE integration
-            z_traj = self.odeint(
-                self.ode_func_module,
-                (z_0,),
-                integration_times,
-                method='dopri5',
-                atol=1e-5,
-                rtol=1e-5
-            )
-            z_1 = z_traj[0][-1]  # Get final time point
-        else:
-            # Fallback: Simple Euler integration
-            z_t = z_0
-            dt = 0.01
-            num_steps = int((integration_times[-1] - integration_times[0]) / dt)
+        def __init__(self, ode_net):
+            super().__init__()
+            self.ode_net = ode_net
             
-            for step in range(num_steps):
-                t = integration_times[0] + step * dt
-                dz_dt, _ = self.ode_func(t, (z_t,))
-                z_t = z_t + dz_dt * dt
-            
-            z_1 = z_t
-        
-        return z_1
-    
-    def inverse_transform(
-        self,
-        z_1: torch.Tensor,
-        conditioning: torch.Tensor,
-        integration_times: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Inverse transformation: z_1 ~ p(z|c) -> z_0 ~ N(0, I)
-        
-        Integrates the ODE backward in time to transform data samples to prior space.
-        Also computes the change in log probability for maximum likelihood training.
-        
-        Args:
-            z_1: Data latent samples, shape [batch_size, z_dim]
-            conditioning: Property values, shape [batch_size, num_objectives]
-            integration_times: Time points for ODE integration, defaults to [1, 0]
-        
-        Returns:
-            z_0: Transformed samples in prior space, shape [batch_size, z_dim]
-            delta_logp: Change in log probability, shape [batch_size]
-        """
-        if integration_times is None:
-            integration_times = torch.tensor([1.0, 0.0], device=self.device)
-        
-        # Store conditioning for ODE function
-        self.current_conditioning = conditioning
-        self.ode_func_module.current_conditioning = conditioning
-        
-        batch_size = z_1.shape[0]
-        
-        if self.has_torchdiffeq:
-            # Initialize log probability tracking
-            logp_diff_t1 = torch.zeros(batch_size, 1, device=self.device)
-            
-            # Integrate backward with probability tracking
-            state_traj = self.odeint(
-                self.ode_func_module,
-                (z_1, logp_diff_t1),
-                integration_times,
-                method='dopri5',
-                atol=1e-5,
-                rtol=1e-5
-            )
-            
-            z_0 = state_traj[0][-1]
-            logp_diff_t0 = state_traj[1][-1]
-            
-            # Compute log probability under prior N(0, I)
-            logp_z0 = -0.5 * (z_0 ** 2).sum(dim=1, keepdim=True) - 0.5 * self.z_dim * np.log(2 * np.pi)
-            
-            # Compute log probability in data space
-            logp_z1 = logp_z0 - logp_diff_t0
-            
-            delta_logp = logp_diff_t0.squeeze()
-        else:
-            # Fallback: Simple Euler integration (no probability tracking)
-            z_t = z_1
-            dt = 0.01
-            num_steps = int(abs(integration_times[-1] - integration_times[0]) / dt)
-            
-            for step in range(num_steps):
-                t = integration_times[0] - step * dt
-                dz_dt, _ = self.ode_func(t, (z_t,))
-                z_t = z_t - dz_dt * dt  # Negative because going backward
-            
-            z_0 = z_t
-            delta_logp = torch.zeros(batch_size, device=self.device)
-        
-        return z_0, delta_logp
-    
-    def compute_loss(
-        self,
-        z_data: torch.Tensor,
-        conditioning: torch.Tensor
-    ) -> torch.Tensor:
-        """
-        Compute negative log-likelihood loss for training.
-        
-        The CNF is trained to maximize the likelihood of observed latent codes
-        given their corresponding properties.
-        
-        Args:
-            z_data: Observed latent codes, shape [batch_size, z_dim]
-            conditioning: Corresponding properties, shape [batch_size, num_objectives]
-        
-        Returns:
-            Negative log-likelihood loss (scalar)
-        """
-        # Transform data to prior space and compute probability change
-        z_0, delta_logp = self.inverse_transform(z_data, conditioning)
-        
-        # Log probability under prior N(0, I)
-        logp_z0 = -0.5 * (z_0 ** 2).sum(dim=1) - 0.5 * self.z_dim * np.log(2 * np.pi)
-        
-        # Log probability in data space
-        logp_z1 = logp_z0 - delta_logp
-        
-        # Negative log-likelihood
-        nll = -logp_z1.mean()
-        
-        return nll
-    
+        def forward(self, t, states):
+            z = states[0]
+            c_emb = states[1]
+            dz_dt = self.ode_net(t, z, c_emb)
+            return dz_dt, torch.zeros_like(c_emb)
+
     def initial_train(
-        self,
-        z_arch_vectors: torch.Tensor,
+        self, 
+        z_arch_vectors: torch.Tensor, 
         fitness_values: torch.Tensor,
         num_epochs: int = 50,
         batch_size: int = 32,
         lr: float = 1e-3,
-        weight_decay: float = 1e-5,
         save_dir: Optional[str] = None
     ) -> Dict[str, List[float]]:
-        """
-        Pre-train the CNF on archive data.
+        """Train the CNF on archive data."""
         
-        Args:
-            z_arch_vectors: Latent codes from autoencoder, shape [N, z_dim]
-            fitness_values: Corresponding properties, shape [N, num_objectives]
-            num_epochs: Number of training epochs
-            batch_size: Batch size
-            lr: Learning rate
-            weight_decay: L2 regularization strength
-            save_dir: Directory to save checkpoints
-        
-        Returns:
-            Training history dictionary
-        """
-        # Ensure tensors are on correct device
         z_arch_vectors = z_arch_vectors.to(self.device)
         fitness_values = fitness_values.to(self.device)
         
-        # Create dataset and loader
         dataset = ArchiveFitnessDataset(z_arch_vectors, fitness_values)
         loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
         
-        # Optimizer
-        optimizer = optim.Adam(self.parameters, lr=lr, weight_decay=weight_decay)
+        optimizer = optim.Adam(self.parameters, lr=lr)
         
-        # Training loop
-        history = {'nll_loss': []}
+        history = {'nll_loss': [], 'recon_loss': []} if self.track_divergence else {'recon_loss': []}
         
-        print(f"Starting CNF pre-training for {num_epochs} epochs...")
-        print(f"Using {'torchdiffeq' if self.has_torchdiffeq else 'Euler'} integration")
+        print(f"Starting CNF training (Mode: {'Exact Likelihood' if self.track_divergence else 'Cycle Consistency'})")
         
         for epoch in range(num_epochs):
             epoch_loss = 0.0
-            num_batches = 0
             
-            pbar = tqdm(loader, desc=f'Epoch {epoch+1}/{num_epochs}')
-            for z_batch, c_batch in pbar:
+            pbar = tqdm(loader, desc=f"Epoch {epoch+1}/{num_epochs}")
+            for z_batch, f_batch in pbar:
                 z_batch = z_batch.to(self.device)
-                c_batch = c_batch.to(self.device)
+                f_batch = f_batch.to(self.device)
                 
-                # Compute loss
                 optimizer.zero_grad()
-                loss = self.compute_loss(z_batch, c_batch)
+                
+                # Embed condition
+                c_emb = self.fitness_embedder(f_batch)
+                
+                if self.track_divergence:
+                    # --- Likelihood Training ---
+                    batch_size = z_batch.shape[0]
+                    log_det_0 = torch.zeros(batch_size, 1).to(self.device)
+                    
+                    func = self.LikelihoodWrapper(self)
+                    
+                    # Integrate forward: t0 -> t1
+                    state_t = odeint(
+                        func,
+                        (z_batch, log_det_0, c_emb),
+                        torch.tensor([self.t0, self.t1]).to(self.device),
+                        atol=1e-5, rtol=1e-5, method='dopri5'
+                    )
+                    
+                    z_T = state_t[0][-1]
+                    delta_log_det = state_t[1][-1]
+                    
+                    # Prior log-likelihood
+                    log_prob_prior = -0.5 * (z_T.pow(2).sum(1, keepdim=True) + 
+                                           self.z_dim * np.log(2 * np.pi))
+                    
+                    # Total log-likelihood
+                    log_prob = log_prob_prior + delta_log_det
+                    loss = -torch.mean(log_prob)
+                    
+                    history['nll_loss'].append(loss.item())
+                    
+                else:
+                    # --- Fast Cycle-Consistency Training ---
+                    
+                    # FIX: Removing c_emb from init arguments here!
+                    func_fwd = self.CycleWrapper(self.ode_net)
+                    
+                    # Forward integration: z -> z_prior
+                    z_prior = odeint(
+                        func_fwd,
+                        (z_batch, c_emb),
+                        torch.tensor([self.t0, self.t1]).to(self.device),
+                        atol=1e-4, rtol=1e-4, method='dopri5'
+                    )[0][-1]
+                    
+                    # Backward integration: z_prior -> z_recon
+                    z_recon = odeint(
+                        func_fwd,
+                        (z_prior, c_emb),
+                        torch.tensor([self.t1, self.t0]).to(self.device),
+                        atol=1e-4, rtol=1e-4, method='dopri5'
+                    )[0][-1]
+                    
+                    # Loss
+                    recon_loss = F.mse_loss(z_recon, z_batch)
+                    prior_loss = torch.mean(z_prior.pow(2))
+                    
+                    loss = recon_loss + 0.01 * prior_loss
+                    history['recon_loss'].append(loss.item())
+
                 loss.backward()
-                
-                # Gradient clipping for stability
                 torch.nn.utils.clip_grad_norm_(self.parameters, 1.0)
-                
                 optimizer.step()
                 
                 epoch_loss += loss.item()
-                num_batches += 1
-                
-                pbar.set_postfix({'loss': f'{loss.item():.4f}'})
+                pbar.set_postfix({'loss': f"{loss.item():.4f}"})
             
-            avg_loss = epoch_loss / num_batches
-            history['nll_loss'].append(avg_loss)
-            
-            if (epoch + 1) % 10 == 0:
-                print(f"Epoch {epoch+1}/{num_epochs}: NLL Loss = {avg_loss:.4f}")
+            if save_dir and (epoch + 1) % 10 == 0:
+                os.makedirs(save_dir, exist_ok=True)
+                self.save_checkpoint(os.path.join(save_dir, f'cnf_epoch_{epoch+1}.pt'))
                 
-                if save_dir is not None:
-                    os.makedirs(save_dir, exist_ok=True)
-                    ckpt_path = os.path.join(save_dir, f'cnf_epoch_{epoch+1}.pt')
-                    self.save_checkpoint(ckpt_path)
-        
-        print("CNF pre-training complete!")
-        
-        if save_dir is not None:
-            final_path = os.path.join(save_dir, 'cnf_final.pt')
-            self.save_checkpoint(final_path)
-            print(f"Final checkpoint saved to {final_path}")
-        
+        print("CNF training complete.")
         return history
-    
-    def sample(
-        self,
-        c: torch.Tensor,
-        batch_size: int,
-        **kwargs
-    ) -> torch.Tensor:
-        """
-        Generate latent codes conditioned on desired properties.
+
+    def sample(self, c: torch.Tensor, batch_size: int, **kwargs) -> torch.Tensor:
+        self.ode_net.eval()
+        self.fitness_embedder.eval()
         
-        This is the generative step: sample from N(0, I) and transform through
-        the CNF conditioned on target properties.
-        
-        Args:
-            c: Desired properties, shape [batch_size, num_objectives] or [num_objectives]
-            batch_size: Number of samples to generate
-        
-        Returns:
-            Generated latent codes, shape [batch_size, z_dim]
-        """
-        # Handle scalar or single-vector conditioning
         if c.dim() == 1:
             c = c.unsqueeze(0).expand(batch_size, -1)
         c = c.to(self.device)
         
-        # Sample from prior N(0, I)
-        z_0 = torch.randn(batch_size, self.z_dim, device=self.device)
-        
-        # Transform through CNF
         with torch.no_grad():
-            z_1 = self.forward_transform(z_0, c)
-        
-        return z_1
-    
-    @property
-    def parameters(self):
-        """Return all trainable parameters."""
-        return self.ode_func_net.parameters()
-    
+            z_prior = torch.randn(batch_size, self.z_dim).to(self.device)
+            c_emb = self.fitness_embedder(c)
+            
+            # FIX: Removing c_emb from init arguments here as well!
+            func = self.CycleWrapper(self.ode_net)
+            
+            # Integrate backwards (t1 -> t0)
+            z_gen = odeint(
+                func,
+                (z_prior, c_emb),
+                torch.tensor([self.t1, self.t0]).to(self.device),
+                atol=1e-5, rtol=1e-5, method='dopri5'
+            )[0][-1]
+            
+        self.ode_net.train()
+        self.fitness_embedder.train()
+        return z_gen
+
     def save_checkpoint(self, path: str):
-        """Save model state."""
         torch.save({
-            'ode_func_net': self.ode_func_net.state_dict(),
+            'ode_net': self.ode_net.state_dict(),
+            'fitness_embedder': self.fitness_embedder.state_dict(),
             'z_dim': self.z_dim,
-            'num_objectives': self.num_objectives,
-            'time_net': self.time_net
+            'num_objectives': self.num_objectives
         }, path)
-        print(f"CNF checkpoint saved to {path}")
-    
+        print(f"CNF saved to {path}")
+
     def load_checkpoint(self, path: str):
-        """Load model state."""
         checkpoint = torch.load(path, map_location=self.device)
-        self.ode_func_net.load_state_dict(checkpoint['ode_func_net'])
-        print(f"CNF checkpoint loaded from {path}")
+        self.ode_net.load_state_dict(checkpoint['ode_net'])
+        self.fitness_embedder.load_state_dict(checkpoint['fitness_embedder'])
+        print(f"CNF loaded from {path}")
