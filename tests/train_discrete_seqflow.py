@@ -9,7 +9,6 @@ import numpy as np
 import torch.nn.functional as F
 
 # Import custom modules
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from codec import Codec
 from surrogates.hybrid_seqflow import DiscreteSeqFlow
 
@@ -27,7 +26,11 @@ class DiscreteGenomeDataset(Dataset):
         """
         self.codec = codec
         self.max_seq_len = max_seq_len
-        self.codec._build_discrete_vocab()
+        # self.codec._build_discrete_vocab()
+        if SPLIT_FLOAT:
+            self.codec._build_discrete_float_split_vocab()
+        else:
+            self.codec._build_discrete_vocab()
         self.vocab_size = len(self.codec.vocab)
         self.pad_token_id = self.codec.vocab["<PAD>"]
         
@@ -46,7 +49,8 @@ class DiscreteGenomeDataset(Dataset):
         
         # Encode using discrete encoding (no values array)
         try:
-            tokens = self.codec.encode_discrete(genome_str)
+            # tokens = self.codec.encode_discrete(genome_str)
+            tokens = self.codec.encode_discrete_float_split(genome_str)
         except Exception as e:
             print(f"Warning: Failed to encode genome {idx}: {e}")
             tokens = np.array([self.pad_token_id] * self.max_seq_len)
@@ -71,7 +75,7 @@ class DiscreteGenomeDataset(Dataset):
         
         return output
 
-
+SPLIT_FLOAT = True  # Use float split discrete encoding
 def train_seqflow():
     # --- Configuration ---
     REG_DATA_PATH = "/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/large_dataset/mix_dataset_reg_train.pkl"
@@ -104,7 +108,10 @@ def train_seqflow():
         return
 
     codec = Codec(num_classes=1)
-    codec._build_discrete_vocab()
+    if SPLIT_FLOAT:
+        codec._build_discrete_float_split_vocab()
+    else:
+        codec._build_discrete_vocab()
     vocab_size = len(codec.vocab)
     print(f"Vocabulary size: {vocab_size}")
     
@@ -201,7 +208,10 @@ def train_seqflow():
         
         # Save checkpoint
         if (epoch + 1) % 10 == 0:
-            checkpoint_path = f"discrete_seqflow_epoch{epoch+1}.pt"
+            if SPLIT_FLOAT:
+                checkpoint_path = f"discrete_seqflow_float_split_epoch{epoch+1}.pt"
+            else:
+                checkpoint_path = f"discrete_seqflow_epoch{epoch+1}.pt"
             torch.save({
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
@@ -279,7 +289,10 @@ def train_seqflow():
                 print(f"\nFitness: {sample['fitness'].numpy()}")
     
     # Save final model
-    final_path = "discrete_seqflow_final.pt"
+    if SPLIT_FLOAT:
+        final_path = "discrete_seqflow_float_split_final.pt"
+    else:
+        final_path = "discrete_seqflow_final.pt"
     torch.save({
         'model_state_dict': model.state_dict(),
         'vocab_size': vocab_size,
@@ -329,7 +342,11 @@ def test_from_checkpoint(checkpoint_path, data_path=None, num_samples=5):
     # --- Initialize Codec ---
     print("Initializing Codec...")
     codec = Codec(num_classes=1)
-    codec._build_discrete_vocab()
+    # codec._build_discrete_vocab()
+    if SPLIT_FLOAT:
+        codec._build_discrete_float_split_vocab()
+    else:
+        codec._build_discrete_vocab()
     vocab_size = len(codec.vocab)
     print(f"Vocabulary size: {vocab_size}")
     
@@ -357,7 +374,7 @@ def test_from_checkpoint(checkpoint_path, data_path=None, num_samples=5):
     print("Loading model weights...")
     checkpoint = torch.load(checkpoint_path, map_location=DEVICE)
     model.load_state_dict(checkpoint['model_state_dict'])
-    print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
+    # print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
     print(f"Checkpoint loss: {checkpoint['loss']:.4f}")
     if 'loss_components' in checkpoint:
         comps = checkpoint['loss_components']
@@ -473,7 +490,10 @@ def validate_on_full_dataset(checkpoint_path, val_data_path=None):
     # --- Initialize Codec ---
     print("Initializing Codec...")
     codec = Codec(num_classes=1)
-    codec._build_discrete_vocab()
+    if SPLIT_FLOAT:
+        codec._build_discrete_float_split_vocab()
+    else:
+        codec._build_discrete_vocab()
     vocab_size = len(codec.vocab)
     print(f"Vocabulary size: {vocab_size}")
     

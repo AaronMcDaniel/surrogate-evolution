@@ -32,20 +32,22 @@ class AutoregressiveFlow(nn.Module):
         return z, log_det_g
 
     def inverse(self, z):
-        # Inverse of an autoregressive flow is efficient
-        v = torch.zeros_like(z)
-        # We must generate token by token (L times)
+        # Standard inverse (used for hard decode/validation)
+        # Note: This does NOT do manifold projection, so it relies on z being perfect.
+        batch_size, seq_len, features = z.shape
+        inp = torch.zeros(batch_size, 1, features, device=z.device)
         h = None
-        for i in range(z.shape[1]): # Iterate over sequence length L
-            # Get LSTM output for this step
-            lstm_in = v[:, i, :].unsqueeze(1) # [B, 1, F]
-            lstm_out, h = self.lstm(lstm_in, h) # [B, 1, H]
+        v_list = []
+        for i in range(seq_len):
+            lstm_out, h = self.lstm(inp, h)
+            t = self.t_net(lstm_out.squeeze(1))
+            s = torch.tanh(self.s_net(lstm_out.squeeze(1)))
             
-            t = self.t_net(lstm_out.squeeze(1)) # [B, F]
-            s = torch.tanh(self.s_net(lstm_out.squeeze(1))) # [B, F]
-            
-            v[:, i, :] = (z[:, i, :] - t) / torch.exp(s)
-        return v
+            z_i = z[:, i, :]
+            v_i = (z_i - t) / torch.exp(s)
+            v_list.append(v_i)
+            inp = v_i.unsqueeze(1) # Feeds raw v_i back
+        return torch.stack(v_list, dim=1)
 
 class DiscreteSeqFlow(nn.Module):
     def __init__(self, vocab_size, embed_dim, seq_len, flow_hidden_dim, flow_num_layers, sigma=0.1):
@@ -121,15 +123,87 @@ class DiscreteSeqFlow(nn.Module):
         return z
 
     def decode(self, z):
-        """Decodes z -> tokens for generation."""
-        # z shape: [B, L, F_embed]
+        """
+        Hard decode for final sampling.
+        Memory Optimized: Uses MatMul instead of broadcasting CosineSimilarity.
+        """
+        # 1. Invert Flow to get continuous embeddings
+        v = self.g_map.inverse(z) # [B, L, F]
         
-        # 1. v = g^{-1}(z)
-        v = self.g_map.inverse(z) # [B, L, F_embed]
+        # 2. Normalize vectors (L2 norm)
+        # Cosine Similarity(A, B) == DotProduct(Norm(A), Norm(B))
+        v_norm = F.normalize(v, p=2, dim=2)
+        e_all = self.h_map_token.weight.data
+        e_norm = F.normalize(e_all, p=2, dim=1) # [V, F]
         
-        # 2. x_tokens = h_inv_token(v)
-        e_all = self.h_map_token.weight.data # [V, F_embed]
-        logits = F.cosine_similarity(v.unsqueeze(2), e_all.unsqueeze(0).unsqueeze(0), dim=3)
+        # 3. Compute Logits via Matrix Multiplication
+        # [B, L, F] @ [F, V] -> [B, L, V]
+        # This avoids creating the massive 4D intermediate tensor
+        logits = torch.matmul(v_norm, e_norm.T)
+        
+        # 4. Select best token
         tokens = torch.argmax(logits, dim=2) # [B, L]
-        
         return tokens
+    
+    def decode_soft(self, z, temperature=1.0, hard=False):
+        """
+        Differentiable decoding WITH Manifold Projection.
+        
+        This unrolls the LSTM manually. At each step, it:
+        1. Predicts the noisy vector v_raw from z.
+        2. Calculates the Softmax distribution over the vocab.
+        3. Projects v_raw onto the valid embedding manifold (Weighted Sum).
+        4. Feeds the PROJECTED vector into the next LSTM step.
+        """
+        batch_size, seq_len, features = z.shape
+        device = z.device
+        
+        # 1. Initialize Recurrence
+        # Start with zero vector (which corresponds to padding/start context in the Flow's logic)
+        # Note: If you forced z[:,0] to be SOS, the first output v will be SOS.
+        inp = torch.zeros(batch_size, 1, features, device=device)
+        
+        h = None
+        soft_tokens_list = []
+        
+        # Pre-fetch vocab weights for projection
+        # [Vocab, F]
+        w_emb = self.h_map_token.weight 
+        # Normalized for Cosine Sim logic: [Vocab, F]
+        w_norm = F.normalize(w_emb, p=2, dim=1) 
+
+        # 2. Unrolled Loop
+        for i in range(seq_len):
+            # A. LSTM Step
+            # inp is the PROJECTED embedding from previous step
+            lstm_out, h = self.g_map.lstm(inp, h) # [B, 1, H]
+            
+            # B. Flow Transform (Inverse)
+            t = self.g_map.t_net(lstm_out.squeeze(1)) # [B, F]
+            s = torch.tanh(self.g_map.s_net(lstm_out.squeeze(1))) # [B, F]
+            
+            z_i = z[:, i, :]
+            v_raw = (z_i - t) / torch.exp(s) # [B, F] -> Raw noisy vector
+            
+            # C. Softmax / Gumbel
+            # Calculate similarity to valid tokens
+            v_norm = F.normalize(v_raw, p=2, dim=1)
+            logits = torch.matmul(v_norm, w_norm.T) # [B, V]
+            
+            # Sharpen logits before Gumbel to encourage discrete decisions
+            scaled_logits = logits * 10.0
+            probs = F.gumbel_softmax(scaled_logits, tau=temperature, hard=hard, dim=-1) # [B, V]
+            soft_tokens_list.append(probs)
+            
+            # D. MANIFOLD PROJECTION (The Critical Fix)
+            # Instead of feeding 'v_raw' (which might be garbage) into the next step,
+            # we feed the "Cleaned" embedding based on the model's own confidence.
+            # v_projected = Sum(Prob * Embedding)
+            v_projected = torch.matmul(probs, w_emb) # [B, F]
+            
+            # Update input for next step
+            inp = v_projected.unsqueeze(1) # [B, 1, F]
+
+        # Stack outputs
+        soft_tokens = torch.stack(soft_tokens_list, dim=1) # [B, L, V]
+        return soft_tokens
