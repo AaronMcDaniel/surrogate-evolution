@@ -22,4 +22,4 @@ module load cuda/12.6.1
 nvidia-smi
 
 # Run the Codestral dataset creation with unbuffered output
-conda run -n nas --no-capture-output python -u -m surrogates.codestral --mode dataset
+conda run -n nas --no-capture-output python -u -m surrogates.codestral --mode dataset --only_cls_dataset

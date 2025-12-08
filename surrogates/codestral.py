@@ -27,6 +27,7 @@ import os
 import hashlib
 import time
 import re
+import ind2str
 
 USER = os.getenv("USER", "psomu3")
 cwd = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -665,7 +666,7 @@ sample_genome = "RetinaNet_Head(Sigmoid_2D(Upsample_2D(Upsample_2D(LazyConvTrans
 # sample_genome = "FCOS_Head(LazyConvTranspose2d(ResNeXt(ConvNeXt(DenseNet(ConvNeXt(ReLU_2D(MobileNet_V3(IN0, 1, 1)), 0, 1), 1, 0), 2, 1), 0, 2), 28, 7, 3, 9, 8, 7, 0, 3, 1, 2, 1), SGD(0.58, 2, 4.56, 7.02), LinearLR(2.83, 4.50e-06, 2309), 0.78, 0.41, 0.59, 0.48, 0.62, 0, 0.61)"
 # print(f"\nSample genome: {sample_genome}", flush=True)
 
-def build_codestral_dataset(use_build_dataset=True, dataset_prefix="mix_dataset", use_preanalysis=True, only_cls_dataset=False):
+def build_codestral_dataset(use_build_dataset=True, dataset_prefix="mix_dataset", use_preanalysis=False, only_cls_dataset=False):
     """
     Build a dataset using Codestral embeddings from the holy grail CSV file
     Now includes pre-analysis to identify problematic genomes before main processing
@@ -775,19 +776,6 @@ def build_codestral_dataset(use_build_dataset=True, dataset_prefix="mix_dataset"
             
         print("Pre-analysis completed for all datasets!", flush=True)
     
-    # Step 2: Load failure lists from pre-analysis
-    failure_sets = {}
-    if use_preanalysis:
-        print("\nLoading pre-analysis results...")
-        for dataset_name in ['reg_train', 'reg_val', 'cls_train', 'cls_val']:
-            failure_file = os.path.join(status_dir, f"{dataset_name}_failures.jsonl")
-            failure_sets[dataset_name] = load_failure_list(failure_file)
-            print(f"  {dataset_name}: {len(failure_sets[dataset_name])} failed genomes identified")
-    else:
-        # No pre-analysis, empty failure sets
-        for dataset_name in ['reg_train', 'reg_val', 'cls_train', 'cls_val']:
-            failure_sets[dataset_name] = set()
-    
     # Now process the datasets to generate Codestral embeddings
     print("\nGenerating Codestral embeddings...")
     
@@ -802,13 +790,8 @@ def build_codestral_dataset(use_build_dataset=True, dataset_prefix="mix_dataset"
         """Process a dataset by generating Codestral embeddings for each genome"""
         print(f"\nProcessing {dataset_name} ({len(df)} samples)...")
         
-        # Get the failure set for this dataset
-        dataset_failures = failure_sets.get(dataset_name, set())
-        print(f"Will skip {len(dataset_failures)} known problematic genomes")
-        
         processed_data = []
         failed_count = 0
-        skipped_count = 0
         
         for idx, row in tqdm(df.iterrows(), total=len(df), desc=f"Processing {dataset_name}"):
             try:
@@ -831,54 +814,15 @@ def build_codestral_dataset(use_build_dataset=True, dataset_prefix="mix_dataset"
                     print(f"No hash found for sample {idx}")
                     continue
                 
-                # If genome_str is empty or invalid, look it up in holy grail by hash
-                if not genome_str or genome_str.strip() == '' or genome_str == 'nan':
-                    # Look up in holy grail CSV using the hash column
-                    matching_row = holy_grail_df[holy_grail_df['hash'] == genome_hash]
-                    if not matching_row.empty:
-                        genome_str = matching_row.iloc[0]['genome']
-                        lookup_count += 1
-                        if lookup_count % 10 == 1:  # Print occasionally
-                            print(f"Looked up genome from holy grail for hash {genome_hash}")
-                        
-                        # Ensure the looked-up genome is valid
-                        if isinstance(genome_str, bytes):
-                            genome_str = genome_str.decode('utf-8')
-                        elif not isinstance(genome_str, str):
-                            genome_str = str(genome_str)
-                    else:
-                        failed_count += 1
-                        print(f"Could not find genome in holy grail for hash {genome_hash}")
-                        continue
-                
-                # Final validation - if still invalid after lookup, skip
+                # If genome string is invalid, skip it
                 if not genome_str or genome_str.strip() == '' or genome_str == 'nan':
                     failed_count += 1
-                    print(f"Genome still invalid after lookup at sample {idx}: {genome_str}")
+                    print(f"Genome invalid at sample {idx}: {genome_str}")
                     continue
                 
-                # Check if this genome was identified as problematic during pre-analysis
-                if genome_hash in dataset_failures:
-                    skipped_count += 1
-                    if skipped_count % 100 == 1:  # Print occasionally to show progress
-                        print(f"Skipping known problematic genome {idx} (hash: {genome_hash})")
-                    continue
-                
-                # Decode genome to get model representation
-                model_dict = codec.decode_genome(genome_str, num_loss_comp)
-                model = model_dict['model']
-                model.cpu()
-                model.eval()
-                # Clear CUDA cache after moving model to CPU
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                
-                # Create text representation
-                model_text, extra_vector = create_model_text_representation(model, model_dict)
-                
-                # Clear CUDA cache before Codestral embedding generation
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+                prettified_genome = ind2str.inspect_individual_to_string(genome_str)
+
+                model_text = "Thoroughly analyze the specific object detection model architecture and training scheme shown in this report:\n\n" + prettified_genome
                 
                 # Generate Codestral embedding
                 codestral_embeddings = get_codestral_embedding(model_text, tokenizer, codestral_model, device)
@@ -887,7 +831,8 @@ def build_codestral_dataset(use_build_dataset=True, dataset_prefix="mix_dataset"
                     # Create new row with Codestral embedding
                     new_row = row.copy()
                     # Use last token embedding as the primary genome representation
-                    new_row['genome'] = np.concatenate([codestral_embeddings['last_token'], extra_vector], axis=0)
+                    new_row['genome'] = codestral_embeddings['last_token']
+                    # new_row['genome'] = np.concatenate([codestral_embeddings['last_token'], extra_vector], axis=0)
                     # new_row['codestral_mean_pooled'] = codestral_embeddings['mean_pooled']
                     # new_row['original_genome'] = genome_str  # Keep original for reference
                     
@@ -896,12 +841,6 @@ def build_codestral_dataset(use_build_dataset=True, dataset_prefix="mix_dataset"
                     failed_count += 1
                     print(f"Failed to generate embedding for sample {idx}")
                 
-                # Explicitly delete model to free memory
-                del model
-                del model_dict
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    
             except torch.cuda.OutOfMemoryError as cuda_e:
                 failed_count += 1
                 print(f"CUDA out of memory for sample {idx}: {cuda_e}")
@@ -926,7 +865,6 @@ def build_codestral_dataset(use_build_dataset=True, dataset_prefix="mix_dataset"
         
         print(f"Processing complete for {dataset_name}:")
         print(f"  Successfully processed: {len(processed_data)} samples")
-        print(f"  Skipped (pre-analysis): {skipped_count}")
         print(f"  Runtime failures: {failed_count}")
         print(f"  Total input samples: {len(df)}")
 
@@ -1013,7 +951,7 @@ if __name__ == "__main__":
         # New functionality - build Codestral dataset
         print("Building Codestral dataset...")
         codestral_datasets = build_codestral_dataset(use_build_dataset=False,
-                                                     dataset_prefix="mix_dataset", use_preanalysis=True,
+                                                     dataset_prefix="mix_dataset", use_preanalysis=False,
                                                      only_cls_dataset=args.only_cls_dataset)
         print("Dataset creation completed!")
 

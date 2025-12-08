@@ -23,12 +23,16 @@ from tqdm import tqdm
 from tree_simplifier import simplify_tree
 
 def load_dataset(file_path):
-    """Load the dataset from pickle file"""
-    print(f"Loading dataset from {file_path}...")
-    df = pd.read_pickle(file_path)
-    print(f"Dataset loaded: {len(df)} samples")
-    print(f"Columns: {df.columns.tolist()}")
-    return df
+    dfs = []
+    for name in ["_cls_train", "_cls_val", "_reg_train", "_reg_val"]:
+        full_name = file_path + name + ".pkl"            
+        """Load the dataset from pickle file"""
+        print(f"Loading dataset from {full_name}...")
+        df = pd.read_pickle(full_name)
+        print(f"Dataset loaded: {len(df)} samples")
+        print(f"Columns: {df.columns.tolist()}")
+        dfs.append(df)
+    return dfs
 
 def extract_genome_vectors(df):
     """Extract genome vectors from the dataframe"""
