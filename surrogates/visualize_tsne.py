@@ -21,7 +21,8 @@ import argparse
 import os
 from tqdm import tqdm
 from tree_simplifier import simplify_tree
-
+from  surrogates.surrogate import Surrogate
+import torch
 def load_dataset(file_path):
     dfs = []
     for name in ["_cls_train", "_cls_val", "_reg_train", "_reg_val"]:
@@ -74,6 +75,7 @@ def extract_genome_vectors(df):
     
     return genome_matrix, valid_df
 
+    
 def compute_tsne(genome_matrix, perplexity=30, n_iter=1000, random_state=42, n_components=2):
     """Compute t-SNE embedding"""
     print(f"Computing t-SNE with perplexity={perplexity}, n_iter={n_iter}...")
@@ -87,7 +89,7 @@ def compute_tsne(genome_matrix, perplexity=30, n_iter=1000, random_state=42, n_c
     tsne = TSNE(
         n_components=n_components,
         perplexity=perplexity,
-        n_iter=n_iter,
+        max_iter=n_iter,
         random_state=random_state,
         verbose=1
     )
@@ -140,6 +142,15 @@ def create_visualizations(tsne_embedding, df, output_dir, output_prefix):
     if 'ciou_loss' in df.columns:
         metric_columns.remove('ciou_loss')
         metric_columns.insert(0, 'ciou_loss')
+    if 'surrogate_ciou_loss_error' in df.columns:
+        metric_columns.remove('surrogate_ciou_loss_error')
+        metric_columns.insert(0, 'surrogate_ciou_loss_error')
+    if 'surrogate_average_precision_error' in df.columns:
+        metric_columns.remove('surrogate_average_precision_error')
+        metric_columns.insert(0, 'surrogate_average_precision_error')
+    if 'surrogate_prediction_cls_error' in df.columns:
+        metric_columns.remove('surrogate_prediction_cls_error')
+        metric_columns.insert(0, 'surrogate_prediction_cls_error')
     
     #add reverse mapping from tsne vectors to hash values
     tsne_to_hash = {tuple(tsne_embedding[i]): df.loc[i, 'hash'] for i in range(len(df))}
@@ -155,9 +166,17 @@ def create_visualizations(tsne_embedding, df, output_dir, output_prefix):
     if metric_columns:
         print(f"Creating visualizations colored by metrics: {metric_columns}")
         
-        for metric in metric_columns[:5]:  # Limit to first 5 metrics to avoid too many plots
+        for metric in metric_columns[:7]:  # Limit to first 7 metrics to avoid too many plots
             try:
                 values = df[metric].values
+                if (metric == "ciou_loss" or metric == "surrogate_ciou_loss_error"):
+                    Q1 = np.percentile(values, 25)
+                    Q3 = np.percentile(values, 75)
+                    IQR = Q3 - Q1
+                    lower_bound = Q1 - 1.5 * IQR
+                    upper_bound = Q3 + 1.5 * IQR
+                    values = np.clip(values, lower_bound, upper_bound)
+
                 
                 # Skip if not numeric
                 if not np.issubdtype(values.dtype, np.number):
@@ -225,7 +244,7 @@ def create_visualizations(tsne_embedding, df, output_dir, output_prefix):
 #create a function that will classify the tsne mapping without supervision and will find number of clusters and will return a dictionary of the found cluster's hash values using the tsne_to_hash mapping.csv file
 #use HDBSCAN
 def classify_tsne(tsne_embedding, output_dir, output_prefix, inputhash):
-    from sklearn.cluster import HDBSCAN
+    from sklearn.cluster import DBSCAN
    
     #load tsne_to hashfrom csv
     tsne_to_hash = {}
@@ -243,7 +262,7 @@ def classify_tsne(tsne_embedding, output_dir, output_prefix, inputhash):
             tsne_tuple = tuple([tsne_comp1, tsne_comp2])
             tsne_to_hash[tsne_tuple] = hash_value
     # Final clustering with optimal number of clusters
-    clusterer = HDBSCAN(min_cluster_size=5)
+    clusterer = DBSCAN(eps=3.5, min_samples=5)
     cluster_labels = clusterer.fit_predict(tsne_embedding)
     #print(tsne_to_hash)
     # Create a mapping of cluster labels to hash values
@@ -314,7 +333,8 @@ def classify_tsne(tsne_embedding, output_dir, output_prefix, inputhash):
     plt.close()
     print(f"Saved: {cluster_viz_file}")
     createHistogram(hash_mapping_file, output_dir, output_prefix)
-    return cluster_to_hashes
+    return cluster_to_hashes    
+#ctreates histograms for every cluster
 def createHistogram(infile, output_dir, output_prefix):
     "Read the genomes.csv file and create a histogram of the primitive counts"
     heads = {"RetinaNet_Head":0, "FPN_Head":0, "SSD_Head":0, "YOLOv3_Head":0, "FasterRCNN_Head":0}
@@ -330,13 +350,14 @@ def createHistogram(infile, output_dir, output_prefix):
             if len(line.strip().split(',')) < 10 and len(line.strip()) > 0 and ':' in line:
                 print(clusters[clusterNow] if clusterNow != -100 else "")
                 clusterNow = int(line.strip().replace(':', ''))
-                clusters[clusterNow] = {"heads":{}, "layers":{}, "optimizers":{}, "learning_rate_adapters":{}}
+                clusters[clusterNow] = {"heads":{}, "layers":{}, "optimizers":{}, "learning_rate_adapters":{}, "count":0}
                 continue
             
 
             elif len(line.strip().split(',')) ==0:
                 continue
             #else parse the genome line by splitting top level genome information i.e. (a,b,c),d,(e,(f,g)) => ['(a,b,c)', 'd', '(e,(f,g))']
+            clusters[clusterNow]["count"] += 1 
             genome_str = []
             current_item = ''
             paren_count = 0
@@ -388,16 +409,22 @@ def createHistogram(infile, output_dir, output_prefix):
                         if clusterNow != -100:
                             clusters[clusterNow]["learning_rate_adapters"][token] = clusters[clusterNow]["learning_rate_adapters"].get(token, 0) + 1
     #create histograms for heads, layers, optimizers, learning_rate_adapters
-    def plot_histogram(data_dict, title, filename):
+    def plot_histogram(data_dict, title, filename, cnt):
         plt.figure(figsize=(10, 6))
         items = list(data_dict.items())
+
+        if not items:
+            print(f"[WARN] Skipping empty histogram: {title}")
+            return None
+
         items.sort(key=lambda x: x[1], reverse=True)
         keys, values = zip(*items)
+        
         plt.bar(keys, values, color='skyblue')
         plt.xticks(rotation=45, ha='right')
         plt.xlabel('Primitive', fontsize=14)
         plt.ylabel('Count', fontsize=14)
-        plt.title(title, fontsize=16)
+        plt.title(f'{title} (Count: {cnt})', fontsize=16)
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, filename), dpi=300)
         plt.close()
@@ -407,10 +434,10 @@ def createHistogram(infile, output_dir, output_prefix):
     os.makedirs(cluster_plot_dir, exist_ok=True)
     #create a subdirectory for each cluster
     for cluster_label, primitives in clusters.items():
-        heads_plot = plot_histogram(primitives["heads"], f'Cluster {cluster_label} - Heads Distribution', f'cluster_{cluster_label}_heads_histogram.png')
-        layers_plot = plot_histogram(primitives["layers"], f'Cluster {cluster_label} - Layers Distribution', f'cluster_{cluster_label}_layers_histogram.png')
-        optimizers_plot = plot_histogram(primitives["optimizers"], f'Cluster {cluster_label} - Optimizers Distribution', f'cluster_{cluster_label}_optimizers_histogram.png')
-        lra_plot = plot_histogram(primitives["learning_rate_adapters"], f'Cluster {cluster_label} - Learning Rate Adapters Distribution', f'cluster_{cluster_label}_lra_histogram.png')
+        heads_plot = plot_histogram(primitives["heads"], f'Cluster {cluster_label} - Heads Distribution', f'cluster_{cluster_label}_heads_histogram.png', primitives["count"])
+        layers_plot = plot_histogram(primitives["layers"], f'Cluster {cluster_label} - Layers Distribution', f'cluster_{cluster_label}_layers_histogram.png', primitives["count"])
+        optimizers_plot = plot_histogram(primitives["optimizers"], f'Cluster {cluster_label} - Optimizers Distribution', f'cluster_{cluster_label}_optimizers_histogram.png', primitives["count"])
+        lra_plot = plot_histogram(primitives["learning_rate_adapters"], f'Cluster {cluster_label} - Learning Rate Adapters Distribution', f'cluster_{cluster_label}_lra_histogram.png', primitives["count"])
 def main():
     USER_ENV_VAR = os.getenv('USER', 'psomu3')
     parser = argparse.ArgumentParser(description='t-SNE Visualization of Genome Embeddings')
@@ -435,6 +462,10 @@ def main():
     parser.add_argument('--inputHash', type=str, 
                        default='/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/large_dataset/full_out.csv',
                        help='Path to strings of genomes')
+    parser.add_argument('--surrogate_weights', type=str, 
+                       default='/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/surrogate_weights_codestral/surrogate_weights',
+                       help='Path to surrogate model weights')
+
     args = parser.parse_args()
     
     print("="*60)
@@ -442,38 +473,89 @@ def main():
     print("="*60)
     
     # Load dataset
-    df = load_dataset(args.input)
-    
+    cls_train_df, cls_val_df, reg_train_df, reg_val_df = load_dataset(args.input)
     # Subsample if requested
-    if args.max_samples and len(df) > args.max_samples:
-        print(f"Subsampling to {args.max_samples} samples...")
-        df = df.sample(n=args.max_samples, random_state=args.random_state)
-    
-    # Extract genome vectors
-    genome_matrix, valid_df = extract_genome_vectors(df)
-    
-    # Compute t-SNE
-    tsne_embedding = compute_tsne(
-        genome_matrix, 
-        perplexity=args.perplexity,
-        n_iter=args.n_iter,
-        random_state=args.random_state
-    )
-    
-    # Create visualizations
-    create_visualizations(tsne_embedding, valid_df, args.output_dir, args.output_prefix)
-    if args.classification:
-        cluster_to_hashes = classify_tsne(tsne_embedding, args.output_dir, args.output_prefix, args.inputHash)
-        print(f"Cluster to Hashes mapping saved to 'tsne_cluster_to_hashes_mapping.csv'")
-    # Save t-SNE embeddings
-    embedding_file = os.path.join(args.output_dir, f'{args.output_prefix}_tsne_embeddings.npz')
-    np.savez(embedding_file, 
-             tsne_embedding=tsne_embedding)
-    print(f"\nt-SNE embeddings saved to: {embedding_file}")
-    
-    print("\n" + "="*60)
-    print("Visualization complete!")
-    print("="*60)
+
+    surrogate = Surrogate('conf.toml', '/storage/ice-shared/vip-vvk/data/AOT/ckeener7/codestral/surrogate_weights')
+    #predict surrogate values from df["genome"] and append that to df
+    scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df, reg_lambda=0)
+
+    # 1. Classification Train
+    # Convert column of lists to a 2D matrix
+    cls_train_matrix = np.array(cls_train_df['genome'].tolist())
+    # Transform and convert back to list for storage in DataFrame
+    cls_train_df['genome'] = list(cls_genome_scaler.transform(cls_train_matrix))
+
+    # 2. Classification Validation
+    cls_val_matrix = np.array(cls_val_df['genome'].tolist())
+    cls_val_df['genome'] = list(cls_genome_scaler.transform(cls_val_matrix))
+
+    # 3. Regression Train
+    reg_train_matrix = np.array(reg_train_df['genome'].tolist())
+    reg_train_df['genome'] = list(reg_genome_scaler.transform(reg_train_matrix))
+
+    # 4. Regression Validation
+    reg_val_matrix = np.array(reg_val_df['genome'].tolist())
+    reg_val_df['genome'] = list(reg_genome_scaler.transform(reg_val_matrix))
+
+    fileList = [cls_train_df, cls_val_df, reg_train_df, reg_val_df]
+    surrogateMode = [True, True, False, False]
+
+    for i in range(len(fileList)):
+        df = fileList[i]
+        if args.max_samples and len(df) > args.max_samples:
+            print(f"Subsampling to {args.max_samples} samples...")
+            df = df.sample(n=args.max_samples, random_state=args.random_state)
+
+        """Test surrogate model on genome matrix and save predictions"""
+        os.makedirs(args.output_dir, exist_ok=True)
+        testing_dir = f"psomu3/codestral/surrogate_training"
+        repo_dir = "/storage/ice-shared/vip-vvk/data/AOT/"
+        #convert genomes to torch tensors
+        genomes = StandardScaler().fit_transform(df['genome'].tolist())
+        genome_tensors = []
+        for genome in genomes:
+            genome_tensors.append(torch.tensor(genome, dtype=torch.float32))
+        genome_batch = torch.stack(genome_tensors)
+        with torch.no_grad():
+            predictions = surrogate.predict(genome_batch, surrogateMode[i]).cpu().numpy()
+        #add predictions to df
+        if (surrogateMode[i] == False):
+            df['surrogate_prediction_ciou_loss'] = predictions[:, 0]
+            df['surrogate_prediction_average_precision'] = predictions[:, 1]
+            df['surrogate_ciou_loss_error'] = abs(df['ciou_loss'] - df['surrogate_prediction_ciou_loss'])
+            df['surrogate_average_precision_error'] = abs(df['average_precision'] - df['surrogate_prediction_average_precision'])
+            print(df.head())
+        else:
+            df['surrogate_prediction_cls'] = predictions
+            df['surrogate_prediction_cls_error'] = abs(df["label"] - df['surrogate_prediction_cls'])
+
+
+        # Extract genome vectors
+        genome_matrix, valid_df = extract_genome_vectors(df)
+        
+        # Compute t-SNE
+        tsne_embedding = compute_tsne(
+            genome_matrix, 
+            perplexity=args.perplexity,
+            n_iter=args.n_iter,
+            random_state=args.random_state
+        )
+        
+        # Create visualizations
+        create_visualizations(tsne_embedding, valid_df, args.output_dir, args.output_prefix)
+        if args.classification:
+            cluster_to_hashes = classify_tsne(tsne_embedding, args.output_dir, args.output_prefix, args.inputHash)
+            print(f"Cluster to Hashes mapping saved to 'tsne_cluster_to_hashes_mapping.csv'")
+        # Save t-SNE embeddings
+        embedding_file = os.path.join(args.output_dir, f'{args.output_prefix}_tsne_embeddings.npz')
+        np.savez(embedding_file, 
+                tsne_embedding=tsne_embedding)
+        print(f"\nt-SNE embeddings saved to: {embedding_file}")
+        
+        print("\n" + "="*60)
+        print("Visualization complete!")
+        print("="*60)
 
 if __name__ == "__main__":
     main()
