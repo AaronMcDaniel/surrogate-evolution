@@ -23,9 +23,9 @@ file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
 repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
 
 
-def prepare_data(batch_size, train_df, val_df):
-    train_dataset = sd.ClassifierSurrogateDataset(train_df, mode='train')
-    val_dataset = sd.ClassifierSurrogateDataset(val_df, mode='val', genomes_scaler=train_dataset.genomes_scaler)
+def prepare_data(batch_size, train_df, val_df, token_mode=False):
+    train_dataset = sd.ClassifierSurrogateDataset(train_df, mode='train', token_mode=token_mode)
+    val_dataset = sd.ClassifierSurrogateDataset(val_df, mode='val', genomes_scaler=train_dataset.genomes_scaler, token_mode=token_mode)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     return train_loader, val_loader, train_dataset, val_dataset
@@ -46,7 +46,8 @@ def build_configuration(model_dict, device):
         optimizer = optimizer_func(params=params, lr=lr)
 
         # build scheduler and scaler
-        scheduler_func = model_dict['scheduler']
+        scheduler_func_wrapped = model_dict['scheduler']
+        scheduler_func = getattr(scheduler_func_wrapped, 'func', scheduler_func_wrapped)
         if scheduler_func == optim.lr_scheduler.StepLR:
             scheduler = scheduler_func(optimizer=optimizer, step_size=10, gamma=0.1)
         elif scheduler_func == optim.lr_scheduler.MultiStepLR:
@@ -57,6 +58,10 @@ def build_configuration(model_dict, device):
             scheduler = scheduler_func(optimizer=optimizer, mode='min', factor=0.5, patience=5)
         elif scheduler_func == optim.lr_scheduler.CosineAnnealingWarmRestarts:
             scheduler = scheduler_func(optimizer=optimizer, T_0=10, T_mult=2)
+        elif scheduler_func == optim.lr_scheduler.OneCycleLR:
+            scheduler = scheduler_func_wrapped(optimizer=optimizer, max_lr=lr)
+        elif scheduler_func == None:
+            scheduler = optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=lambda epoch: 1.0)
         scaler = GradScaler()
         
         return model, optimizer, scheduler, scaler
@@ -65,7 +70,7 @@ def build_configuration(model_dict, device):
 # used to train and evaluate a classifier surrogate
 # calling this function will train and validate the model represented by the passed-in model dict
 # returns the genome scaler used (for getting inferences later) and saves best epoch weights by best accuracy
-def engine(cfg, model_dict, train_df, val_df, weights_dir, reg_lambda=0.0):
+def engine(cfg, model_dict, train_df, val_df, weights_dir, reg_lambda=0.0, token_mode=False):
     best_acc = 0
     best_epoch = None
     best_epoch_num = None
@@ -74,7 +79,7 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir, reg_lambda=0.0):
     num_epochs = cfg['surrogate_train_epochs']
     batch_size = cfg['surrogate_batch_size']
     # define subset of metrics to train on and prepare data accordingly
-    train_loader, val_loader, train_dataset, val_dataset = prepare_data(batch_size, train_df, val_df)
+    train_loader, val_loader, train_dataset, val_dataset = prepare_data(batch_size, train_df, val_df, token_mode=token_mode)
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     model, optimizer, scheduler, scaler = build_configuration(model_dict=model_dict, device=device)
@@ -88,7 +93,8 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir, reg_lambda=0.0):
     
     for epoch in range(1, num_epochs + 1):
         # train and validate for one epoch
-        train_metrics = train_one_epoch(model, device, train_loader, optimizer, scaler, reg_lambda)
+        # print(f"Epoch {epoch}/{num_epochs}")
+        train_metrics = train_one_epoch(model, device, train_loader, optimizer, scaler, reg_lambda, token_mode=token_mode)
         val_metrics = val_one_epoch(model, device, val_loader, scheduler)
         # print(f"---- Epoch {epoch} ----")
         # print(f"train : loss = {train_metrics['loss']:.4f} | accuracy = {train_metrics['acc']:.4f} | precision = {train_metrics['prec']:.4f} | recall = {train_metrics['rec']:.4f}")
@@ -106,7 +112,7 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir, reg_lambda=0.0):
     return best_epoch_metrics, genome_scaler             
 
 
-def train_one_epoch(model, device, train_loader, optimizer, scaler, reg_lambda=0.0):
+def train_one_epoch(model, device, train_loader, optimizer, scaler, reg_lambda=0.0, token_mode=False):
     model.train()
 
     # Initialize variables
@@ -119,7 +125,8 @@ def train_one_epoch(model, device, train_loader, optimizer, scaler, reg_lambda=0
     data_iter = tqdm(train_loader, desc='Training')
     for genomes, labels in data_iter:
         genomes = genomes.to(device)
-        genomes.requires_grad_(True)
+        if not token_mode:
+            genomes.requires_grad_(True)
         labels = labels.to(device)
 
         # Forward pass with mixed precision
@@ -161,6 +168,8 @@ def train_one_epoch(model, device, train_loader, optimizer, scaler, reg_lambda=0
     # Calculate average training loss
     num_batches = len(data_iter)
     surrogate_train_loss /= num_batches
+
+    # print("Train Loss:", surrogate_train_loss)
 
     epoch_metrics = {
         'loss': surrogate_train_loss,
@@ -221,6 +230,10 @@ def val_one_epoch(model, device, val_loader, scheduler):
     # Calculate average validation loss
     num_batches = len(data_iter)
     surrogate_val_loss /= num_batches
+
+    # print("Validation Loss:", surrogate_val_loss)
+    # print("Validation Accuracy:", accuracy)
+    # print("Validation Recall:", recall)
 
     epoch_metrics = {
         'loss': surrogate_val_loss,

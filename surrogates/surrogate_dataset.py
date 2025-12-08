@@ -27,7 +27,7 @@ import tqdm
 
 class SurrogateDataset(Dataset):
     # init using df
-    def __init__(self, df, mode, metrics_subset=None, metrics_scaler=StandardScaler(), genomes_scaler = StandardScaler()):
+    def __init__(self, df, mode, metrics_subset=None, metrics_scaler=StandardScaler(), genomes_scaler = StandardScaler(), token_mode=False):
         self.df = df
         self.genomes_scaler = genomes_scaler
         self.metrics_scaler = metrics_scaler
@@ -37,13 +37,15 @@ class SurrogateDataset(Dataset):
         metrics_subset = [-12 + i for i in metrics_subset]
         self.max_metrics = torch.ones((1, len(metrics_subset))) * 300.0
         self.min_metrics = torch.ones((1, len(metrics_subset))) * -300.0
+        self.token_mode = token_mode
         
         # standardize genome/metrics data dist if train mode
         if mode == 'train':
             self.genomes = np.stack(df['genome'].values)
             self.metrics = df.iloc[:, metrics_subset].values
             print("Genome shape", self.genomes.shape)
-            self.genomes = self.genomes_scaler.fit_transform(self.genomes)
+            if not self.token_mode:
+                self.genomes = self.genomes_scaler.fit_transform(self.genomes)
         if mode == 'val':
             grouped = df.groupby('hash')
             best_epochs = []
@@ -54,7 +56,8 @@ class SurrogateDataset(Dataset):
             best_epochs_df = pd.DataFrame(best_epochs)
             self.genomes = np.stack(best_epochs_df['genome'].values)
             self.metrics = best_epochs_df.iloc[:, metrics_subset].values
-            self.genomes = self.genomes_scaler.transform(self.genomes)
+            if not self.token_mode:
+                self.genomes = self.genomes_scaler.transform(self.genomes)
             
         # NOTE commented out for debugging
         # if np.isnan(self.genomes).any() or np.isnan(self.metrics).any():
@@ -66,27 +69,32 @@ class SurrogateDataset(Dataset):
     
     # retrieve genome, metrics at specific index
     def __getitem__(self, i):
-        genome = torch.tensor(self.genomes[i], dtype=torch.float32)
+        genome_dtype = torch.float32
+        if self.token_mode:
+            genome_dtype = torch.long
+        genome = torch.tensor(self.genomes[i], dtype=genome_dtype)
         metrics = torch.tensor(self.metrics[i], dtype=torch.float32)
         return genome, metrics
     
     
 class ClassifierSurrogateDataset(Dataset):
     # init using df
-    def __init__(self, df, mode, genomes_scaler = StandardScaler()):
+    def __init__(self, df, mode, genomes_scaler = StandardScaler(), token_mode=False):
         self.df = df
         self.genomes_scaler = genomes_scaler
         self.mode = mode
         self.genomes = np.stack(df['genome'].values)
         self.labels = np.stack(df['label'].values)
+        self.token_mode = token_mode
         
         # # # standardize genome/metrics data dist if train mode
-        if mode == 'train':
-            # self.metrics = self.metrics_scaler.fit_transform(self.metrics)
-            self.genomes = self.genomes_scaler.fit_transform(self.genomes)
-        if mode == 'val':
-            # self.metrics = self.metrics_scaler.transform(self.metrics)
-            self.genomes = self.genomes_scaler.transform(self.genomes)
+        if not self.token_mode:
+            if mode == 'train':
+                # self.metrics = self.metrics_scaler.fit_transform(self.metrics)
+                self.genomes = self.genomes_scaler.fit_transform(self.genomes)
+            if mode == 'val':
+                # self.metrics = self.metrics_scaler.transform(self.metrics)
+                self.genomes = self.genomes_scaler.transform(self.genomes)
             
         if np.isnan(self.genomes).any() or np.isnan(self.labels).any():
             breakpoint()
@@ -97,7 +105,10 @@ class ClassifierSurrogateDataset(Dataset):
     
     # retrieve genome, metrics at specific index
     def __getitem__(self, i):
-        genome = torch.tensor(self.genomes[i], dtype=torch.float32)
+        genome_dtype = torch.float32
+        if self.token_mode:
+            genome_dtype = torch.long
+        genome = torch.tensor(self.genomes[i], dtype=genome_dtype)
         label = torch.tensor(self.labels[i], dtype=torch.float32)
         return genome, label
 
@@ -185,7 +196,7 @@ def build_dataset(
                     # Handle encoding based on return_raw_genomes flag
                     if return_raw_genomes:
                         # Store the raw genome string instead of encoding
-                        cls_to_add['string_genome'] = genome
+                        cls_to_add['str_genome'] = genome
                         cls_to_add['epoch_num'] = i + 1
                     
 

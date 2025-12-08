@@ -23,10 +23,10 @@ import os
 file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
 repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
 
-def prepare_data(model_dict, batch_size, train_df, val_df):
-    train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=model_dict['metrics_subset'])
+def prepare_data(model_dict, batch_size, train_df, val_df, token_mode=False):
+    train_dataset = sd.SurrogateDataset(train_df, mode='train', metrics_subset=model_dict['metrics_subset'], token_mode=token_mode)
     print(f'Input val_df: {val_df.shape}')
-    val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=model_dict['metrics_subset'], metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler)
+    val_dataset = sd.SurrogateDataset(val_df, mode='val', metrics_subset=model_dict['metrics_subset'], metrics_scaler=train_dataset.metrics_scaler, genomes_scaler=train_dataset.genomes_scaler, token_mode=token_mode)
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     print(f'val_dataset length: {len(val_dataset.genomes)}')
     # NOTE removed drop_last for the sake of continuing
@@ -51,7 +51,8 @@ def build_configuration(model_dict, device):
         optimizer = optimizer_func(params=params, lr=lr)
 
         # build scheduler and scaler
-        scheduler_func = model_dict['scheduler']
+        scheduler_func_wrapped = model_dict['scheduler']
+        scheduler_func = getattr(scheduler_func_wrapped, 'func', scheduler_func_wrapped)
         if scheduler_func == optim.lr_scheduler.StepLR:
             scheduler = scheduler_func(optimizer=optimizer, step_size=10, gamma=0.1)
         elif scheduler_func == optim.lr_scheduler.MultiStepLR:
@@ -62,6 +63,8 @@ def build_configuration(model_dict, device):
             scheduler = scheduler_func(optimizer=optimizer, mode='min', factor=0.1, patience=5)
         elif scheduler_func == optim.lr_scheduler.CosineAnnealingWarmRestarts:
             scheduler = scheduler_func(optimizer=optimizer, T_0=10, T_mult=2)
+        elif scheduler_func == optim.lr_scheduler.OneCycleLR:
+            scheduler = scheduler_func_wrapped(optimizer=optimizer, max_lr=lr)
         elif scheduler_func == None:
             scheduler = optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=lambda epoch: 1.0)
         scaler = GradScaler()
@@ -83,7 +86,7 @@ def create_metrics_df(cfg):
 # the model dict includes a metrics_subset and a validation_subset which represent the metrics used to train the model
 # and the metrics on which the model makes inferences on respectively.
 # returns the genome scaler used (for getting inferences later) and saves best epoch weights by best sum of validation subset losses
-def engine(cfg, model_dict, train_df, val_df, weights_dir, reg_lambda):
+def engine(cfg, model_dict, train_df, val_df, weights_dir, reg_lambda, token_mode=False):
     best_loss_metric = np.inf
     best_epoch = None
     best_epoch_num = None
@@ -94,7 +97,7 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir, reg_lambda):
     metric_names = cfg['surrogate_metrics']
     # define subset of metrics to train on and prepare data accordingly
     metrics_subset = model_dict['metrics_subset']
-    train_loader, val_loader, train_dataset, val_dataset = prepare_data(model_dict, batch_size, train_df, val_df)
+    train_loader, val_loader, train_dataset, val_dataset = prepare_data(model_dict, batch_size, train_df, val_df, token_mode=token_mode)
     max_metrics = train_dataset.max_metrics
     min_metrics = train_dataset.min_metrics
 
@@ -121,7 +124,8 @@ def engine(cfg, model_dict, train_df, val_df, weights_dir, reg_lambda):
     metrics_df = create_metrics_df(cfg)
     for epoch in range(1, num_epochs + 1):
         # train and validate for one epoch
-        train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics, reg_lambda)
+        # print(f"Epoch {epoch}/{num_epochs}")
+        train_epoch_loss = train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics, reg_lambda, token_mode=token_mode)
         epoch_metrics = val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, min_metrics)
         #print(epoch_metrics)
         
@@ -195,7 +199,7 @@ def get_inferences(model_dict, device, inference_df, genome_scaler, weights_dir)
     return val_inf
     
 
-def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics, reg_lambda):
+def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, max_metrics, min_metrics, reg_lambda, token_mode=False):
     model.train()
 
     # actual surrogate training loss
@@ -212,7 +216,8 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
     for genomes, metrics in data_iter:
         # genomes shape: (batch_size, 976)
         genomes = genomes.to(device)
-        genomes.requires_grad_(True)
+        if not token_mode:
+            genomes.requires_grad_(True)
         # metrics shape: (batch_size, 12)
         metrics = metrics.to(device)
 
@@ -280,6 +285,8 @@ def train_one_epoch(model, device, train_loader, optimizer, scheduler, scaler, m
     # calculate surrogate training loss per batch (NOTE batch loss already meaned by batch size)
     num_batches = len(data_iter)
     surrogate_train_loss /= num_batches
+
+    # print(f"Training Loss: {surrogate_train_loss}")
     
     # step scheduler
     e.step_scheduler(scheduler, surrogate_train_loss)
@@ -342,7 +349,9 @@ def val_one_epoch(cfg, model, device, val_loader, metrics_subset, max_metrics, m
             torch.cuda.empty_cache()
 
     # calculate surrogate validation loss per batch (NOTE batch loss already meaned by batch size)
+    # print val loss
     surrogate_val_loss /= len(data_iter)
+    # print(f"Validation Loss: {surrogate_val_loss}")
 
     # compute the mean of the mse losses for each metric based on num batches
     mse_metrics_per_batch = torch.stack(mse_metrics_per_batch)

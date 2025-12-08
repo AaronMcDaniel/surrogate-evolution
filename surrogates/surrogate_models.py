@@ -536,3 +536,270 @@ class KAN(torch.nn.Module):
             layer.regularization_loss(regularize_activation, regularize_entropy)
             for layer in self.layers
         )
+
+
+
+# ==========================================
+# NEW SEQUENCE-BASED SURROGATE MODELS
+# ==========================================
+
+class SurrogateCNN(nn.Module):
+    """
+    1D Convolutional Neural Network for regression on token sequences.
+    Best for detecting local patterns (motifs) in the genome architecture.
+    """
+    def __init__(self, 
+                 vocab_size=15000, 
+                 embed_dim=128, 
+                 output_size=12, 
+                 max_len=350,
+                 dropout=0.2):
+        super(SurrogateCNN, self).__init__()
+        
+        self.embedding = nn.Embedding(vocab_size, embed_dim)
+        
+        # Stack of 1D Convolutions to capture n-gram like features
+        # We keep the sequence length roughly same or reduce slightly via pooling
+        self.features = nn.Sequential(
+            # Layer 1: Look at small context (kernel 3)
+            nn.Conv1d(in_channels=embed_dim, out_channels=128, kernel_size=3, padding=1),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            
+            # Layer 2: Look at medium context (kernel 5)
+            nn.Conv1d(in_channels=128, out_channels=256, kernel_size=5, padding=2),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            
+            # Layer 3: Look at larger context (kernel 7)
+            nn.Conv1d(in_channels=256, out_channels=256, kernel_size=7, padding=3),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Dropout(dropout)
+        )
+        
+        # Global Max Pooling: "Did this feature appear anywhere in the sequence?"
+        # This reduces (Batch, Channels, SeqLen) -> (Batch, Channels, 1)
+        self.global_pool = nn.AdaptiveMaxPool1d(1)
+        
+        # Regression Head
+        self.regressor = nn.Sequential(
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, output_size)
+        )
+
+    def forward(self, x):
+        # x shape: (Batch, Seq_Len)
+        
+        # Embedding: (Batch, Seq_Len, Embed_Dim)
+        x = self.embedding(x)
+        
+        # Permute for Conv1d: (Batch, Embed_Dim, Seq_Len)
+        x = x.permute(0, 2, 1)
+        
+        # Extract features
+        x = self.features(x)
+        
+        # Global Pooling
+        x = self.global_pool(x)
+        
+        # Flatten: (Batch, Channels)
+        x = x.squeeze(-1)
+        
+        # Regress
+        y = self.regressor(x)
+        return y
+
+
+class SurrogateTransformer(nn.Module):
+    """
+    Transformer Encoder for regression on token sequences.
+    Best for capturing complex, long-range dependencies between architecture layers.
+    """
+    def __init__(self, 
+                 vocab_size=15000, 
+                 embed_dim=128, 
+                 nhead=4, 
+                 num_layers=6, 
+                 output_size=12, 
+                 max_len=350, 
+                 dropout=0.1,
+                 pad_token_id=0):
+        super(SurrogateTransformer, self).__init__()
+        
+        self.embed_dim = embed_dim
+        self.pad_token_id = pad_token_id
+        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=pad_token_id)
+        
+        # Learnable Positional Encoding
+        # We use a learnable parameter instead of sinusoidal for simplicity in this file
+        self.pos_embedding = nn.Parameter(torch.randn(1, max_len, embed_dim))
+        
+        # Transformer Encoder Layer
+        encoder_layer = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=nhead, 
+                                                   dim_feedforward=embed_dim*4, 
+                                                   dropout=dropout, 
+                                                   batch_first=True)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        
+        # Regression Head
+        # We project from the pooled representation to the output
+        self.regressor = nn.Sequential(
+            nn.Linear(embed_dim, 128),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(128, output_size)
+        )
+        
+        self._init_weights()
+
+    def _init_weights(self):
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p) # Better for preserving variance
+
+    def forward(self, x, inputs_embeds=None):
+        if inputs_embeds is not None:
+            # --- SOFT PATH (For Inverse Design) ---
+            x_emb = inputs_embeds # [Batch, Seq_Len, Embed_Dim]
+            seq_len = x_emb.size(1)
+            
+            # For soft tokens, we assume no padding (optimization generates full length)
+            # Or you can learn to generate padding, but usually we optimize for valid tokens.
+            pad_mask = torch.zeros((x_emb.size(0), seq_len), dtype=torch.bool, device=x_emb.device)
+            
+            # Scale (Transformer standard)
+            x_emb = x_emb * math.sqrt(self.embed_dim)
+        else:
+            # --- HARD PATH (Standard Inference) ---
+            # x is token indices [Batch, Seq_Len]
+            seq_len = x.size(1)
+            pad_mask = (x == self.pad_token_id)
+            x_emb = self.embedding(x) * math.sqrt(self.embed_dim)
+        
+        # Add Positional Encoding (slicing in case input is shorter than max_len)
+        # We broadcast batch dimension
+        x_emb = x_emb + self.pos_embedding[:, :seq_len, :]
+        
+        # Transformer Pass with padding mask
+        # src_key_padding_mask: True values are ignored in attention
+        # Output shape: (Batch, Seq_Len, Embed_Dim)
+        x = self.transformer_encoder(x_emb, src_key_padding_mask=pad_mask)
+        
+        # # Pooling strategy: Take the first token representation
+        # # Assuming index 0 is <SOS> (Start of Sequence), it acts as a CLS token
+        # # If no <SOS>, we could use x.mean(dim=1)
+        # cls_token = x[:, 0, :]
+        
+        # # Regress
+        # y = self.regressor(cls_token)
+
+        input_mask_expanded = (~pad_mask).unsqueeze(-1).float() 
+
+        # Sum up all valid token vectors
+        sum_embeddings = torch.sum(x * input_mask_expanded, 1)
+
+        # Count how many valid tokens there are
+        sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+
+        # Average
+        mean_pooled = sum_embeddings / sum_mask
+
+        # Regress
+        y = self.regressor(mean_pooled)
+
+        return y
+
+class SurrogateTransformerOld(nn.Module):
+    """
+    Transformer Encoder for regression on token sequences.
+    Best for capturing complex, long-range dependencies between architecture layers.
+    """
+    def __init__(self, 
+                 vocab_size=15000, 
+                 embed_dim=128, 
+                 nhead=4, 
+                 num_layers=2, 
+                 output_size=12, 
+                 max_len=350, 
+                 dropout=0.1,
+                 pad_token_id=0):
+        super(SurrogateTransformer, self).__init__()
+        
+        self.embed_dim = embed_dim
+        self.pad_token_id = pad_token_id
+        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=pad_token_id)
+        
+        # Learnable Positional Encoding
+        # We use a learnable parameter instead of sinusoidal for simplicity in this file
+        self.pos_embedding = nn.Parameter(torch.randn(1, max_len, embed_dim))
+        
+        # Transformer Encoder Layer
+        encoder_layer = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=nhead, 
+                                                   dim_feedforward=embed_dim*4, 
+                                                   dropout=dropout, 
+                                                   batch_first=True)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        
+        # Regression Head
+        # We project from the pooled representation to the output
+        self.regressor = nn.Sequential(
+            nn.Linear(embed_dim, 32),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(32, output_size)
+        )
+        
+        self._init_weights()
+
+    def _init_weights(self):
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p) # Better for preserving variance
+
+    def forward(self, x):
+        # x shape: (Batch, Seq_Len)
+        seq_len = x.size(1)
+        
+        # Create padding mask: True for positions to be masked (padding tokens)
+        # Shape: (Batch, Seq_Len)
+        pad_mask = (x == self.pad_token_id)
+        
+        # Embed
+        x = self.embedding(x) * math.sqrt(self.embed_dim)
+        
+        # Add Positional Encoding (slicing in case input is shorter than max_len)
+        # We broadcast batch dimension
+        x = x + self.pos_embedding[:, :seq_len, :]
+        
+        # Transformer Pass with padding mask
+        # src_key_padding_mask: True values are ignored in attention
+        # Output shape: (Batch, Seq_Len, Embed_Dim)
+        x = self.transformer_encoder(x, src_key_padding_mask=pad_mask)
+        
+        # # Pooling strategy: Take the first token representation
+        # # Assuming index 0 is <SOS> (Start of Sequence), it acts as a CLS token
+        # # If no <SOS>, we could use x.mean(dim=1)
+        # cls_token = x[:, 0, :]
+        
+        # # Regress
+        # y = self.regressor(cls_token)
+
+        input_mask_expanded = (~pad_mask).unsqueeze(-1).float() 
+
+        # Sum up all valid token vectors
+        sum_embeddings = torch.sum(x * input_mask_expanded, 1)
+
+        # Count how many valid tokens there are
+        sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+
+        # Average
+        mean_pooled = sum_embeddings / sum_mask
+
+        # Regress
+        y = self.regressor(mean_pooled)
+
+        return y
