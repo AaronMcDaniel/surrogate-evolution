@@ -28,6 +28,7 @@ from surrogates import surrogate_eval as rse
 import random
 import os
 import json
+import argparse
 
 file_directory = os.path.dirname(os.path.realpath(os.path.abspath(__file__)))
 # repo_dir = os.path.abspath(os.path.join(file_directory, ".."))
@@ -338,18 +339,20 @@ class Surrogate():
     '''
     
     # trains all the classifiers and regressors and stores their individual weights and metrics
-    def train(self, classifier_train_df, classifier_val_df, regressor_train_df, regressor_val_df, train_reg=True, reg_lambda=0.001):
+    def train(self, classifier_train_df, classifier_val_df, regressor_train_df, regressor_val_df, train_reg=True, reg_lambda=0.001, train_cls=True):
         scores = {
             'classifiers': {},
             'regressors': {}
         }
         cls_genome_scaler = None
         reg_genome_scaler = None
-        # loop through the classifier models
-        for classifier_dict in self.classifier_models:
-            metrics, gs = cse.engine(self.surrogate_config, classifier_dict, classifier_train_df, classifier_val_df, self.weights_dir)
-            if cls_genome_scaler is None: cls_genome_scaler = gs
-            scores['classifiers'][classifier_dict['name']] = metrics
+
+        if train_cls:
+            # loop through the classifier models
+            for classifier_dict in self.classifier_models:
+                metrics, gs = cse.engine(self.surrogate_config, classifier_dict, classifier_train_df, classifier_val_df, self.weights_dir)
+                if cls_genome_scaler is None: cls_genome_scaler = gs
+                scores['classifiers'][classifier_dict['name']] = metrics
         
         # loop through regressor models
         if train_reg:
@@ -522,105 +525,114 @@ class Surrogate():
     def predict(
         self, 
         z_latent: torch.Tensor,
+        cls_mode=False,
         genome_scaler = None
     ) -> torch.Tensor:
         """
         Differentiable prediction method for inverse design optimization.
         
-        This method takes latent architecture vectors and returns predicted fitness
-        values using the trained surrogate ensemble. It maintains the computation
-        graph for backpropagation through the generator.
-        
         Args:
-            z_latent: Latent architecture vectors, shape [B, z_dim], torch.Tensor
-            genome_scaler: Scaler for genome features (if None, assumes z_latent is pre-scaled)
+            z_latent: Latent vectors, shape [B, 240] (Pure Latent Architecture)
+            genome_scaler: sklearn StandardScaler fitted on the TRAINING data.
             
         Returns:
-            predicted_fitness: Tensor of shape [B, num_objectives]
+            Predicted fitness tensor of shape [B, num_objectives]
         """
         import inspect
-        from functools import partial
         
         # Ensure input is on correct device
         z_latent = z_latent.to(self.device)
         batch_size = z_latent.shape[0]
         
         # Use default inference models if not provided
-        # This would be the last trained/selected sub-surrogates
         if self.inference_models is None:
-            # Default: use first classifier and all regressors for all objectives
-            # You may want to set this based on your pipeline's sub_surrogates
             self.inference_models = [0] + list(range(len(self.models)))
         
-        cls_model_idx = self.inference_models[0]
-        reg_model_idxs = self.inference_models[1:]
-        
-        # Step 1: Scale features if scaler is provided
+        # --- DIFFERENTIABLE SCALING ---
+        # We manually apply (x - mean) / scale using torch tensors to preserve gradients.
         if genome_scaler is not None:
-            # Apply scaling - need to convert to numpy, scale, then back to torch
-            # This breaks differentiability, so we'll skip scaling if not provided
-            # For inverse design, we assume z_latent is already in the right scale
-            z_scaled = z_latent
+            # Extract mean and scale from sklearn scaler
+            # These are treated as fixed constants (buffers)
+            # Ensure they match the dimension of z_latent (240)
+            scaler_mean = torch.tensor(genome_scaler.mean_, device=self.device, dtype=torch.float32)
+            scaler_scale = torch.tensor(genome_scaler.scale_, device=self.device, dtype=torch.float32)
+            
+            # Apply scaling
+            z_scaled = (z_latent - scaler_mean) / scaler_scale
         else:
             z_scaled = z_latent
         
-        # Step 2: Classifier inference (optional - for now we'll skip and assume all valid)
-        # In the full pipeline, classifier predicts pass/fail
-        # For inverse design, we'll skip this and go straight to regression
-        # If you want to include it, you'd need a differentiable classifier forward pass
+        cls_model_idx = self.inference_models[0]
         
-        # Step 3: Regressor inference - DIFFERENTIABLE
-        # We need to run inference for each unique regressor model
+        if cls_mode:
+            # Classifier-only mode (Binary)
+            cls_dict = self.classifier_models[cls_model_idx]
+            model_class = cls_dict['model']
+            output_size = cls_dict['output_size']
+            sig = inspect.signature(model_class.__init__)
+            filtered_params = {k: v for k, v in cls_dict.items() if k in sig.parameters}
+            cls_model = model_class(output_size=output_size, **filtered_params).to(self.device)
+            
+            weights_path = f'{self.weights_dir}/{cls_dict["name"]}.pth'
+            cls_model.load_state_dict(torch.load(weights_path, map_location=self.device))
+            cls_model.eval()
+            
+            # Freeze params
+            for param in cls_model.parameters():
+                param.requires_grad = False
+            
+            # Forward pass (differentiable wrt inputs)
+            with torch.set_grad_enabled(True):
+                cls_output = cls_model(z_scaled)
+            
+            cls_probs = torch.sigmoid(cls_output)
+            cls_predictions = (cls_probs > 0.5).float()
+            return cls_predictions.squeeze(-1)
+        
+        # Regression mode
+        reg_model_idxs = self.inference_models[1:]
         unique_reg_models = list(set(reg_model_idxs))
         
-        # Create mapping from metric index to objective name
+        # Metric mapping
         col_mapping = {}
         for i, metric in enumerate(self.METRICS):
-            if metric == 'mse_uw_val_loss':
-                metric = 'mse_uw_val_epoch_loss'
+            if metric == 'mse_uw_val_loss': metric = 'mse_uw_val_epoch_loss'
             name = metric.replace('mse_', '')
             if name in list(self.objectives.keys()):
                 col_mapping[i] = name
         
-        # Initialize output tensor
         num_objectives = len(self.objectives)
         predictions = torch.zeros(batch_size, num_objectives, device=self.device)
         
-        # Run each unique regressor
+        # Run Regressors
         for model_idx in unique_reg_models:
             model_dict = self.models[model_idx]
-            
-            # Build model architecture
             model_class = model_dict['model']
             output_size = len(model_dict['metrics_subset'])
             sig = inspect.signature(model_class.__init__)
             filtered_params = {k: v for k, v in model_dict.items() if k in sig.parameters}
             model = model_class(output_size=output_size, **filtered_params).to(self.device)
             
-            # Load trained weights
             weights_path = f'{self.weights_dir}/{model_dict["name"]}.pth'
             model.load_state_dict(torch.load(weights_path, map_location=self.device))
             model.eval()
             
-            # Freeze model parameters - ensure no gradients accumulate in surrogate
+            # Freeze params
             for param in model.parameters():
                 param.requires_grad = False
             
-            # Forward pass (differentiable w.r.t. inputs only, not model params)
+            # Forward pass
             with torch.set_grad_enabled(True):
-                model_output = model(z_scaled)  # [B, output_size]
+                model_output = model(z_scaled)
             
-            # Clamp predictions to prevent extreme values
+            # Clamp for stability
             model_output = torch.clamp(model_output, min=-300, max=300)
             
-            # Map outputs to objective columns
+            # Map outputs
             metrics_subset = model_dict['metrics_subset']
             val_subset = model_dict['validation_subset']
-            
-            # Get indices in model output that correspond to validation subset
             val_col_indices = [i for i, idx in enumerate(metrics_subset) if idx in val_subset]
             
-            # Map to objective positions
             for i, col_idx in enumerate(val_col_indices):
                 metric_idx = val_subset[i]
                 if metric_idx in col_mapping:
@@ -638,17 +650,38 @@ def main():
     # reg_train_dataset = sd.SurrogateDataset(reg_train_df, mode='train')
     # cls_genome_scaler = cls_train_dataset.genomes_scaler
     # reg_genome_scaler = reg_train_dataset.genomes_scaler
+
+    # use argparse to get mode
+    parser = argparse.ArgumentParser(description="Surrogate training script")
+    parser.add_argument('--mode', type=str, default="mix_dataset", help="Mode for training")
+    # storetrue argument for downsize
+    parser.add_argument('--downsize', action='store_true', help="Whether to downsize the regressor training dataset")
+    args = parser.parse_args()
+
+    mode = args.mode
+    downsize = args.downsize
+    print("MODE:", mode, flush=True)
+    print("DOWNSIZE:", downsize, flush=True)
+
     scores_record = {}
 
     USER_ENV_VAR = os.getenv('USER', 'psomu3')
     testing_dir = f"{USER_ENV_VAR}/codestral/surrogate_training"
     # dataset_dir = "/storage/ice-shared/vip-vvk/data/AOT/surrogate_dataset"
-    dataset_dir = "/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral"
-    scores_file = os.path.join("/storage/ice-shared/vip-vvk/data/AOT/", testing_dir, f"scores_base.txt")
-    cls_train_df = pd.read_pickle(os.path.join(dataset_dir, f'codestral_cls_train.pkl'))
-    cls_val_df = pd.read_pickle(os.path.join(dataset_dir, f'codestral_cls_val.pkl'))
-    reg_train_df = pd.read_pickle(os.path.join(dataset_dir, f'normal_reg_train.pkl'))
-    reg_val_df = pd.read_pickle(os.path.join(dataset_dir, f'normal_reg_val.pkl'))
+    dataset_dir = "/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/large_dataset"
+    scores_file = os.path.join("/storage/ice-shared/vip-vvk/data/AOT/", testing_dir, f"scores_{mode}_small.txt")
+    cls_train_path = os.path.join(dataset_dir, f'{mode}_cls_train.pkl')
+    if os.path.exists(cls_train_path):
+        cls_train_df = pd.read_pickle(cls_train_path)
+    else:
+        cls_train_path = os.path.join(dataset_dir, f'mix_dataset_cls_train.pkl')
+    cls_val_path = os.path.join(dataset_dir, f'{mode}_cls_val.pkl')
+    if os.path.exists(cls_val_path):
+        cls_val_df = pd.read_pickle(cls_val_path)
+    else:
+        cls_val_path = os.path.join(dataset_dir, f'mix_dataset_cls_val.pkl')
+    reg_train_df = pd.read_pickle(os.path.join(dataset_dir, f'{mode}_reg_train.pkl'))
+    reg_val_df = pd.read_pickle(os.path.join(dataset_dir, f'{mode}_reg_val.pkl'))
     # cls_train_df = pd.read_pickle("/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/temp_surrogate_datasets/surr_evolution_cls_train.pkl")
     # cls_val_df = pd.read_pickle("/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/temp_surrogate_datasets/surr_evolution_cls_val.pkl")
     # reg_train_df = pd.read_pickle("/storage/ice-shared/vip-vvk/data/AOT/psomu3/full_vae_30/temp_surrogate_datasets/surr_evolution_reg_train.pkl")
@@ -657,9 +690,16 @@ def main():
         os.mkdir(os.path.join(repo_dir, testing_dir))
     if not os.path.exists(os.path.join(repo_dir, testing_dir, 'surrogate_weights')):
         os.mkdir(os.path.join(repo_dir, testing_dir, 'surrogate_weights'))
-    for i in range(30):
+    for i in range(10):
         surrogate = Surrogate('conf.toml', os.path.join(repo_dir, os.path.join(testing_dir, 'surrogate_weights')))
-        scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df, reg_lambda=0)
+        if downsize:
+            # randomly throw out 97.5% of reg_train_df to simulate smaller dataset
+            reg_train_df_small = reg_train_df.sample(frac=0.025, random_state=42).reset_index(drop=True)
+            print(f"TRAINING SURROGATE ITERATION {i+1}/10 WITH {len(reg_train_df_small)} REG TRAIN SAMPLES")
+            scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df_small, reg_val_df, reg_lambda=0, train_cls=True)
+        else:
+            print(f"TRAINING SURROGATE ITERATION {i+1}/10 WITH {len(reg_train_df)} REG TRAIN SAMPLES")
+            scores, cls_genome_scaler, reg_genome_scaler = surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df, reg_lambda=0, train_cls=True)
         print("SAVING SCORES TO", scores_file)
         with open(scores_file, 'a') as f:
             json.dump(scores, f)
