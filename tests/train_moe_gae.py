@@ -4,10 +4,12 @@ Train MoE Grammar AE on mix_dataset_reg files and save latent representations.
 This script:
 1. Loads train and validation datasets from mix_dataset_reg_{train,val}.pkl
 2. Creates "Block-Expanded" versions of these datasets (rows with 68-vectors instead of 1021)
+   - BALANCED with padding blocks (ratio=0.1) for training stability.
 3. Trains the MoEGrammarAE on the block data
 4. Applies the trained AE to encode the datasets in two ways:
    a. Block-wise encoding (saving to moe_block_mix_dataset_reg_{train,val}.pkl)
    b. Full 1021 global encoding (saving to moe_global_mix_dataset_reg_{train,val}.pkl)
+      - NOTE: Global encoding is now 240-dim (15x16) pure latents. No Epoch/Length.
 """
 
 import os
@@ -22,20 +24,22 @@ from tqdm import tqdm
 import pandas as pd
 import argparse
 
-from surrogates.gae_unvectorized import (
+# Import the updated unvectorized AE
+from surrogates.gae import (
     MoEGrammarAE, 
     grammar_loss_function, 
     preprocess_encoding,
     expand_dataframe_to_blocks,
     get_latent_representation,
     weights_init,
-    collapse_to_physical
+    collapse_to_physical,
+    reconstruct_samples # Use the AE's reconstruct_samples for consistent logic
 )
 
 # Constants
 LATENT_DIM = 16 
 INPUT_DIM = 68
-NUM_EXPERTS = 54
+NUM_EXPERTS = 55 # Updated to 55 (54 Real + 1 Padding)
 PARAM_DIM = 14
 
 def train_ae(ae, train_loader, val_loader, epochs=200, lr=1e-3, device=None, alpha_type=1.0, alpha_param=1.0, alpha_reg=0.1):
@@ -55,9 +59,9 @@ def train_ae(ae, train_loader, val_loader, epochs=200, lr=1e-3, device=None, alp
             # raw_encoding_batch: [B, 1021]
             raw_encoding_batch = raw_encoding_batch.to(device)
             
-            # 1. Preprocess
-            epochs_batch, blocks = preprocess_encoding(raw_encoding_batch)
-            # blocks: [B, 15, 68]
+            # 1. Preprocess (Handles Padding Logic internally now)
+            # Returns blocks [B, 15, 68] with zeros preserved
+            blocks = preprocess_encoding(raw_encoding_batch)
             
             optimizer.zero_grad()
             
@@ -86,13 +90,10 @@ def train_ae(ae, train_loader, val_loader, epochs=200, lr=1e-3, device=None, alp
             for raw_encoding_batch, _ in val_loader:
                 raw_encoding_batch = raw_encoding_batch.to(device)
                 
-                # Preprocess
-                epochs_batch, blocks = preprocess_encoding(raw_encoding_batch)
+                blocks = preprocess_encoding(raw_encoding_batch)
                 
-                # Forward
                 recon_types, recon_params, z = ae(blocks)
                 
-                # Loss
                 loss = grammar_loss_function(recon_types, recon_params, blocks,
                                             alpha_type=alpha_type,
                                             alpha_param=alpha_param,
@@ -153,9 +154,10 @@ def prepare_dataloaders(train_df, val_df, batch_size=16):
     return train_loader, val_loader
 
 def prepare_block_dataframe(df):
-    """Wrapper to expand DF to blocks."""
-    print("Expanding DataFrame to 68-vector blocks...")
-    return expand_dataframe_to_blocks(df)
+    """Wrapper to expand DF to blocks with Padding Balancing."""
+    print("Expanding DataFrame to 68-vector blocks (Balanced with Padding)...")
+    # Using padding_ratio=0.1 as per strategy to teach Void Cluster
+    return expand_dataframe_to_blocks(df, padding_ratio=0.1)
 
 def save_transformed_datasets(ae, train_df, val_df, 
                             train_block_out, val_block_out,
@@ -166,7 +168,11 @@ def save_transformed_datasets(ae, train_df, val_df,
     # 1. Block-Level Encoding (Applies AE on 68-vectors)
     print("\n--- Generating Block-Level Encodings ---")
     
-    # Expand to blocks first
+    # Expand to blocks first (This creates the balanced dataset)
+    # Note: For encoding the DATASET, we probably want all blocks?
+    # Actually, for Flow training later, we usually rely on Global Encodings.
+    # The 'block' dataset here is mostly for analysis or debugging.
+    # Let's keep the balancing logic for consistency with training distribution.
     train_df_blocks = prepare_block_dataframe(train_df)
     val_df_blocks = prepare_block_dataframe(val_df)
     
@@ -190,7 +196,7 @@ def save_transformed_datasets(ae, train_df, val_df,
     print("\n--- Generating Global Encodings (1021 -> Global Latent) ---")
     
     print("Encoding Train Global...")
-    # use_full_encoding=True triggers the 1021-vector logic
+    # use_full_encoding=True triggers the 1021-vector logic (Returns 240-dim latents)
     train_global_encoded = get_latent_representation(ae, train_df, device=device, use_full_encoding=True)
     
     print("Encoding Val Global...")
@@ -207,18 +213,9 @@ def save_transformed_datasets(ae, train_df, val_df,
 def reconstruct_from_model(ae, raw_encoding, device):
     """
     Reconstruct a 1021-vector through the autoencoder.
-    
-    Args:
-        ae: Trained MoEGrammarAE model
-        raw_encoding: Tensor of shape [B, 1021] or [1021]
-        device: torch device
-        
-    Returns:
-        reconstructed: Tensor of shape [B, 1021] or [1021] (reconstructed encoding)
     """
     ae.eval()
     
-    # Handle single sample
     if raw_encoding.dim() == 1:
         raw_encoding = raw_encoding.unsqueeze(0)
         single_sample = True
@@ -228,43 +225,26 @@ def reconstruct_from_model(ae, raw_encoding, device):
     raw_encoding = raw_encoding.to(device)
     
     with torch.no_grad():
-        # Preprocess to blocks
-        epochs_batch, blocks = preprocess_encoding(raw_encoding)
-        # blocks: [B, 15, 68]
+        # Call the AE's reconstruct_samples directly
+        # It handles preprocess -> encode -> decode -> collapse -> flatten
+        reconstructed_blocks, _ = reconstruct_samples(ae, raw_encoding, device=device, is_1021=True)
         
-        # Forward pass
-        # recon_types: [B, 15, 54] (Logits)
-        # param_stack: [B, 15, 54, 14] (All experts)
-        # z: [B, 15, latent_dim]
-        recon_types, param_stack, z = ae(blocks)
+        # reconstruct_samples returns [B, 15, 68] numpy
+        # We need to flatten back to 1021 format for comparison
+        # Original: [Epoch, Flattened(15x68)]
         
-        # CRITICAL FIX: Collapse MoE stack to physical representation
-        # physical_blocks: [B, 15, 68]
-        physical_blocks = collapse_to_physical(recon_types, param_stack)
+        rec_tensor = torch.from_numpy(reconstructed_blocks).to(device)
+        batch_size = rec_tensor.shape[0]
         
-        # MASKING Logic (Ghost Layer Strategy)
-        # We must zero out blocks that correspond to zero-inputs to match 1021 format
-        # Check original blocks for zeros
-        is_valid = ~torch.all(torch.abs(blocks) < 1e-6, dim=2) # [B, 15]
-        mask = is_valid.float().unsqueeze(2) # [B, 15, 1]
+        # Reshape to 1020
+        # Blocks are [B, 15, 68]. Codec format is Column-Major of (68, 15).
+        # We transpose to (B, 68, 15) then flatten.
+        flat_genome = rec_tensor.transpose(1, 2).reshape(batch_size, -1) # [B, 1020]
         
-        physical_blocks = physical_blocks * mask
+        # Get original Epochs to prepend
+        epochs = raw_encoding[:, 0:1]
         
-        # Reconstruct the 1021 vector
-        batch_size = physical_blocks.shape[0]
-        reconstructed = torch.zeros(batch_size, 1021, device=device)
-        
-        # First element is epoch count
-        reconstructed[:, 0] = epochs_batch.squeeze(1)
-        
-        # For each block (15 blocks)
-        # We flatten the (B, 15, 68) back to (B, 1020)
-        # Note: The Codec format is Column-Major flattening of (68, 15)
-        # blocks is (B, 15, 68). Transpose to (B, 68, 15) then flatten.
-        
-        flat_genome = physical_blocks.transpose(1, 2).reshape(batch_size, -1) # [B, 1020]
-        
-        reconstructed[:, 1:] = flat_genome
+        reconstructed = torch.cat([epochs, flat_genome], dim=1)
     
     if single_sample:
         return reconstructed.squeeze(0)
@@ -308,38 +288,40 @@ def visualize_reconstruction(model_path, val_path, num_samples=5, device=None):
     for idx, sample_idx in enumerate(sample_indices):
         original = torch.from_numpy(val_df['genome'].iloc[sample_idx]).float()
         
-        # Pass to reconstruct_from_model (it handles device internally, but input should be on CPU initially)
+        # Pass to reconstruct_from_model
         reconstructed = reconstruct_from_model(ae, original, device).cpu()
         
-        # Calculate metrics
-        mse = torch.mean((original - reconstructed) ** 2).item()
-        mae = torch.mean(torch.abs(original - reconstructed)).item()
+        # Calculate metrics (Skip epoch index 0)
+        orig_arch = original[1:]
+        rec_arch = reconstructed[1:]
+        
+        mse = torch.mean((orig_arch - rec_arch) ** 2).item()
+        mae = torch.mean(torch.abs(orig_arch - rec_arch)).item()
         
         print(f"\n--- Sample {idx + 1} (Dataset Index: {sample_idx}) ---")
         print(f"MSE: {mse:.6f}")
         print(f"MAE: {mae:.6f}")
         
         # Show first 20 and last 20 elements for comparison
-        print(f"\nFirst 20 elements:")
-        print(f"  Original:      {original.numpy()}")
-        print(f"  Reconstructed: {reconstructed.numpy()}")
+        print(f"\nFirst 20 elements (Architecture):")
+        print(f"  Original:      {orig_arch.numpy()}")
+        print(f"  Reconstructed: {rec_arch.numpy()}")
         
         # Show comparison of random non-zero block
-        # Find index where original is non-zero
-        non_zero_indices = torch.nonzero(original[1:]).squeeze()
+        non_zero_indices = torch.nonzero(orig_arch).squeeze()
         if len(non_zero_indices) > 0:
-            rand_idx = non_zero_indices[torch.randint(0, len(non_zero_indices), (1,)).item()] + 1
+            rand_idx = non_zero_indices[torch.randint(0, len(non_zero_indices), (1,)).item()]
             print(f"\nRandom Active Element [{rand_idx}]:")
-            print(f"  Original:      {original[rand_idx].item():.6f}")
-            print(f"  Reconstructed: {reconstructed[rand_idx].item():.6f}")
+            print(f"  Original:      {orig_arch[rand_idx].item():.6f}")
+            print(f"  Reconstructed: {rec_arch[rand_idx].item():.6f}")
 
         
         # Show max absolute difference
-        max_diff_idx = torch.argmax(torch.abs(original - reconstructed))
-        max_diff = (original - reconstructed)[max_diff_idx].item()
+        max_diff_idx = torch.argmax(torch.abs(orig_arch - rec_arch))
+        max_diff = (orig_arch - rec_arch)[max_diff_idx].item()
         print(f"\nMax absolute difference: {abs(max_diff):.6f} at index {max_diff_idx}")
-        print(f"  Original[{max_diff_idx}]: {original[max_diff_idx].item():.6f}")
-        print(f"  Reconstructed[{max_diff_idx}]: {reconstructed[max_diff_idx].item():.6f}")
+        print(f"  Original[{max_diff_idx}]: {orig_arch[max_diff_idx].item():.6f}")
+        print(f"  Reconstructed[{max_diff_idx}]: {rec_arch[max_diff_idx].item():.6f}")
         print(f"{'-'*80}")
     
     print(f"\n{'='*80}")
@@ -362,7 +344,7 @@ def train_and_process(train_path, val_path,
     # Load data
     train_df, val_df = load_data(train_path, val_path)
     
-    # Prepare dataloaders (Using raw 1021 vectors, loop handles preprocessing)
+    # Prepare dataloaders
     train_loader, val_loader = prepare_dataloaders(train_df, val_df, batch_size=batch_size)
     
     # Initialize MoE AE
@@ -402,7 +384,7 @@ def main():
                         help='Number of samples to visualize (default: 5)')
     parser.add_argument('--batch_size', type=int, default=32,
                         help='Batch size for training')
-    parser.add_argument('--epochs', type=int, default=200,
+    parser.add_argument('--epochs', type=int, default=30,
                         help='Number of training epochs')
     parser.add_argument('--learning_rate', type=float, default=1e-4,
                         help='Learning rate')
@@ -439,12 +421,12 @@ def main():
         val_path = os.path.join(data_dir, "mix_dataset_reg_val.pkl")
         
         # Outputs for Block-Level Encodings
-        train_block_out = os.path.join(data_dir, f"moe_{LATENT_DIM}_block_mix_dataset_reg_train.pkl")
-        val_block_out = os.path.join(data_dir, f"moe_{LATENT_DIM}_block_mix_dataset_reg_val.pkl")
+        train_block_out = os.path.join(data_dir, f"moe_new_{LATENT_DIM}_block_mix_dataset_reg_train.pkl")
+        val_block_out = os.path.join(data_dir, f"moe_new_{LATENT_DIM}_block_mix_dataset_reg_val.pkl")
         
         # Outputs for Global Encodings
-        train_global_out = os.path.join(data_dir, f"moe_{LATENT_DIM}_global_mix_dataset_reg_train.pkl")
-        val_global_out = os.path.join(data_dir, f"moe_{LATENT_DIM}_global_mix_dataset_reg_val.pkl")
+        train_global_out = os.path.join(data_dir, f"moe_new_{LATENT_DIM}_global_mix_dataset_reg_train.pkl")
+        val_global_out = os.path.join(data_dir, f"moe_new_{LATENT_DIM}_global_mix_dataset_reg_val.pkl")
         
         model_path = os.path.join(data_dir, "moe_ae_model.pt")
         
