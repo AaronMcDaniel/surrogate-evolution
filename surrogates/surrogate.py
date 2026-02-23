@@ -9,6 +9,7 @@ import inspect
 import itertools
 
 from sklearn.metrics import accuracy_score
+from config_compat import load_config_with_compat
 from codec import Codec
 from deap import creator, gp, base, tools
 import numpy as np
@@ -17,7 +18,6 @@ from primitive_tree import CustomPrimitiveTree
 import primitives
 from surrogates import surrogate_models as sm
 from surrogates import transformer
-import toml
 import torch
 import torch.optim as optim
 from sklearn.preprocessing import StandardScaler
@@ -55,12 +55,16 @@ def ensure_deap_classes(objectives, codec_config):
 
 class Surrogate():
     def __init__(self, config_dir, weights_dir): # this config is the overall config, not just the surrogate specific one
-        configs = toml.load(config_dir)
+        configs = load_config_with_compat(config_dir)
         surrogate_config = configs["surrogate"]
         self.surrogate_config = surrogate_config
         pipeline_config = configs["pipeline"]
         codec_config = configs["codec"]
         model_config = configs["model"]
+        # Phase-1 compatibility metadata (not yet used in execution flow).
+        self.databases_cfg = configs["databases"]
+        self.surrogate_sets_cfg = configs["surrogate_sets"]
+        self.test_matrix_cfg = configs["test_matrix"]
         self.models = [ # these are the regressor models but are simply called 'models' for compatibility reasons with the pipeline
             # {
             #     'name': 'transformer_best_overall',

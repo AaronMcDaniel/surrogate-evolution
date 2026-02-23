@@ -13,13 +13,13 @@ import shutil
 import subprocess
 import time
 import numpy as np
-import toml
 import os
 
 import pandas as pd
 from deap import creator, gp, base, tools
 
 import primitives
+from config_compat import load_config_with_compat
 from codec import Codec
 from surrogates.surrogate import Surrogate
 from primitive_tree import CustomPrimitiveTree
@@ -99,11 +99,15 @@ class Pipeline:
             shutil.copy(config_dir, output_dir)
 
         # Begin by loading config attributes
-        configs = toml.load(config_dir)
+        configs = load_config_with_compat(config_dir)
         pipeline_config = configs["pipeline"]
         codec_config = configs["codec"]
         surrogate_config = configs["surrogate"]
         self.surrogate_config = surrogate_config
+        # Phase-1 compatibility metadata (not yet used in execution flow).
+        self.databases_cfg = configs["databases"]
+        self.surrogate_sets_cfg = configs["surrogate_sets"]
+        self.test_matrix_cfg = configs["test_matrix"]
 
         self.initial_population_size = pipeline_config['initial_population_size']
         self.population_size = pipeline_config['population_size']

@@ -106,3 +106,28 @@ cache_thresh = 1
 # size of the dataset
 max_size = 1000
 
+# --------------------------------------------------------------------
+# Phase 1 modular testing schema (backward compatible)
+# --------------------------------------------------------------------
+# NOTE:
+# - Legacy sections ([pipeline], [surrogate], etc.) are still used by runtime.
+# - These sections are added to support a gradual migration to multi-database,
+#   multi-surrogate-set orchestration in later phases.
+
+[databases.legacy_aot]
+enabled = true
+dataset_kind = "aot_legacy"
+source = "legacy_sections"
+description = "Compatibility database entry mapped from legacy config usage."
+
+[surrogate_sets.legacy_default]
+enabled = true
+source = "legacy_surrogate_section"
+description = "Compatibility surrogate set mapped from [surrogate] section."
+
+[[test_matrix]]
+enabled = true
+task = "evolution_surrogate"
+database = "legacy_aot"
+surrogate_set = "legacy_default"
+description = "Compatibility matrix row preserving existing behavior."
