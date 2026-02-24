@@ -261,6 +261,9 @@ class Surrogate():
                 'grid_size': 1
             }
         ]
+        self._legacy_regressor_models = copy.deepcopy(self.models)
+        self._legacy_classifier_models = copy.deepcopy(self.classifier_models)
+        self.active_surrogate_set_name = None
         self.inference_models = None
         self.trust_calc_strategy = surrogate_config["trust_calc_strategy"]
         self.trust_calc_ratio = surrogate_config["trust_calc_ratio"]
@@ -281,6 +284,44 @@ class Surrogate():
         
         ensure_deap_classes(self.objectives, codec_config)
         self.toolbox = base.Toolbox()
+        self.activate_surrogate_set(self._get_default_surrogate_set_name())
+    
+    def _get_default_surrogate_set_name(self):
+        for row in self.test_matrix_cfg:
+            if not row.get('enabled', True):
+                continue
+            if row.get('task', 'evolution_surrogate') != 'evolution_surrogate':
+                continue
+            if 'surrogate_set' in row:
+                return row['surrogate_set']
+        if self.surrogate_sets_cfg:
+            return next(iter(self.surrogate_sets_cfg.keys()))
+        return "legacy_default"
+
+
+    def activate_surrogate_set(self, surrogate_set_name, surrogate_set_cfg=None):
+        if surrogate_set_cfg is None:
+            surrogate_set_cfg = self.surrogate_sets_cfg.get(surrogate_set_name, {})
+
+        regressor_models = surrogate_set_cfg.get('regressor_models')
+        classifier_models = surrogate_set_cfg.get('classifier_models')
+
+        # compatibility path: no explicit model definitions yet, use legacy hardcoded set
+        if regressor_models is None and classifier_models is None:
+            self.models = copy.deepcopy(self._legacy_regressor_models)
+            self.classifier_models = copy.deepcopy(self._legacy_classifier_models)
+            self.active_surrogate_set_name = surrogate_set_name
+            return
+
+        if regressor_models is None or classifier_models is None:
+            raise ValueError(
+                f"Surrogate set '{surrogate_set_name}' must define both "
+                f"'regressor_models' and 'classifier_models'."
+            )
+
+        self.models = copy.deepcopy(regressor_models)
+        self.classifier_models = copy.deepcopy(classifier_models)
+        self.active_surrogate_set_name = surrogate_set_name
     
     
     # This function converts string representations of genomes from a file like out.csv into deap individuals

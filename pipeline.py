@@ -154,6 +154,8 @@ class Pipeline:
         self.hof_history = {} # dict keeping track of hall of fame through generations
         self.codec = Codec(0, genome_encoding_strat=codec_config['genome_encoding_strat']) # only used for getting hash, so initialization values don't matter
         self.surrogate = Surrogate(config_dir, self.surrogate_weights_dir) # Surrogate class to be defined
+        self.active_matrix_row = None
+        self.active_surrogate_weights_dir = self.surrogate_weights_dir
         self.reg_genome_scaler = None # scaler used to transform genomes on regression training and inference
         self.cls_genome_scaler = None # scaler used to transform genomes on classification training and inference
         self.sub_surrogates = [0] * (len(self.objectives) + 1) # list of sub-surrogate indices to use
@@ -379,19 +381,41 @@ class Pipeline:
 
 
     def add_metrics_to_dfs(self, output_dict):
+        self.add_metrics_to_dfs_with_context(output_dict)
+
+
+    def add_metrics_to_dfs_with_context(self, output_dict, database_name=None, surrogate_set_name=None):
         classifier_columns = ['gen', 'model'] + list(next(iter(output_dict['classifiers'].values())).keys())
         regressor_columns = ['gen', 'model'] + list(next(iter(output_dict['regressors'].values())).keys())
+        if database_name is not None:
+            classifier_columns = ['database'] + classifier_columns
+            regressor_columns = ['database'] + regressor_columns
+        if surrogate_set_name is not None:
+            classifier_columns = ['surrogate_set'] + classifier_columns
+            regressor_columns = ['surrogate_set'] + regressor_columns
         classifiers_df = pd.DataFrame(columns=classifier_columns)
         regressors_df = pd.DataFrame(columns=regressor_columns)
         for model_name, metrics in output_dict['classifiers'].items():
             row = {'gen': self.gen_count, 'model': model_name, **metrics}
+            if database_name is not None:
+                row['database'] = database_name
+            if surrogate_set_name is not None:
+                row['surrogate_set'] = surrogate_set_name
             classifiers_df.loc[len(classifiers_df)] = row
         for model_name, metrics in output_dict['regressors'].items():
             row = {'gen': self.gen_count, 'model': model_name, **metrics}
+            if database_name is not None:
+                row['database'] = database_name
+            if surrogate_set_name is not None:
+                row['surrogate_set'] = surrogate_set_name
             regressors_df.loc[len(regressors_df)] = row
         
         selected_surr_dict = {}
         selected_surr_dict['gen'] = self.gen_count
+        if database_name is not None:
+            selected_surr_dict['database'] = database_name
+        if surrogate_set_name is not None:
+            selected_surr_dict['surrogate_set'] = surrogate_set_name
         selected_surr_dict['cls_model'] = list(output_dict['classifiers'].keys())[self.sub_surrogates[0]]
         reg_dicts = list(output_dict['regressors'].keys())
         for i, model_idx in enumerate(self.sub_surrogates[1:]):
@@ -408,6 +432,123 @@ class Pipeline:
         print(self.selected_surrogate_data)
 
 
+    def resolve_database_cfg(self, database_name):
+        if database_name not in self.databases_cfg:
+            raise ValueError(f"Database '{database_name}' not found in config [databases].")
+        return self.databases_cfg[database_name]
+
+
+    def resolve_surrogate_set_cfg(self, surrogate_set_name):
+        if surrogate_set_name not in self.surrogate_sets_cfg:
+            raise ValueError(f"Surrogate set '{surrogate_set_name}' not found in config [surrogate_sets].")
+        return self.surrogate_sets_cfg[surrogate_set_name]
+
+
+    def resolve_matrix_rows(self, task='evolution_surrogate'):
+        rows = []
+        for row in self.test_matrix_cfg:
+            if not row.get('enabled', True):
+                continue
+            if row.get('task', 'evolution_surrogate') != task:
+                continue
+            if 'database' not in row or 'surrogate_set' not in row:
+                raise ValueError("Each enabled [test_matrix] row must define 'database' and 'surrogate_set'.")
+            self.resolve_database_cfg(row['database'])
+            self.resolve_surrogate_set_cfg(row['surrogate_set'])
+            rows.append(row)
+        if not rows:
+            raise ValueError(f"No enabled test_matrix rows found for task '{task}'.")
+        return rows
+
+
+    def _build_surrogate_datasets(self, database_name, database_cfg, name):
+        seen_gens = list(range(1, self.gen_count))
+        dataset_kind = database_cfg.get('dataset_kind', 'aot_legacy')
+        if dataset_kind != 'aot_legacy':
+            raise ValueError(f"Unsupported dataset_kind '{dataset_kind}' for database '{database_name}' in phase 2.")
+
+        row_temp_dataset_path = os.path.join(self.surrogate_temp_dataset_path, name)
+        os.makedirs(row_temp_dataset_path, exist_ok=True)
+
+        if self.gen_count == 2:
+            build_dataset(name, self.holy_grail_file, self.output_dir, row_temp_dataset_path, val_ratio=0.2, include_only=[1])
+            reg_train_df = pd.read_pickle(f'{row_temp_dataset_path}/{name}_reg_train.pkl')
+            reg_val_df = pd.read_pickle(f'{row_temp_dataset_path}/{name}_reg_val.pkl')
+            cls_train_df = pd.read_pickle(f'{row_temp_dataset_path}/{name}_cls_train.pkl')
+            cls_val_df = pd.read_pickle(f'{row_temp_dataset_path}/{name}_cls_val.pkl')
+        elif self.gen_count < 7:
+            build_dataset(name, self.holy_grail_file, self.output_dir, row_temp_dataset_path, val_ratio=0, include_only=[1])
+            reg_train_df = pd.read_pickle(f'{row_temp_dataset_path}/{name}_reg_train.pkl')
+            cls_train_df = pd.read_pickle(f'{row_temp_dataset_path}/{name}_cls_train.pkl')
+            build_dataset(name, self.holy_grail_file, self.output_dir, row_temp_dataset_path, val_ratio=1, include_only=seen_gens[1:])
+            reg_val_df = pd.read_pickle(f'{row_temp_dataset_path}/{name}_reg_val.pkl')
+            cls_val_df = pd.read_pickle(f'{row_temp_dataset_path}/{name}_cls_val.pkl')
+        else:
+            build_dataset(name, self.holy_grail_file, self.output_dir, row_temp_dataset_path, val_ratio=0, include_only=seen_gens[:-5])
+            reg_train_df = pd.read_pickle(f'{row_temp_dataset_path}/{name}_reg_train.pkl')
+            cls_train_df = pd.read_pickle(f'{row_temp_dataset_path}/{name}_cls_train.pkl')
+            build_dataset(name, self.holy_grail_file, self.output_dir, row_temp_dataset_path, val_ratio=1, include_only=seen_gens[-5:])
+            reg_val_df = pd.read_pickle(f'{row_temp_dataset_path}/{name}_reg_val.pkl')
+            cls_val_df = pd.read_pickle(f'{row_temp_dataset_path}/{name}_cls_val.pkl')
+
+        reg_train_df = pd.concat([reg_train_df, self.reg_surrogate_pretrained_data], axis=0)
+        cls_train_df = pd.concat([cls_train_df, self.cls_surrogate_pretrained_data], axis=0)
+
+        return cls_train_df, cls_val_df, reg_train_df, reg_val_df
+
+
+    def _train_surrogate_row(self, cls_train_df, cls_val_df, reg_train_df, reg_val_df, database_name, surrogate_set_name):
+        print('++++++++++++++++++++++++')
+        print('reg train size:', reg_train_df.shape)
+        print('reg val size:', reg_val_df.shape)
+        print('cls train size:', cls_train_df.shape)
+        print('cls val size:', cls_val_df.shape)
+        print('++++++++++++++++++++++++')
+
+        if len(reg_val_df) < self.surrogate_config['surrogate_batch_size']*self.surrogate_config['min_batch_in_val_data']:
+            print('    ----Warning: not enough valid data for regressors... skipping surrogate preparation----')
+            return None
+
+        scores, cls_genome_scaler, reg_genome_scaler = self.surrogate.train(
+            cls_train_df,
+            cls_val_df,
+            reg_train_df,
+            reg_val_df,
+            train_reg=True
+        )
+
+        sub_surrogates = []
+        cls_trust = 0
+        max_cls_model = ''
+        for key, val in scores['classifiers'].items():
+            if val['acc'] > cls_trust:
+                cls_trust = val['acc']
+                max_cls_model = key
+        cls_to_dict = {d['name']: d for d in self.surrogate.classifier_models}
+        max_cls_model_idx = list(cls_to_dict.keys()).index(max_cls_model)
+        sub_surrogates.append(max_cls_model_idx)
+
+        if self.sub_surrogate_sel_strat == 'trust':
+            result = self.surrogate.optimize_trust(cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
+            reg_trust = result[0]
+            sub_surrogates += result[1]
+        else:
+            reg_indices = self.get_reg_indices(scores)
+            sub_surrogates.extend(reg_indices)
+            cls_trust, reg_trust = self.surrogate.calc_trust(sub_surrogates, cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
+
+        self.sub_surrogates = sub_surrogates
+        self.surrogate.cls_trust, self.surrogate.reg_trust = cls_trust, reg_trust
+        self.add_metrics_to_dfs_with_context(scores, database_name=database_name, surrogate_set_name=surrogate_set_name)
+
+        return {
+            'scores': scores,
+            'sub_surrogates': sub_surrogates,
+            'cls_trust': cls_trust,
+            'reg_trust': reg_trust,
+            'cls_genome_scaler': cls_genome_scaler,
+            'reg_genome_scaler': reg_genome_scaler,
+        }
 
     def select_parents(self, selection_pool):
         print('Selecting parents...')
@@ -482,106 +623,78 @@ class Pipeline:
     # trains the surrogate (all sub-surrogates) and gets eval scores which are used to calculate a trustworthiness
     # surrogate weights are stored to be used for inference when downselecting
     def prepare_surrogate(self):
-        seen_gens = list(range(1, self.gen_count))
         if self.gen_count == 1:
             return None
         print('    Building surrogate train and val datasets...')
-        # implement growing sliding window till gen 7 (then use prev 5 gens as val and everything before that as train)
-        name = 'surr_evolution'
-        if self.gen_count == 2: # use train val split from gen 1 at gen 2
-            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0.2, include_only=[1])
-            reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
-            reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
-            # reg_subset_val_df = reg_val_df
-            cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
-            cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
-            # cls_subset_val_df = cls_val_df
-        elif self.gen_count < 7: # grows here
-            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=[1])
-            reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
-            cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
-            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[1:])
-            reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
-            cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
-            # build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
-            # reg_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
-            # cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
-        else: # slides here
-            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=0, include_only=seen_gens[:-5])
-            reg_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_train.pkl')
-            cls_train_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_train.pkl')
-            build_dataset(name, self.holy_grail_file, self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-5:])
-            reg_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
-            cls_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
-            # build_dataset(name, os.path.join(self.output_dir, 'out.csv'), self.output_dir, self.surrogate_temp_dataset_path, val_ratio=1, include_only=seen_gens[-1:])
-            # reg_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_reg_val.pkl')
-            # cls_subset_val_df = pd.read_pickle(f'{self.surrogate_temp_dataset_path}/{name}_cls_val.pkl')
-            
+        rows = self.resolve_matrix_rows(task='evolution_surrogate')
+        active_row = rows[0]
+        self.active_matrix_row = active_row
+        all_row_scores = []
+        active_row_ready = False
+        active_weights_dir = self.surrogate_weights_dir
 
-        # concatenate online datasets wit pretrained datasets
-        reg_train_df = pd.concat([reg_train_df, self.reg_surrogate_pretrained_data], axis=0)
-        cls_train_df = pd.concat([cls_train_df, self.cls_surrogate_pretrained_data], axis=0)
-        
-        print('++++++++++++++++++++++++')
-        print('reg train size:', reg_train_df.shape)
-        print('reg val size:', reg_val_df.shape)
-        print('cls train size:', cls_train_df.shape)
-        print('cls val size:', cls_val_df.shape)
-        print('++++++++++++++++++++++++')
-        
-        # check if there's enough data to train regressors
-        train_reg = True
-        if len(reg_val_df) < self.surrogate_config['surrogate_batch_size']*self.surrogate_config['min_batch_in_val_data']:
-            train_reg = False
-            print('----Warning: not enough valid data for regressors... skipping surrogate preparation----')
-        #first call train function and receive the scores, then find the best model for each objective plus cls, then calculate their trust
-        print('    Training surrogate ensemble...')
-        if len(reg_val_df) < self.surrogate_config['surrogate_batch_size']*self.surrogate_config['min_batch_in_val_data']:
-            print('    ----Warning: not enough valid data for regressors... skipping surrogate preparation----')
-            return None
-        # print(f'     Regression validation data shape: {reg_val_df.shape}      {reg_val_df.head()}')
-        scores, cls_genome_scaler, reg_genome_scaler = self.surrogate.train(cls_train_df, cls_val_df, reg_train_df, reg_val_df, train_reg=train_reg)
-            
-        print('    Selecting best sub-surrogates...')
-        sub_surrogates = []
-        # finding best classifier
-        cls_trust = 0
-        max_cls_model = ''
-        for key, val in scores['classifiers'].items():
-            if val['acc'] > cls_trust:
-                cls_trust = val['acc']
-                max_cls_model = key
-        cls_to_dict = {d['name']: d for d in self.surrogate.classifier_models}
-        max_cls_model_idx = list(cls_to_dict.keys()).index(max_cls_model)
-        sub_surrogates.append(max_cls_model_idx)
-        # print(f'    Selected {max_cls_model} as classifier')
-        
-        if train_reg:
-            if self.sub_surrogate_sel_strat == 'trust':
-                # finding best regressor
-                result = self.surrogate.optimize_trust(cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
-                reg_trust = result[0]
-                sub_surrogates += result[1]
+        for row in rows:
+            database_name = row['database']
+            surrogate_set_name = row['surrogate_set']
+            database_cfg = self.resolve_database_cfg(database_name)
+            surrogate_set_cfg = self.resolve_surrogate_set_cfg(surrogate_set_name)
+            row_name = f"surr_evolution__{database_name}__{surrogate_set_name}"
+
+            print(f"    Preparing matrix row database={database_name}, surrogate_set={surrogate_set_name}...")
+            self.surrogate.activate_surrogate_set(surrogate_set_name, surrogate_set_cfg)
+            cls_train_df, cls_val_df, reg_train_df, reg_val_df = self._build_surrogate_datasets(database_name, database_cfg, row_name)
+
+            if row is active_row:
+                row_weights_dir = self.surrogate_weights_dir
             else:
-                #get my model indices, tack on cls in front, pass to calc trust to get my own trusts, pass below
-                reg_indices = self.get_reg_indices(scores)
-                sub_surrogates.extend(reg_indices)
-                cls_trust, reg_trust = self.surrogate.calc_trust(sub_surrogates, cls_genome_scaler, reg_genome_scaler, cls_val_df, reg_val_df)
-        else:
-            sub_surrogates.extend(self.sub_surrogates[1:])
-    
-            
-        self.cls_genome_scaler = cls_genome_scaler
-        self.reg_genome_scaler = reg_genome_scaler
-        self.surrogate.cls_trust, self.surrogate.reg_trust = cls_trust, reg_trust
-        self.sub_surrogates = sub_surrogates
+                row_weights_dir = os.path.join(self.surrogate_weights_dir, f"{database_name}__{surrogate_set_name}")
+                os.makedirs(row_weights_dir, exist_ok=True)
+            self.surrogate.weights_dir = row_weights_dir
 
-        # log trusts
-        # NOTE this should work but may need to log trusts as well
-        if scores is not None:
-                self.add_metrics_to_dfs(scores)
+            print('    Training surrogate ensemble...')
+            row_result = self._train_surrogate_row(
+                cls_train_df,
+                cls_val_df,
+                reg_train_df,
+                reg_val_df,
+                database_name=database_name,
+                surrogate_set_name=surrogate_set_name,
+            )
+            if row_result is None:
+                continue
+
+            all_row_scores.append({
+                'database': database_name,
+                'surrogate_set': surrogate_set_name,
+                'scores': row_result['scores'],
+            })
+
+            if row is active_row or not active_row_ready:
+                if not active_row_ready and row is not active_row:
+                    active_row = row
+                    self.active_matrix_row = row
+                self.cls_genome_scaler = row_result['cls_genome_scaler']
+                self.reg_genome_scaler = row_result['reg_genome_scaler']
+                self.surrogate.cls_trust = row_result['cls_trust']
+                self.surrogate.reg_trust = row_result['reg_trust']
+                self.sub_surrogates = row_result['sub_surrogates']
+                active_row_ready = True
+                active_weights_dir = row_weights_dir
+
+        if not all_row_scores:
+            print('    ----Warning: all matrix rows skipped (insufficient data).')
+            return None
+
+        # Ensure surrogate runtime state points to the selected active row.
+        active_surrogate_set_cfg = self.resolve_surrogate_set_cfg(active_row['surrogate_set'])
+        self.surrogate.activate_surrogate_set(active_row['surrogate_set'], active_surrogate_set_cfg)
+        self.surrogate.weights_dir = active_weights_dir
+        self.active_surrogate_weights_dir = active_weights_dir
+
         print('    Done!')
-        return scores
+        if len(all_row_scores) == 1:
+            return all_row_scores[0]['scores']
+        return all_row_scores
     
 
     def get_reg_indices(self, scores):
