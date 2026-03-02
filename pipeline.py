@@ -7,6 +7,7 @@ Makes calls to surrogate appropriately to train/validate and use for downselecti
 import copy
 import csv
 import hashlib
+import json
 import pickle
 import random
 import shutil
@@ -47,9 +48,8 @@ def ensure_deap_classes(objectives, codec_config):
 
     # TODO: add other cases for encoding strategy
         genome_type = gp.PrimitiveTree # default
-        match codec_config["genome_encoding_strat"].lower():
-            case "tree":
-                genome_type = gp.PrimitiveTree
+        if codec_config["genome_encoding_strat"].lower() == "tree":
+            genome_type = gp.PrimitiveTree
 
     # Check if the 'Individual' class exists, if not, create it
     if not hasattr(creator, 'Individual'):
@@ -75,6 +75,10 @@ class Pipeline:
         self.hall_of_fame_file = os.path.join(self.output_dir, 'hall_of_fame.csv')
         self.surrogate_data_file = os.path.join(self.output_dir, 'surrogate_data.csv')
         self.surrogate_data_extra_file = os.path.join(self.output_dir, 'surrogate_data_extra.csv')
+        self.surrogate_artifacts_dir = os.path.join(self.output_dir, 'surrogate_artifacts')
+        self.surrogate_matrix_rows_file = os.path.join(self.surrogate_artifacts_dir, 'matrix_rows.jsonl')
+        self.surrogate_summary_file = os.path.join(self.surrogate_artifacts_dir, 'summary.csv')
+        self.surrogate_leaderboard_file = os.path.join(self.surrogate_artifacts_dir, 'leaderboard.csv')
 
         self.latest_pop_file = os.path.join(self.checkpoint_path,'latest_pop.pkl')
         self.elites_checkpoint_file = os.path.join(self.checkpoint_path,'elites.pkl')
@@ -175,14 +179,12 @@ class Pipeline:
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
 
         # TODO: add other cases of selection_method_parents
-        match self.selection_method_parents.lower():
-            case 'nsga2':
-                self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents)
+        if self.selection_method_parents.lower() == 'nsga2':
+            self.toolbox.register("select_parents", tools.selNSGA2, k = self.num_parents)
     
         # TODO: add other cases of selection_method_elite_pool
-        match self.selection_method_elite_pool.lower():
-            case 'spea2':
-                self.toolbox.register("select_elitists", tools.selSPEA2, k = self.max_elite_pool)
+        if self.selection_method_elite_pool.lower() == 'spea2':
+            self.toolbox.register("select_elitists", tools.selSPEA2, k = self.max_elite_pool)
         
         for crossover in self.crossovers.keys():
             init, *temp = crossover.split('_')
@@ -550,6 +552,77 @@ class Pipeline:
             'reg_genome_scaler': reg_genome_scaler,
         }
 
+    def _json_default(self, obj):
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
+    def _summarize_row_for_artifacts(self, row_entry, active_row):
+        scores = row_entry['scores']
+        cls_scores = scores.get('classifiers', {})
+        reg_scores = scores.get('regressors', {})
+
+        best_cls_acc = np.nan
+        if cls_scores:
+            best_cls_acc = max(v.get('acc', float('nan')) for v in cls_scores.values())
+
+        reg_mse_values = []
+        for model_metrics in reg_scores.values():
+            for metric_name, metric_value in model_metrics.items():
+                if metric_name.startswith('mse_') and isinstance(metric_value, (int, float, np.integer, np.floating)):
+                    reg_mse_values.append(float(metric_value))
+        mean_reg_mse = float(np.mean(reg_mse_values)) if reg_mse_values else np.nan
+
+        return {
+            'gen': self.gen_count,
+            'database': row_entry['database'],
+            'surrogate_set': row_entry['surrogate_set'],
+            'is_active': row_entry['database'] == active_row['database'] and row_entry['surrogate_set'] == active_row['surrogate_set'],
+            'cls_trust': row_entry['cls_trust'],
+            'reg_trust': row_entry['reg_trust'],
+            'best_cls_acc': best_cls_acc,
+            'mean_reg_mse': mean_reg_mse,
+            'num_classifiers': len(cls_scores),
+            'num_regressors': len(reg_scores),
+        }
+
+
+    def _write_surrogate_artifacts(self, all_row_scores, active_row):
+        os.makedirs(self.surrogate_artifacts_dir, exist_ok=True)
+
+        payload = {
+            'gen': self.gen_count,
+            'active_row': active_row,
+            'rows': all_row_scores,
+        }
+        with open(self.surrogate_matrix_rows_file, 'a') as f:
+            f.write(json.dumps(payload, default=self._json_default) + '\n')
+
+        new_rows = [self._summarize_row_for_artifacts(row_entry, active_row) for row_entry in all_row_scores]
+        new_df = pd.DataFrame(new_rows)
+        if os.path.exists(self.surrogate_summary_file):
+            old_df = pd.read_csv(self.surrogate_summary_file)
+            summary_df = pd.concat([old_df, new_df], ignore_index=True)
+        else:
+            summary_df = new_df
+        summary_df.to_csv(self.surrogate_summary_file, index=False)
+
+        leaderboard_df = summary_df.groupby(['database', 'surrogate_set'], as_index=False).agg(
+            generations=('gen', 'nunique'),
+            mean_cls_trust=('cls_trust', 'mean'),
+            mean_reg_trust=('reg_trust', 'mean'),
+            mean_cls_acc=('best_cls_acc', 'mean'),
+            mean_reg_mse=('mean_reg_mse', 'mean'),
+        )
+        leaderboard_df['composite_trust'] = leaderboard_df['mean_cls_trust'] * leaderboard_df['mean_reg_trust']
+        leaderboard_df = leaderboard_df.sort_values(by=['composite_trust', 'mean_reg_mse'], ascending=[False, True]).reset_index(drop=True)
+        leaderboard_df.to_csv(self.surrogate_leaderboard_file, index=False)
+
     def select_parents(self, selection_pool):
         print('Selecting parents...')
         selected_parents = self.toolbox.select_parents(selection_pool)
@@ -667,6 +740,9 @@ class Pipeline:
                 'database': database_name,
                 'surrogate_set': surrogate_set_name,
                 'scores': row_result['scores'],
+                'cls_trust': row_result['cls_trust'],
+                'reg_trust': row_result['reg_trust'],
+                'sub_surrogates': row_result['sub_surrogates'],
             })
 
             if row is active_row or not active_row_ready:
@@ -690,6 +766,7 @@ class Pipeline:
         self.surrogate.activate_surrogate_set(active_row['surrogate_set'], active_surrogate_set_cfg)
         self.surrogate.weights_dir = active_weights_dir
         self.active_surrogate_weights_dir = active_weights_dir
+        self._write_surrogate_artifacts(all_row_scores, active_row)
 
         print('    Done!')
         if len(all_row_scores) == 1:
