@@ -466,8 +466,26 @@ class Pipeline:
     def _build_surrogate_datasets(self, database_name, database_cfg, name):
         seen_gens = list(range(1, self.gen_count))
         dataset_kind = database_cfg.get('dataset_kind', 'aot_legacy')
-        if dataset_kind != 'aot_legacy':
-            raise ValueError(f"Unsupported dataset_kind '{dataset_kind}' for database '{database_name}' in phase 2.")
+        if dataset_kind not in ('aot_legacy', 'prebuilt_pickles'):
+            raise ValueError(f"Unsupported dataset_kind '{dataset_kind}' for database '{database_name}'.")
+
+        if dataset_kind == 'prebuilt_pickles':
+            required_keys = ['cls_train_path', 'cls_val_path', 'reg_train_path', 'reg_val_path']
+            missing = [k for k in required_keys if k not in database_cfg]
+            if missing:
+                raise ValueError(
+                    f"Database '{database_name}' with dataset_kind='prebuilt_pickles' "
+                    f"is missing required keys: {missing}"
+                )
+
+            cls_train_df = pd.read_pickle(database_cfg['cls_train_path'])
+            cls_val_df = pd.read_pickle(database_cfg['cls_val_path'])
+            reg_train_df = pd.read_pickle(database_cfg['reg_train_path'])
+            reg_val_df = pd.read_pickle(database_cfg['reg_val_path'])
+
+            reg_train_df = pd.concat([reg_train_df, self.reg_surrogate_pretrained_data], axis=0)
+            cls_train_df = pd.concat([cls_train_df, self.cls_surrogate_pretrained_data], axis=0)
+            return cls_train_df, cls_val_df, reg_train_df, reg_val_df
 
         row_temp_dataset_path = os.path.join(self.surrogate_temp_dataset_path, name)
         os.makedirs(row_temp_dataset_path, exist_ok=True)

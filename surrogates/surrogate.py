@@ -305,18 +305,42 @@ class Surrogate():
 
         regressor_models = surrogate_set_cfg.get('regressor_models')
         classifier_models = surrogate_set_cfg.get('classifier_models')
+        regressor_names = surrogate_set_cfg.get('regressor_names')
+        classifier_names = surrogate_set_cfg.get('classifier_names')
+
+        def _filter_legacy_models_by_name(models, names, model_kind):
+            model_map = {m.get('name'): m for m in models}
+            missing = [n for n in names if n not in model_map]
+            if missing:
+                raise ValueError(
+                    f"Surrogate set '{surrogate_set_name}' has unknown {model_kind} names: {missing}. "
+                    f"Known names: {list(model_map.keys())}"
+                )
+            return [copy.deepcopy(model_map[n]) for n in names]
 
         # compatibility path: no explicit model definitions yet, use legacy hardcoded set
-        if regressor_models is None and classifier_models is None:
+        if regressor_models is None and classifier_models is None and regressor_names is None and classifier_names is None:
             self.models = copy.deepcopy(self._legacy_regressor_models)
             self.classifier_models = copy.deepcopy(self._legacy_classifier_models)
+            self.active_surrogate_set_name = surrogate_set_name
+            return
+
+        if regressor_names is not None or classifier_names is not None:
+            if regressor_names is None or classifier_names is None:
+                raise ValueError(
+                    f"Surrogate set '{surrogate_set_name}' must define both "
+                    f"'regressor_names' and 'classifier_names' when using name-based selection."
+                )
+            self.models = _filter_legacy_models_by_name(self._legacy_regressor_models, regressor_names, 'regressor')
+            self.classifier_models = _filter_legacy_models_by_name(self._legacy_classifier_models, classifier_names, 'classifier')
             self.active_surrogate_set_name = surrogate_set_name
             return
 
         if regressor_models is None or classifier_models is None:
             raise ValueError(
                 f"Surrogate set '{surrogate_set_name}' must define both "
-                f"'regressor_models' and 'classifier_models'."
+                f"'regressor_models' and 'classifier_models', or both "
+                f"'regressor_names' and 'classifier_names'."
             )
 
         self.models = copy.deepcopy(regressor_models)
