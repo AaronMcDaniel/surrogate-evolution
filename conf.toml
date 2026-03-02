@@ -120,10 +120,25 @@ dataset_kind = "aot_legacy"
 source = "legacy_sections"
 description = "Compatibility database entry mapped from legacy config usage."
 
+[databases.codestral_prebuilt]
+enabled = false
+dataset_kind = "prebuilt_pickles"
+cls_train_path = "/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/large_dataset/mix_dataset_cls_train.pkl"
+cls_val_path = "/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/large_dataset/mix_dataset_cls_val.pkl"
+reg_train_path = "/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/large_dataset/mix_dataset_reg_train.pkl"
+reg_val_path = "/storage/ice-shared/vip-vvk/data/AOT/psomu3/codestral/large_dataset/mix_dataset_reg_val.pkl"
+description = "Example non-legacy database using prebuilt pickle splits."
+
 [surrogate_sets.legacy_default]
 enabled = true
 source = "legacy_surrogate_section"
 description = "Compatibility surrogate set mapped from [surrogate] section."
+
+[surrogate_sets.fast_legacy_subset]
+enabled = false
+regressor_names = ["mlp_best_cioul", "mlp_best_ap"]
+classifier_names = ["best_mlp_classifier"]
+description = "Example name-based selection from legacy hardcoded surrogate models."
 
 [[test_matrix]]
 enabled = true
